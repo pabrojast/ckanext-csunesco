@@ -1,6 +1,5 @@
 csunesco-css:
   output: css/csunesco.css
-  filters: cssrewrite
   contents:
     - css/csunesco.css
 
