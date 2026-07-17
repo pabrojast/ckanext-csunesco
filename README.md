@@ -10,8 +10,8 @@ workflow — see [`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
 ## Features
 
 - **Citizen-Scientist self-registration** — a colab-style blueprint at
-  `/register-citizen` that creates an active CKAN account with **no
-  organization** and flags a CS profile; optional reCAPTCHA v3. Also exposed
+  `/citizen-science/register-citizen` that creates an active CKAN account with
+  **no organization** and flags a CS profile; optional reCAPTCHA v3. Also exposed
   server-to-server as `csunesco_register_citizen_scientist` for ofform.
 - **Initiatives & projects** — the four initiatives (Be Resilient, Island Watch,
   River Watch, C4Water) are CKAN groups; CS projects are first-class rows with a
@@ -21,11 +21,87 @@ workflow — see [`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
   per-project landing pages with a **region map** (Leaflet + GeoJSON),
   **at-a-glance counters** (citizen scientists, observations, sites, member
   states) and a **join link / QR** code.
-- **Admin approval panel** — `/cs-admin` aggregates pending project-requests and
-  join-requests for sysadmins (`csunesco_admin_pending_list`).
+- **Admin approval panel** — `/citizen-science/admin` aggregates pending
+  project-requests and join-requests for sysadmins and project admins
+  (`csunesco_admin_pending_list`).
 - **News / events / media** — per-project content (`cs-news`, `cs-events`,
   `cs-media`) editable by project admins, HTML sanitised with `bleach`, exposed
   through public `side_effect_free` `csunesco_content_list` / `_show`.
+
+## Endpoints & permissions
+
+Every HTTP view lives under the blueprint prefix **`/citizen-science`** (so the
+self-registration page is `/citizen-science/register-citizen`, **not**
+`/register-citizen`). Authorization roles:
+
+- **public** — anonymous allowed. Read views only ever expose *approved* rows to
+  non-privileged callers; the action layer does the filtering.
+- **authenticated** — any logged-in CKAN user.
+- **project admin** — an active `admin` member of the *target* project.
+- **sysadmin** — a CKAN sysadmin (the IHP admin).
+
+### HTTP routes
+
+| Method | Path | Purpose | Who can access |
+| --- | --- | --- | --- |
+| GET | `/citizen-science/` | Citizen Science hub | public |
+| GET | `/citizen-science/initiative/<name>` | Single initiative + its approved projects | public |
+| GET | `/citizen-science/projects` | Filterable project listing | public |
+| GET | `/citizen-science/project/<slug>` | Project landing page | public (approved) |
+| GET | `/citizen-science/project/<slug>/geojson` | Async region GeoJSON for the map | public |
+| GET | `/citizen-science/news` · `/news/<slug>` | News index / detail | public (approved) |
+| GET | `/citizen-science/events` · `/events/<slug>` | Events index / detail | public (approved) |
+| GET·POST | `/citizen-science/register-citizen` | Citizen Scientist self-registration | public — gated by `ckan.auth.create_user_via_web`; reuses core `user_create` auth |
+| GET·POST | `/citizen-science/project/new` | Propose a project (request) | authenticated |
+| POST | `/citizen-science/project/<slug>/join` | Request to join a project | authenticated |
+| GET·POST | `/citizen-science/project/<slug>/content/new` | Add news/event to a project | sysadmin **or** that project's admin |
+| GET·POST | `/citizen-science/content/<id>/edit` | Edit an existing content item | sysadmin **or** project admin |
+| GET | `/citizen-science/admin` | Approval panel (pending projects/joins/content) | sysadmin **or** any project admin |
+| POST | `/citizen-science/admin/project/<id>/approve` · `/reject` | Moderate a project request | sysadmin |
+| POST | `/citizen-science/admin/join/<project_id>/<user_id>/approve` · `/reject` | Moderate a join request | sysadmin **or** project admin |
+| POST | `/citizen-science/admin/content/<id>/approve` · `/reject` | Moderate a content item | sysadmin |
+
+All POST forms carry CKAN's CSRF token (`h.csrf_input()`); mutating routes use
+POST-redirect-GET.
+
+### API actions (`/api/3/action/<name>`)
+
+Read actions are `side_effect_free` (callable via GET). Registration validation
+is deliberately generic (no per-field errors) so the endpoint cannot be used to
+enumerate accounts.
+
+| Action | Access |
+| --- | --- |
+| `csunesco_project_list`, `csunesco_project_show`, `csunesco_project_stats_show`, `csunesco_aggregate_stats` | public (read; approved only for non-sysadmins) |
+| `csunesco_content_list`, `csunesco_content_show` | public (read; approved only for non-sysadmins) |
+| `csunesco_project_request_create` | authenticated |
+| `csunesco_join_request_create` | authenticated |
+| `csunesco_content_create`, `csunesco_content_update` | sysadmin **or** project admin |
+| `csunesco_admin_pending_list` | sysadmin **or** any project admin |
+| `csunesco_project_approve`, `csunesco_project_reject` | sysadmin |
+| `csunesco_content_approve`, `csunesco_content_reject` | sysadmin |
+| `csunesco_join_approve`, `csunesco_join_reject` | sysadmin **or** project admin |
+| `csunesco_register_citizen_scientist` | **sysadmin token only** — server-to-server (ofform); idempotent |
+
+The full ofform endpoint→action mapping and identity model live in
+[`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
+
+### Registration validation
+
+The `/citizen-science/register-citizen` POST and the `csunesco_register_citizen_scientist`
+action share one implementation (`logic/registration.create_citizen_scientist`).
+Server-side checks (the browser form is progressive-enhancement only — it carries
+`novalidate`, so the server is the source of truth):
+
+- **email**, **username**, **password** required; username lower-cased + stripped.
+- **password** ≥ 8 chars and must equal **confirm password** (web form).
+- **terms** checkbox must be accepted (web form).
+- **reCAPTCHA v3** verified server-side (score > 0.5) **only when both
+  `ckan.recaptcha.publickey` and `ckan.recaptcha.privatekey` are set**; skipped
+  otherwise.
+- Core `user_create` then enforces CKAN's own rules (name charset + uniqueness,
+  email format + uniqueness, password policy). Any failure — including duplicates
+  — collapses to one generic error.
 
 ## Requirements
 
