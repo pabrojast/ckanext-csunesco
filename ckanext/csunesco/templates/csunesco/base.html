@@ -1,0 +1,13 @@
+{% extends "page.html" %}
+
+{#
+  Base template for the Citizen Science (UNESCO) section.
+  Child templates fill `cs_content`; the wrapper keeps the accessible
+  landmark structure (<main>/<section> headings) in one place.
+#}
+
+{% block primary_content %}
+  <main id="content" role="main" class="cs-main">
+    {% block cs_content %}{% endblock %}
+  </main>
+{% endblock %}

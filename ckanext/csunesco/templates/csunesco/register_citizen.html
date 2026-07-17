@@ -1,0 +1,189 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  Citizen Scientist self-registration (increment 2).
+
+  Single-column, mobile-first, UNESCO-branded form parallel to CKAN's
+  /user/register but with NO organization step. All `{{ ... }}` output is
+  autoescaped by Jinja2 -- do NOT use `| safe` on user data (XSS). Errors are
+  intentionally GENERIC (no per-field / account-enumeration hints); the server
+  is the source of truth, the inline JS below is progressive enhancement only.
+#}
+
+{% block subtitle %}{{ _("Become a Citizen Scientist") }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  {% if success %}
+    {# Confirmation state: the account is active, invite the user to log in. #}
+    <section class="cs-hero" aria-labelledby="cs-reg-success-title">
+      <h1 id="cs-reg-success-title">{{ _("Welcome, Citizen Scientist!") }}</h1>
+      <p>{{ _("Your account has been created and is ready to use.") }}</p>
+    </section>
+    <section class="cs-card" aria-label="{{ _('Next step') }}">
+      <p>{{ _("You can now log in with your username and password.") }}</p>
+      <a class="cs-btn cs-btn-primary" href="{{ h.url_for('user.login') }}">
+        {{ _("Log in") }}
+      </a>
+    </section>
+  {% else %}
+    <section class="cs-hero" aria-labelledby="cs-reg-title">
+      <h1 id="cs-reg-title">{{ _("Become a Citizen Scientist") }}</h1>
+      <p>{{ _("Create a free account to contribute observations to UNESCO/IHP-WINS Citizen Science initiatives. No organization required.") }}</p>
+    </section>
+
+    <section class="cs-card cs-form-card" aria-labelledby="cs-reg-form-title">
+      <h2 id="cs-reg-form-title" class="cs-form-heading">{{ _("Create your account") }}</h2>
+
+      {% if errors and errors.message %}
+        {# Single generic, form-level error. Required fields point at it via
+           aria-describedby so assistive tech announces it in context. #}
+        <div id="cs-reg-error" class="cs-form-error" role="alert">
+          {{ errors.message }}
+        </div>
+      {% endif %}
+
+      <form method="post"
+            action="{{ h.url_for('csunesco.register_citizen') }}"
+            class="cs-form" id="cs-register-form" novalidate>
+        {{ h.csrf_input() }}
+
+        {# ---- Account -------------------------------------------------- #}
+        <fieldset class="cs-fieldset">
+          <legend>{{ _("Account") }}</legend>
+
+          <div class="cs-field">
+            <label for="cs-email">{{ _("Email") }} <span class="cs-req" aria-hidden="true">*</span></label>
+            <input type="email" id="cs-email" name="email"
+                   value="{{ data.email or '' }}"
+                   autocomplete="email" aria-required="true"
+                   aria-describedby="cs-email-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+            <p id="cs-email-hint" class="cs-hint">{{ _("We use your email for account recovery only.") }}</p>
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-username">{{ _("Username") }} <span class="cs-req" aria-hidden="true">*</span></label>
+            <input type="text" id="cs-username" name="username"
+                   value="{{ data.username or '' }}"
+                   autocomplete="username" aria-required="true"
+                   aria-describedby="cs-username-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+            <p id="cs-username-hint" class="cs-hint">{{ _("Lowercase letters, numbers, - and _ only.") }}</p>
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-password">{{ _("Password") }} <span class="cs-req" aria-hidden="true">*</span></label>
+            <input type="password" id="cs-password" name="password"
+                   autocomplete="new-password" aria-required="true"
+                   aria-describedby="cs-password-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+            <p id="cs-password-hint" class="cs-hint">{{ _("At least 8 characters.") }}</p>
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-confirm-password">{{ _("Confirm password") }} <span class="cs-req" aria-hidden="true">*</span></label>
+            <input type="password" id="cs-confirm-password" name="confirm_password"
+                   autocomplete="new-password" aria-required="true"
+                   aria-describedby="cs-confirm-password-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+            <p id="cs-confirm-password-hint" class="cs-hint">{{ _("Re-enter the same password.") }}</p>
+          </div>
+        </fieldset>
+
+        {# ---- Optional profile ---------------------------------------- #}
+        <fieldset class="cs-fieldset">
+          <legend>{{ _("Profile (optional)") }}</legend>
+
+          <div class="cs-field">
+            <label for="cs-fullname">{{ _("Full name") }}</label>
+            <input type="text" id="cs-fullname" name="fullname"
+                   value="{{ data.fullname or '' }}"
+                   autocomplete="name">
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-country">{{ _("Country") }}</label>
+            <input type="text" id="cs-country" name="country"
+                   value="{{ data.country or '' }}"
+                   autocomplete="country-name"
+                   aria-describedby="cs-country-hint">
+            <p id="cs-country-hint" class="cs-hint">{{ _("Optional. Your UNESCO member state.") }}</p>
+          </div>
+        </fieldset>
+
+        {# ---- Terms --------------------------------------------------- #}
+        <fieldset class="cs-fieldset">
+          <legend>{{ _("Terms") }}</legend>
+          <div class="cs-field cs-checkbox-field">
+            <input type="checkbox" id="cs-terms" name="terms" value="yes"
+                   aria-required="true"
+                   aria-describedby="{% if errors and errors.message %}cs-reg-error{% endif %}">
+            <label for="cs-terms" class="cs-checkbox-label">
+              {{ _("I accept the terms of participation and agree to contribute data responsibly.") }}
+              <span class="cs-req" aria-hidden="true">*</span>
+            </label>
+          </div>
+        </fieldset>
+
+        {# ---- reCAPTCHA v3 (only when configured) --------------------- #}
+        {% if recaptcha_publickey %}
+          <input type="hidden" name="recaptcha_response" id="cs-recaptcha-response">
+          <p class="cs-hint cs-recaptcha-note">
+            {{ _("This site is protected by reCAPTCHA; the Google Privacy Policy and Terms of Service apply.") }}
+          </p>
+        {% endif %}
+
+        <div class="cs-form-actions">
+          <button type="submit" id="cs-submit" class="cs-btn cs-btn-primary">
+            {{ _("Create account") }}
+          </button>
+        </div>
+      </form>
+
+      <p class="cs-form-footer">
+        {{ _("Already have an account?") }}
+        <a href="{{ h.url_for('user.login') }}">{{ _("Log in") }}</a>
+      </p>
+    </section>
+
+    {% if recaptcha_publickey %}
+      {# Load reCAPTCHA v3 only when configured (keys present). #}
+      <script src="https://www.google.com/recaptcha/api.js?render={{ recaptcha_publickey }}" async defer></script>
+    {% endif %}
+
+    <script>
+      // Progressive enhancement only: the server re-validates everything.
+      (function () {
+        var form = document.getElementById('cs-register-form');
+        var submit = document.getElementById('cs-submit');
+        if (!form || !submit) { return; }
+        var siteKey = {{ recaptcha_publickey | tojson }};
+
+        function lockSubmit() {
+          submit.disabled = true;
+          submit.classList.add('is-loading');
+        }
+
+        form.addEventListener('submit', function (event) {
+          // reCAPTCHA v3: fetch a token, stash it, then submit.
+          if (siteKey && typeof grecaptcha !== 'undefined') {
+            event.preventDefault();
+            lockSubmit();
+            grecaptcha.ready(function () {
+              grecaptcha.execute(siteKey, { action: 'register' }).then(function (token) {
+                var field = document.getElementById('cs-recaptcha-response');
+                if (field) { field.value = token; }
+                form.submit();
+              }).catch(function () {
+                // Let the user retry if the token could not be fetched.
+                submit.disabled = false;
+                submit.classList.remove('is-loading');
+              });
+            });
+          } else {
+            // No reCAPTCHA: just disable to prevent double submission.
+            lockSubmit();
+          }
+        });
+      })();
+    </script>
+  {% endif %}
+{% endblock %}

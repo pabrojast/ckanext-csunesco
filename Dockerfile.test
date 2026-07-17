@@ -1,0 +1,24 @@
+# ckanext-csunesco -- CKAN-load + behavioral-test harness.
+#
+# This is the reproducible image that verified the plugin: it installs
+# ckanext-csunesco into a real CKAN 2.10 dev image so we can (a) instantiate
+# CsunescoPlugin and assert its IActions/ITemplateHelpers/... hooks return
+# non-empty registries (the "PLUGIN OK" smoke check) and (b) run the behavioral
+# pytest suite (test_db_behavior.py + test_pure_logic.py) against real CKAN code.
+#
+# NOTE: the plugin source is COPYied (not bind-mounted) on purpose. Bind mounts
+# fail under SELinux (the container cannot read the host-labelled directory), so
+# baking the code into the image keeps the harness portable across hosts.
+# See scripts/run-ckan-tests.sh for the driver that builds + runs this image.
+
+FROM ckan/ckan-dev:2.10
+
+# Root is needed to pip-install into the image's site-packages.
+USER root
+
+# Bake the plugin into the image (see NOTE above -- COPY, not a bind mount).
+COPY . /plugin
+
+# Editable install so entry points (csunesco=...:CsunescoPlugin) register and
+# setup.py's install_requires (bleach) is pulled in.
+RUN pip install -e /plugin

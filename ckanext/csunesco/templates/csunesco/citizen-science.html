@@ -1,0 +1,92 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  Public Citizen Science hub (increment 4).
+
+  UNESCO hero + an Initiatives grid + a recent-Projects grid + an "At a Glance"
+  band fed by the csunesco_aggregate_stats helper. All `{{ ... }}` output is
+  autoescaped by Jinja2 -- no `| safe` on user data. Empty states live INSIDE
+  their grid so the layout never collapses.
+#}
+
+{% block subtitle %}{{ _("Citizen Science") }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  {% set stats = h.csunesco_aggregate_stats() %}
+
+  <section class="section-title" aria-labelledby="cs-title">
+    <div class="section-title-overlay" aria-hidden="true"></div>
+    <div class="section-title-content">
+      <h1 id="cs-title">{{ _("UNESCO Citizen Science") }}</h1>
+      <p class="section-title-description">
+        {{ _("Explore IHP-WINS Citizen Science initiatives and community-led water monitoring projects around the world.") }}
+      </p>
+    </div>
+  </section>
+
+  {# ---- Initiatives ---------------------------------------------------- #}
+  <section class="cs-section" aria-labelledby="cs-initiatives-title">
+    <h2 id="cs-initiatives-title" class="cs-section-title">{{ _("Initiatives") }}</h2>
+    <div class="cs-initiative-grid">
+      {% for initiative in h.csunesco_initiatives() %}
+        <article class="cs-initiative-card">
+          <a class="cs-initiative-card-link"
+             href="{{ h.url_for('csunesco.initiative_index', name=initiative.name) }}">
+            <img class="cs-initiative-card-img" loading="lazy" alt=""
+                 src="/csunesco/images/initiative-{{ initiative.name }}.png">
+            <span class="cs-initiative-card-text">
+              <h3 class="cs-card-title">{{ initiative.title }}</h3>
+              <span class="cs-card-cta">{{ _("View projects") }} &rarr;</span>
+            </span>
+          </a>
+        </article>
+      {% else %}
+        <p class="cs-empty">{{ _("No initiatives available yet.") }}</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ---- Recent projects ------------------------------------------------ #}
+  <section class="cs-section" aria-labelledby="cs-projects-title">
+    <div class="cs-section-header">
+      <h2 id="cs-projects-title" class="cs-section-title">{{ _("Projects") }}</h2>
+      <a class="cs-link" href="{{ h.url_for('csunesco.project_list') }}">
+        {{ _("Browse all projects") }} &rarr;
+      </a>
+    </div>
+    <div class="cs-project-grid">
+      {% for project in projects %}
+        {% snippet "csunesco/snippets/project_card.html", project=project %}
+      {% else %}
+        <p class="cs-empty">{{ _("No projects have been published yet.") }}</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ---- About Citizen Science ----------------------------------------- #}
+  <section class="cs-section cs-about" aria-labelledby="cs-about-title">
+    <div class="cs-about-media">
+      <img loading="lazy" alt=""
+           src="/csunesco/images/about-citizen-science.png">
+    </div>
+    <div class="cs-about-text">
+      <h2 id="cs-about-title" class="cs-section-title">{{ _("About Citizen Science") }}</h2>
+      <p>
+        {{ _("Citizen Science engages communities in observing, monitoring and analysing their environment. It expands the reach of professional research, fills critical data gaps, and supports informed decision-making, while fostering ownership of solutions and inclusive participation aligned with UNESCO's mandate.") }}
+      </p>
+    </div>
+  </section>
+
+  {# ---- At a glance ---------------------------------------------------- #}
+  {% snippet "csunesco/snippets/at_a_glance.html", stats=stats %}
+
+  {# ---- Call to action ------------------------------------------------- #}
+  <section class="cs-section cs-cta-band" aria-label="{{ _('Propose a project') }}">
+    <p>{{ _("Leading a community water-monitoring effort?") }}</p>
+    <a class="cs-btn cs-btn-primary" href="{{ h.url_for('csunesco.project_new') }}">
+      {{ _("Propose a project") }}
+    </a>
+  </section>
+{% endblock %}

@@ -1,0 +1,3 @@
+recursive-include ckanext/csunesco/templates *.html
+recursive-include ckanext/csunesco/assets *
+recursive-include ckanext/csunesco/public *

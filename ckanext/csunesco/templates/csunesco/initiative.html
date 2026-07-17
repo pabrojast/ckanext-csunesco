@@ -1,0 +1,37 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  Single initiative page (increment 4): header + a grid of the approved projects
+  filed under this initiative, with an in-grid empty state. All output is
+  autoescaped -- no `| safe` on user data.
+
+  Vars: initiative ({name, title}), projects (list), project_count (int).
+#}
+
+{% block subtitle %}{{ initiative.title }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  <section class="cs-hero" aria-labelledby="cs-init-title">
+    <h1 id="cs-init-title">{{ initiative.title }}</h1>
+    <p>{{ _("Community projects contributing to the %(name)s initiative.") % {'name': initiative.title} }}</p>
+  </section>
+
+  <section class="cs-section" aria-labelledby="cs-init-projects-title">
+    <div class="cs-section-header">
+      <h2 id="cs-init-projects-title" class="cs-section-title">{{ _("Projects") }}</h2>
+      <a class="cs-link"
+         href="{{ h.url_for('csunesco.project_list', initiative=initiative.name) }}">
+        {{ _("Search within all projects") }} &rarr;
+      </a>
+    </div>
+    <div class="cs-project-grid">
+      {% for project in projects %}
+        {% snippet "csunesco/snippets/project_card.html", project=project %}
+      {% else %}
+        <p class="cs-empty">{{ _("No approved projects in this initiative yet.") }}</p>
+      {% endfor %}
+    </div>
+  </section>
+{% endblock %}

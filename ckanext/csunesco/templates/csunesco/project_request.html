@@ -1,0 +1,191 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  Project-request form (increment 4): accessible single-column form that POSTs to
+  csunesco_project_request_create. Field-level errors are wired via a single
+  aria-describedby per control (hint + optional error id). CSRF token included.
+  On success the view redirects here with ?submitted=1 (PRG) and we render an
+  inline confirmation with next-steps + status text -- NOT a link to a
+  not-yet-built "my requests" page.
+
+  All `{{ ... }}` output is autoescaped -- no `| safe` on user data. The inline
+  JS is progressive enhancement only; the server re-validates everything.
+
+  Vars: data (echoed values), errors (dict), success (bool), initiatives,
+        member_states (list of {name, title}).
+#}
+
+{% block subtitle %}{{ _("Propose a Project") }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  {% if success %}
+    <section class="cs-hero" aria-labelledby="cs-req-success-title">
+      <h1 id="cs-req-success-title">{{ _("Request submitted") }}</h1>
+      <p>{{ _("Thank you for proposing a Citizen Science project.") }}</p>
+    </section>
+    <section class="cs-card" aria-label="{{ _('What happens next') }}">
+      <h2 class="cs-form-heading">{{ _("What happens next?") }}</h2>
+      <p>{{ _("Your request is now awaiting review by a UNESCO administrator. Once approved, your project gets a public landing page and you become its project admin.") }}</p>
+      <p class="cs-hint"><strong>{{ _("Status:") }}</strong> {{ _("Pending review.") }}</p>
+      <a class="cs-btn cs-btn-primary" href="{{ h.url_for('csunesco.index') }}">
+        {{ _("Back to Citizen Science") }}
+      </a>
+    </section>
+  {% else %}
+    <section class="cs-hero" aria-labelledby="cs-req-title">
+      <h1 id="cs-req-title">{{ _("Propose a Citizen Science project") }}</h1>
+      <p>{{ _("Submit a project for review. Approved projects get a public landing page, a region map and a join flow.") }}</p>
+    </section>
+
+    <section class="cs-card cs-form-card" aria-labelledby="cs-req-form-title">
+      <h2 id="cs-req-form-title" class="cs-form-heading">{{ _("Project details") }}</h2>
+
+      {% if errors and errors.message %}
+        <div id="cs-req-error" class="cs-form-error" role="alert">{{ errors.message }}</div>
+      {% endif %}
+
+      <form method="post" action="{{ h.url_for('csunesco.project_new') }}"
+            class="cs-form" id="cs-project-form" novalidate>
+        {{ h.csrf_input() }}
+
+        {# ---- Title ---------------------------------------------------- #}
+        <div class="cs-field">
+          <label for="cs-title">{{ _("Project title") }} <span class="cs-req" aria-hidden="true">*</span></label>
+          <input type="text" id="cs-title" name="title" value="{{ data.title or '' }}"
+                 required aria-required="true"
+                 {% if errors.title %}aria-invalid="true"{% endif %}
+                 aria-describedby="{% if errors.title %}cs-title-error{% endif %}">
+          {% if errors.title %}
+            <p id="cs-title-error" class="cs-field-error" role="alert">{{ errors.title | join(', ') }}</p>
+          {% endif %}
+        </div>
+
+        {# ---- Initiative ----------------------------------------------- #}
+        <div class="cs-field">
+          <label for="cs-initiative">{{ _("Initiative") }} <span class="cs-req" aria-hidden="true">*</span></label>
+          <select id="cs-initiative" name="initiative" required aria-required="true"
+                  {% if errors.initiative %}aria-invalid="true"{% endif %}
+                  aria-describedby="{% if errors.initiative %}cs-initiative-error{% endif %}">
+            <option value="">{{ _("Select an initiative") }}</option>
+            {% for initiative in initiatives %}
+              <option value="{{ initiative.name }}"
+                      {% if initiative.name == data.initiative %}selected{% endif %}>
+                {{ initiative.title }}
+              </option>
+            {% endfor %}
+          </select>
+          {% if errors.initiative %}
+            <p id="cs-initiative-error" class="cs-field-error" role="alert">{{ errors.initiative | join(', ') }}</p>
+          {% endif %}
+        </div>
+
+        {# ---- Countries (searchable multi-select) ---------------------- #}
+        <div class="cs-field">
+          <label for="cs-countries">{{ _("Countries (member states)") }}</label>
+          <input type="search" id="cs-countries-filter" class="cs-multiselect-filter"
+                 placeholder="{{ _('Type to filter the list…') }}"
+                 aria-controls="cs-countries" autocomplete="off"
+                 aria-label="{{ _('Filter countries') }}">
+          <select id="cs-countries" name="countries" multiple size="6"
+                  {% if errors.countries %}aria-invalid="true"{% endif %}
+                  aria-describedby="cs-countries-hint{% if errors.countries %} cs-countries-error{% endif %}">
+            {% for state in member_states %}
+              <option value="{{ state.name }}"
+                      {% if state.name in (data.countries or []) %}selected{% endif %}>
+                {{ state.title }}
+              </option>
+            {% endfor %}
+          </select>
+          <p id="cs-countries-hint" class="cs-hint">{{ _("Hold Ctrl/Cmd to select multiple. Use the box above to narrow the list.") }}</p>
+          {% if errors.countries %}
+            <p id="cs-countries-error" class="cs-field-error" role="alert">{{ errors.countries | join(', ') }}</p>
+          {% endif %}
+        </div>
+
+        {# ---- Biosphere reserve ---------------------------------------- #}
+        <div class="cs-field">
+          <label for="cs-biosphere">{{ _("Biosphere reserve") }}</label>
+          <input type="text" id="cs-biosphere" name="biosphere_reserve"
+                 value="{{ data.biosphere_reserve or '' }}"
+                 aria-describedby="cs-biosphere-hint">
+          <p id="cs-biosphere-hint" class="cs-hint">{{ _("Optional. Associated UNESCO biosphere reserve, if any.") }}</p>
+        </div>
+
+        {# ---- Region GeoJSON ------------------------------------------- #}
+        <div class="cs-field">
+          <label for="cs-geojson">{{ _("Region (GeoJSON)") }}</label>
+          <textarea id="cs-geojson" name="region_geojson" rows="5"
+                    {% if errors.region_geojson %}aria-invalid="true"{% endif %}
+                    aria-describedby="cs-geojson-hint{% if errors.region_geojson %} cs-geojson-error{% endif %}">{{ data.region_geojson or '' }}</textarea>
+          <p id="cs-geojson-hint" class="cs-hint">{{ _("Optional. Paste a GeoJSON Feature, FeatureCollection, Polygon or MultiPolygon.") }}</p>
+          {% if errors.region_geojson %}
+            <p id="cs-geojson-error" class="cs-field-error" role="alert">{{ errors.region_geojson | join(', ') }}</p>
+          {% endif %}
+        </div>
+
+        {# ---- Short description ---------------------------------------- #}
+        <div class="cs-field">
+          <label for="cs-short-desc">{{ _("Short description") }}</label>
+          <textarea id="cs-short-desc" name="short_description" rows="4"
+                    aria-describedby="cs-short-desc-hint">{{ data.short_description or '' }}</textarea>
+          <p id="cs-short-desc-hint" class="cs-hint">{{ _("A one-paragraph summary shown on cards and the landing hero.") }}</p>
+        </div>
+
+        {# ---- Document URL --------------------------------------------- #}
+        <div class="cs-field">
+          <label for="cs-doc-url">{{ _("Project document URL") }}</label>
+          <input type="url" id="cs-doc-url" name="project_document_url"
+                 value="{{ data.project_document_url or '' }}"
+                 {% if errors.project_document_url %}aria-invalid="true"{% endif %}
+                 aria-describedby="cs-doc-url-hint{% if errors.project_document_url %} cs-doc-url-error{% endif %}">
+          <p id="cs-doc-url-hint" class="cs-hint">{{ _("Optional. Link (http/https) to a proposal or reference document.") }}</p>
+          {% if errors.project_document_url %}
+            <p id="cs-doc-url-error" class="cs-field-error" role="alert">{{ errors.project_document_url | join(', ') }}</p>
+          {% endif %}
+        </div>
+
+        <div class="cs-form-actions">
+          <button type="submit" id="cs-req-submit" class="cs-btn cs-btn-primary">
+            <span class="cs-btn-label">{{ _("Submit for review") }}</span>
+            <span class="cs-btn-spinner" aria-hidden="true" hidden></span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <script>
+      // Progressive enhancement only: the server re-validates everything.
+      (function () {
+        var form = document.getElementById('cs-project-form');
+        var submit = document.getElementById('cs-req-submit');
+        var filter = document.getElementById('cs-countries-filter');
+        var select = document.getElementById('cs-countries');
+
+        // Client-side filter over the <select multiple> options.
+        if (filter && select) {
+          var options = Array.prototype.slice.call(select.options);
+          filter.addEventListener('input', function () {
+            var term = filter.value.toLowerCase();
+            options.forEach(function (opt) {
+              opt.hidden = opt.text.toLowerCase().indexOf(term) === -1;
+            });
+          });
+        }
+
+        // Show "Sending…" + spinner and disable to prevent double submission.
+        if (form && submit) {
+          form.addEventListener('submit', function () {
+            submit.disabled = true;
+            submit.classList.add('is-loading');
+            var label = submit.querySelector('.cs-btn-label');
+            var spinner = submit.querySelector('.cs-btn-spinner');
+            if (label) { label.textContent = {{ _('Sending…') | tojson }}; }
+            if (spinner) { spinner.hidden = false; }
+          });
+        }
+      })();
+    </script>
+  {% endif %}
+{% endblock %}

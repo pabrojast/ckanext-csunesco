@@ -1,0 +1,43 @@
+{#
+  A single news/event card (shared by the news + events indexes and the project
+  landing "News & Events" section).
+
+  Vars:
+    item        -- a summarized csunesco_content_list result dict (NO full body;
+                   carries a plain-text `excerpt`).
+    show_status -- when true, render the moderation status badge (managers only).
+
+  All `{{ ... }}` output is autoescaped -- no `| safe` on user data. The excerpt
+  is already plain text (server-stripped).
+#}
+{% set is_event = item.content_type == 'cs-event' %}
+{% set detail_endpoint = 'csunesco.cs_events_show' if is_event else 'csunesco.cs_news_show' %}
+<article class="cs-content-card {{ 'cs-content-card--event' if is_event else 'cs-content-card--news' }}">
+  <a class="cs-content-card-link" href="{{ h.url_for(detail_endpoint, slug=item.slug) }}">
+    <span class="cs-content-type" aria-hidden="true">
+      {{ '📅' if is_event else '📰' }}
+    </span>
+    <span class="cs-content-type-label">
+      {{ _("Event") if is_event else _("News") }}
+      {% if item.featured %}
+        <span class="cs-featured-star" title="{{ _('Featured') }}" aria-label="{{ _('Featured') }}">★</span>
+      {% endif %}
+    </span>
+    <h3 class="cs-card-title">{{ item.title }}</h3>
+    {% if item.publish_date %}
+      <p class="cs-content-date">
+        <time datetime="{{ item.publish_date }}">{{ item.publish_date[:10] }}</time>
+        {% if is_event and item.end_date %}
+          &ndash; <time datetime="{{ item.end_date }}">{{ item.end_date[:10] }}</time>
+        {% endif %}
+      </p>
+    {% endif %}
+    {% if item.excerpt %}
+      <p class="cs-content-excerpt">{{ item.excerpt }}</p>
+    {% endif %}
+    {% if show_status and item.status %}
+      <span class="cs-status-badge cs-status-{{ item.status }}">{{ item.status }}</span>
+    {% endif %}
+    <span class="cs-card-cta">{{ _("Read more") }} &rarr;</span>
+  </a>
+</article>

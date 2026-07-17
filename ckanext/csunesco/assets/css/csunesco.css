@@ -1,0 +1,1130 @@
+/*
+ * ckanext-csunesco -- Citizen Science (UNESCO / IHP-WINS)
+ * UNESCO water-family design tokens + minimal base styles (increment 1).
+ */
+
+:root {
+  /* UNESCO blue family (shared water-family palette) */
+  --unesco-blue: #0072BC;
+  --unesco-blue-dark: #005A9C;
+  --unesco-blue-light: #009EE0;
+  --unesco-blue-pale: #E3F2FD;
+
+  /* Accent + text */
+  --admin-gold: #F39C12;
+  --text-primary: #2c3e50;
+
+  /* Layout tokens */
+  --space-unit: 1rem;
+  --radius: 8px;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.cs-main {
+  color: var(--text-primary);
+}
+
+.cs-hero {
+  padding: calc(var(--space-unit) * 2) var(--space-unit);
+  background: linear-gradient(135deg, var(--unesco-blue) 0%, var(--unesco-blue-light) 100%);
+  color: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.cs-hero h1 {
+  margin: 0 0 var(--space-unit) 0;
+  color: #fff;
+}
+
+/* Project landing hero: illustrated river/region banner + contrast overlay. */
+.cs-project-hero {
+  position: relative;
+  overflow: hidden;
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: calc(var(--space-unit) * 2.5) calc(var(--space-unit) * 1.5);
+  background: var(--unesco-blue-dark)
+    url('/csunesco/images/project-hero.png') center / cover no-repeat;
+}
+
+.cs-project-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(0, 42, 90, 0.78) 0%, rgba(0, 42, 90, 0.45) 100%);
+}
+
+.cs-project-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.cs-project-hero h1 {
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.cs-card {
+  margin-top: calc(var(--space-unit) * 1.5);
+  padding: var(--space-unit);
+  background: var(--unesco-blue-pale);
+  border-left: 4px solid var(--unesco-blue);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* ---------------------------------------------------------------------------
+ * Citizen Scientist registration form (increment 2).
+ * Single-column, mobile-first. Constrained max-width keeps line lengths
+ * readable on wide screens while staying full-width on phones.
+ * ------------------------------------------------------------------------- */
+
+.cs-form-card {
+  background: #fff;
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.cs-form-heading {
+  margin-top: 0;
+  color: var(--unesco-blue-dark);
+}
+
+.cs-form-error {
+  margin: 0 0 var(--space-unit) 0;
+  padding: calc(var(--space-unit) * 0.75);
+  background: #fdecea;
+  border-left: 4px solid #c0392b;
+  border-radius: var(--radius);
+  color: #7b241c;
+}
+
+.cs-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 calc(var(--space-unit) * 1.25) 0;
+}
+
+.cs-fieldset legend {
+  font-weight: 600;
+  color: var(--unesco-blue-dark);
+  padding: 0;
+  margin-bottom: calc(var(--space-unit) * 0.5);
+  border-bottom: 1px solid var(--unesco-blue-pale);
+  width: 100%;
+}
+
+.cs-field {
+  margin-bottom: var(--space-unit);
+}
+
+.cs-field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.cs-field input[type="email"],
+.cs-field input[type="text"],
+.cs-field input[type="password"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #cfd8e3;
+  border-radius: var(--radius);
+  font-size: 1rem;
+}
+
+.cs-field input:focus {
+  outline: 2px solid var(--unesco-blue-light);
+  outline-offset: 1px;
+  border-color: var(--unesco-blue);
+}
+
+.cs-req {
+  color: #c0392b;
+}
+
+.cs-hint {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.85rem;
+  color: #5a6b7b;
+}
+
+.cs-recaptcha-note {
+  margin-bottom: var(--space-unit);
+}
+
+.cs-checkbox-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.cs-checkbox-field input[type="checkbox"] {
+  margin-top: 0.25rem;
+  flex: 0 0 auto;
+}
+
+.cs-checkbox-label {
+  display: inline;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.cs-form-actions {
+  margin-top: calc(var(--space-unit) * 1.25);
+}
+
+.cs-btn {
+  display: inline-block;
+  padding: 0.7rem 1.5rem;
+  border: 0;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cs-btn-primary {
+  background: var(--unesco-blue);
+  color: #fff;
+}
+
+.cs-btn-primary:hover,
+.cs-btn-primary:focus {
+  background: var(--unesco-blue-dark);
+  color: #fff;
+}
+
+.cs-btn[disabled],
+.cs-btn.is-loading {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.cs-form-footer {
+  margin-top: calc(var(--space-unit) * 1.25);
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------------------
+ * Public presentation layer (increment 4). Mobile-first, water-family styling.
+ * ------------------------------------------------------------------------- */
+
+/* Screen-reader-only utility (kept visible to assistive tech). */
+.cs-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Secondary button variant. */
+.cs-btn-secondary {
+  background: #fff;
+  color: var(--unesco-blue-dark);
+  border: 1px solid var(--unesco-blue);
+}
+
+.cs-btn-secondary:hover,
+.cs-btn-secondary:focus {
+  background: var(--unesco-blue-pale);
+  color: var(--unesco-blue-dark);
+}
+
+.cs-link {
+  color: var(--unesco-blue-dark);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.cs-link:hover,
+.cs-link:focus {
+  text-decoration: underline;
+}
+
+/* ---- UNESCO hero banner (.section-title + dark overlay) ----------------- */
+.section-title {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  min-height: 260px;
+  display: flex;
+  align-items: center;
+  margin-bottom: calc(var(--space-unit) * 2);
+  /* UNESCO Citizen Science illustrated banner (generated asset), with a blue
+     gradient fallback underneath in case the image is missing. */
+  background: var(--unesco-blue-dark)
+    url('/csunesco/images/cs-hero.png') center / cover no-repeat;
+}
+
+.section-title-overlay {
+  position: absolute;
+  inset: 0;
+  /* Deep-blue semitransparent overlay: keeps white title text at WCAG AA
+     contrast while letting the UNESCO illustration show through. */
+  background: linear-gradient(90deg, rgba(0, 42, 90, 0.62) 0%, rgba(0, 42, 90, 0.38) 100%);
+}
+
+.section-title-content {
+  position: relative;
+  z-index: 1;
+  color: #fff;
+  padding: calc(var(--space-unit) * 2);
+  max-width: 720px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.section-title-content h1 {
+  color: #fff;
+  margin: 0 0 var(--space-unit) 0;
+  font-size: 1.9rem;
+  line-height: 1.2;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.section-title-description {
+  margin: 0;
+  font-size: 1.05rem;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* ---- Sections + headers ------------------------------------------------- */
+.cs-section {
+  margin-top: calc(var(--space-unit) * 2);
+}
+
+.cs-section-title {
+  color: var(--unesco-blue-dark);
+  margin: 0 0 var(--space-unit) 0;
+}
+
+.cs-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: var(--space-unit);
+}
+
+.cs-section-header .cs-section-title {
+  margin-bottom: 0;
+}
+
+.cs-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: calc(var(--space-unit) * 1.5);
+  background: var(--unesco-blue-pale);
+  border: 1px dashed var(--unesco-blue-light);
+  border-radius: var(--radius);
+  color: #5a6b7b;
+  text-align: center;
+}
+
+/* ---- Card grids --------------------------------------------------------- */
+.cs-initiative-grid,
+.cs-project-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-unit);
+}
+
+.cs-initiative-card,
+.cs-project-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.cs-initiative-card:hover,
+.cs-project-card:hover,
+.cs-initiative-card:focus-within,
+.cs-project-card:focus-within {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+.cs-initiative-card-link,
+.cs-project-card-link {
+  display: block;
+  padding: calc(var(--space-unit) * 1.25);
+  text-decoration: none;
+  color: var(--text-primary);
+  height: 100%;
+}
+
+.cs-card-title {
+  margin: 0 0 0.5rem 0;
+  color: var(--unesco-blue-dark);
+  font-size: 1.15rem;
+}
+
+.cs-card-cta {
+  display: inline-block;
+  margin-top: 0.75rem;
+  color: var(--unesco-blue);
+  font-weight: 600;
+}
+
+.cs-project-card-initiative {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  padding: 0.15rem 0.6rem;
+  background: var(--unesco-blue-pale);
+  color: var(--unesco-blue-dark);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cs-project-card-desc {
+  margin: 0;
+  color: #46586a;
+  font-size: 0.95rem;
+}
+
+/* ---- At-a-glance stat band ---------------------------------------------- */
+.cs-stats-band {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-unit);
+  padding: calc(var(--space-unit) * 1.5);
+  background: linear-gradient(135deg, var(--unesco-blue) 0%, var(--unesco-blue-dark) 100%);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.stat-item {
+  text-align: center;
+  color: #fff;
+  padding: var(--space-unit) 0.5rem;
+}
+
+.stat-number {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.stat-label {
+  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  opacity: 0.95;
+}
+
+/* ---- Region map + skeleton --------------------------------------------- */
+.cs-map {
+  position: relative;
+  width: 100%;
+  height: 360px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  background: var(--unesco-blue-pale);
+}
+
+/* Leaflet needs an explicit height on its container. */
+.cs-map.leaflet-container {
+  background: #aad3df;
+}
+
+.cs-map-skeleton {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--unesco-blue-pale),
+    var(--unesco-blue-pale) 12px,
+    #d6e9fb 12px,
+    #d6e9fb 24px
+  );
+}
+
+.cs-map-skeleton-text {
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: var(--radius);
+  color: var(--unesco-blue-dark);
+  font-weight: 600;
+}
+
+.cs-map-fallback {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-unit);
+  text-align: center;
+  color: #46586a;
+}
+
+/* ---- Project landing extras -------------------------------------------- */
+.cs-project-hero-initiative {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.9;
+}
+
+.cs-project-hero-desc {
+  margin: 0.5rem 0 0 0;
+  max-width: 60ch;
+}
+
+.cs-rich-text {
+  line-height: 1.6;
+}
+
+.cs-rich-text img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---- Join block --------------------------------------------------------- */
+.cs-join {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: calc(var(--space-unit) * 1.5);
+}
+
+.cs-join-inner {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: calc(var(--space-unit) * 1.5);
+  align-items: start;
+}
+
+.cs-join-actions .cs-btn {
+  margin: 0 0.5rem 0.5rem 0;
+}
+
+.cs-join-share {
+  text-align: center;
+}
+
+.cs-join-qr {
+  display: block;
+  margin: 0 auto 0.75rem auto;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.cs-join-link {
+  margin: 0;
+  word-break: break-all;
+}
+
+.cs-join-link-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+/* ---- Filter bar --------------------------------------------------------- */
+.cs-filter-bar {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-unit);
+  padding: var(--space-unit);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  align-items: end;
+}
+
+.cs-filter-field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.cs-filter-field select,
+.cs-filter-field input[type="search"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #cfd8e3;
+  border-radius: var(--radius);
+  font-size: 1rem;
+}
+
+.cs-results-count {
+  color: #5a6b7b;
+  font-weight: 400;
+  font-size: 0.9rem;
+}
+
+/* ---- Form controls shared by the request form -------------------------- */
+.cs-field select,
+.cs-field textarea,
+.cs-field input[type="url"],
+.cs-field input[type="search"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #cfd8e3;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.cs-field select[multiple] {
+  min-height: 9rem;
+}
+
+.cs-multiselect-filter {
+  margin-bottom: 0.5rem;
+}
+
+.cs-field-error {
+  margin: 0.35rem 0 0 0;
+  font-size: 0.85rem;
+  color: #c0392b;
+  font-weight: 600;
+}
+
+.cs-field [aria-invalid="true"] {
+  border-color: #c0392b;
+}
+
+.cs-btn-spinner {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-left: 0.5rem;
+  vertical-align: -0.1em;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: cs-spin 0.7s linear infinite;
+}
+
+@keyframes cs-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Pagination --------------------------------------------------------- */
+.cs-pagination {
+  margin-top: calc(var(--space-unit) * 1.5);
+}
+
+.cs-pagination-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  justify-content: center;
+}
+
+.cs-page {
+  display: inline-block;
+  min-width: 2.5rem;
+  padding: 0.45rem 0.6rem;
+  text-align: center;
+  border: 1px solid #cfd8e3;
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--unesco-blue-dark);
+  font-weight: 600;
+}
+
+.cs-page:hover,
+.cs-page:focus {
+  background: var(--unesco-blue-pale);
+}
+
+.cs-page-current {
+  background: var(--unesco-blue);
+  border-color: var(--unesco-blue);
+  color: #fff;
+  cursor: default;
+}
+
+.cs-cta-band {
+  text-align: center;
+  padding: calc(var(--space-unit) * 1.5);
+  background: var(--unesco-blue-pale);
+  border-radius: var(--radius);
+}
+
+.cs-cta-band p {
+  margin: 0 0 var(--space-unit) 0;
+  font-size: 1.05rem;
+}
+
+/* ---- Responsive: widen grids + bands on larger viewports --------------- */
+@media (min-width: 600px) {
+  .cs-initiative-grid,
+  .cs-project-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cs-stats-band {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .cs-filter-bar {
+    grid-template-columns: 1fr 2fr auto;
+  }
+
+  .cs-join-inner {
+    grid-template-columns: 2fr 1fr;
+  }
+
+  .section-title-content h1 {
+    font-size: 2.4rem;
+  }
+}
+
+@media (min-width: 900px) {
+  .cs-initiative-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .cs-project-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Increment 5 -- admin approval panel + news/events content.
+ * ------------------------------------------------------------------------- */
+
+/* ---- Small / danger button variants (>=44px touch target) --------------- */
+.cs-btn-sm {
+  padding: 0.55rem 0.9rem;
+  font-size: 0.9rem;
+  min-height: 44px;
+  min-width: 44px;
+  line-height: 1.2;
+}
+
+.cs-btn-danger {
+  background: #c0392b;
+  color: #fff;
+}
+
+.cs-btn-danger:hover,
+.cs-btn-danger:focus {
+  background: #a5281b;
+  color: #fff;
+}
+
+/* ---- Tabs --------------------------------------------------------------- */
+.cs-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-bottom: 2px solid var(--unesco-blue-pale);
+  margin-bottom: var(--space-unit);
+}
+
+.cs-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--unesco-blue-dark);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cs-tab:hover,
+.cs-tab:focus {
+  background: var(--unesco-blue-pale);
+}
+
+.cs-tab[aria-selected="true"] {
+  border-bottom-color: var(--unesco-blue);
+  color: var(--unesco-blue);
+}
+
+.cs-tab-count {
+  display: inline-block;
+  min-width: 1.5rem;
+  padding: 0.05rem 0.45rem;
+  background: var(--unesco-blue);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.cs-tabpanel {
+  margin-bottom: var(--space-unit);
+}
+
+/* ---- Admin tables (stack into labelled cards on mobile) ----------------- */
+.cs-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.cs-admin-table th,
+.cs-admin-table td {
+  text-align: left;
+  padding: 0.75rem;
+  vertical-align: top;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.cs-admin-table thead th {
+  background: var(--unesco-blue-pale);
+  color: var(--unesco-blue-dark);
+}
+
+.cs-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.cs-reject-form {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.cs-reject-reason {
+  padding: 0.5rem;
+  border: 1px solid #cfd8e3;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  min-height: 44px;
+  max-width: 12rem;
+}
+
+.cs-muted {
+  color: #5a6b7b;
+  font-size: 0.85rem;
+}
+
+/* On narrow screens the table collapses into stacked, labelled cards. */
+@media (max-width: 640px) {
+  .cs-admin-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+  }
+
+  .cs-admin-table,
+  .cs-admin-table tbody,
+  .cs-admin-table tr,
+  .cs-admin-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .cs-admin-table tr {
+    margin-bottom: var(--space-unit);
+    border: 1px solid #e2e8f0;
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .cs-admin-table td {
+    border-bottom: 1px solid #eef2f7;
+  }
+
+  .cs-admin-table td::before {
+    content: attr(data-label);
+    display: block;
+    font-weight: 600;
+    color: var(--unesco-blue-dark);
+    margin-bottom: 0.25rem;
+  }
+
+  .cs-reject-reason {
+    max-width: none;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+/* ---- Status badges ------------------------------------------------------ */
+.cs-status-badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cs-status-pending {
+  background: #fdf0d5;
+  color: #8a5a00;
+}
+
+.cs-status-approved {
+  background: #e3f6ea;
+  color: #1e7a46;
+}
+
+.cs-status-rejected {
+  background: #fdecea;
+  color: #a5281b;
+}
+
+.cs-status-draft {
+  background: #eef2f7;
+  color: #5a6b7b;
+}
+
+/* ---- Content cards (news / events) -------------------------------------- */
+.cs-content-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-unit);
+}
+
+.cs-content-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid var(--unesco-blue);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.cs-content-card--event {
+  border-left-color: var(--admin-gold);
+}
+
+.cs-content-card:hover,
+.cs-content-card:focus-within {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+.cs-content-card-link {
+  display: block;
+  padding: calc(var(--space-unit) * 1.1);
+  text-decoration: none;
+  color: var(--text-primary);
+  height: 100%;
+}
+
+.cs-content-type {
+  font-size: 1.2rem;
+  margin-right: 0.35rem;
+}
+
+.cs-content-type-label {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--unesco-blue-dark);
+}
+
+.cs-content-type-label--event {
+  color: #8a5a00;
+}
+
+.cs-featured-star {
+  color: var(--admin-gold);
+  margin-left: 0.25rem;
+}
+
+.cs-content-date {
+  margin: 0.25rem 0;
+  font-size: 0.85rem;
+  color: #5a6b7b;
+}
+
+.cs-content-excerpt {
+  margin: 0.4rem 0;
+  color: #46586a;
+  font-size: 0.95rem;
+}
+
+/* ---- Article (news/event detail) ---------------------------------------- */
+.cs-article {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.cs-article-header {
+  margin-bottom: var(--space-unit);
+  border-bottom: 1px solid var(--unesco-blue-pale);
+  padding-bottom: var(--space-unit);
+}
+
+.cs-article-title {
+  margin: 0.25rem 0;
+  color: var(--unesco-blue-dark);
+}
+
+.cs-article-manage {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.cs-article-body {
+  margin: var(--space-unit) 0;
+}
+
+.cs-media-list {
+  padding-left: 1.2rem;
+  word-break: break-word;
+}
+
+.cs-article-back {
+  margin-top: calc(var(--space-unit) * 1.5);
+}
+
+/* ---- Editor preview + media inputs -------------------------------------- */
+.cs-preview-wrap {
+  margin-top: 0.6rem;
+  padding: 0.75rem;
+  background: var(--unesco-blue-pale);
+  border-radius: var(--radius);
+}
+
+.cs-preview-label {
+  margin: 0 0 0.4rem 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--unesco-blue-dark);
+}
+
+.cs-content-preview {
+  min-height: 3rem;
+  background: #fff;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius);
+  border: 1px solid #dbe6f2;
+}
+
+.cs-media-inputs {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.cs-media-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #cfd8e3;
+  border-radius: var(--radius);
+  font-size: 1rem;
+}
+
+@media (min-width: 600px) {
+  .cs-content-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 900px) {
+  .cs-content-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ---- Generated UNESCO imagery: initiative cards + About band ------------- */
+/* Initiatives: responsive multi-column grid with an illustrated thumbnail. */
+.cs-initiative-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.cs-initiative-card .cs-initiative-card-link {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cs-initiative-card-img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  background: var(--unesco-blue-dark);
+}
+
+.cs-initiative-card-text {
+  display: block;
+  padding: calc(var(--space-unit) * 1.1);
+}
+
+/* About Citizen Science band (illustration + copy). */
+.cs-about {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: calc(var(--space-unit) * 1.5);
+  align-items: center;
+}
+
+.cs-about-media img {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.cs-about-text p {
+  margin: 0.5rem 0 0;
+  color: #46586a;
+  line-height: 1.6;
+}
+
+@media (min-width: 768px) {
+  .cs-about {
+    grid-template-columns: 5fr 7fr;
+  }
+}

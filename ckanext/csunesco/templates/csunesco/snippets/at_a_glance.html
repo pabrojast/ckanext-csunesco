@@ -1,0 +1,28 @@
+{#
+  "At a Glance" counter band. Renders four stat-items and shows 0 gracefully.
+
+  Vars:
+    stats -- dict with keys citizen_scientists / observations / sites_monitored
+             / member_states (each an int; missing keys default to 0).
+#}
+<section class="cs-section" aria-labelledby="cs-glance-title">
+  <h2 id="cs-glance-title" class="cs-section-title">{{ _("At a Glance") }}</h2>
+  <div class="cs-stats-band">
+    <div class="stat-item">
+      <div class="stat-number">{{ stats.get('citizen_scientists', 0) }}</div>
+      <div class="stat-label">{{ _("Citizen Scientists") }}</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">{{ stats.get('observations', 0) }}</div>
+      <div class="stat-label">{{ _("Observations") }}</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">{{ stats.get('sites_monitored', 0) }}</div>
+      <div class="stat-label">{{ _("Sites Monitored") }}</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">{{ stats.get('member_states', 0) }}</div>
+      <div class="stat-label">{{ _("Member States") }}</div>
+    </div>
+  </div>
+</section>

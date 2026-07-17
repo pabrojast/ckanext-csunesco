@@ -1,0 +1,169 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  News/event editor (increment 5, part B). Single-column accessible form that
+  POSTs to csunesco_content_create (new) or csunesco_content_update (edit).
+  Field errors wire through aria-describedby; CSRF token included; the submit
+  button disables on submit. The body is plain HTML limited to a small allowlist
+  (shown inline); a live preview is progressive enhancement only -- the SERVER
+  re-sanitizes everything before storage.
+
+  All `{{ ... }}` output is autoescaped. The body preview is populated by JS from
+  the textarea in the author's own browser (never trusted server-side).
+
+  Vars: mode ('new'|'edit'), project (dict|None), content (dict|None),
+        data (echoed values), errors (dict), content_type_choices.
+#}
+
+{% set is_new = mode == 'new' %}
+{% if is_new %}
+  {% set action_url = h.url_for('csunesco.content_new', slug=project.slug) %}
+{% else %}
+  {% set action_url = h.url_for('csunesco.content_edit', id=content.id) %}
+{% endif %}
+
+{% block subtitle %}{{ _("Add content") if is_new else _("Edit content") }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  <section class="cs-hero" aria-labelledby="cs-editor-title">
+    <h1 id="cs-editor-title">{{ _("Add news or event") if is_new else _("Edit content") }}</h1>
+    {% if project %}
+      <p>{{ _("For project:") }} <strong>{{ project.title }}</strong></p>
+    {% endif %}
+  </section>
+
+  <section class="cs-card cs-form-card" aria-labelledby="cs-editor-form-title">
+    <h2 id="cs-editor-form-title" class="cs-form-heading">{{ _("Content details") }}</h2>
+
+    {% if not is_new and content %}
+      <p class="cs-hint">
+        <strong>{{ _("Status:") }}</strong>
+        <span class="cs-status-badge cs-status-{{ content.status }}">{{ content.status }}</span>
+      </p>
+    {% else %}
+      <p class="cs-hint">{{ _("New content is submitted for review before it appears publicly (unless you are a sysadmin).") }}</p>
+    {% endif %}
+
+    {% if errors and errors.message %}
+      <div id="cs-editor-error" class="cs-form-error" role="alert">{{ errors.message }}</div>
+    {% endif %}
+
+    <form method="post" action="{{ action_url }}" class="cs-form" id="cs-content-form" novalidate>
+      {{ h.csrf_input() }}
+
+      {# ---- Title ------------------------------------------------------ #}
+      <div class="cs-field">
+        <label for="cs-content-title">{{ _("Title") }} <span class="cs-req" aria-hidden="true">*</span></label>
+        <input type="text" id="cs-content-title" name="title" value="{{ data.title or '' }}"
+               required aria-required="true"
+               {% if errors.title %}aria-invalid="true"{% endif %}
+               aria-describedby="{% if errors.title %}cs-content-title-error{% endif %}">
+        {% if errors.title %}
+          <p id="cs-content-title-error" class="cs-field-error" role="alert">{{ errors.title | join(', ') }}</p>
+        {% endif %}
+      </div>
+
+      {# ---- Content type ---------------------------------------------- #}
+      <div class="cs-field">
+        <label for="cs-content-type">{{ _("Type") }} <span class="cs-req" aria-hidden="true">*</span></label>
+        <select id="cs-content-type" name="content_type" required aria-required="true"
+                {% if errors.content_type %}aria-invalid="true"{% endif %}
+                aria-describedby="{% if errors.content_type %}cs-content-type-error{% endif %}">
+          {% for choice in content_type_choices %}
+            <option value="{{ choice.value }}"
+                    {% if choice.value == data.content_type %}selected{% endif %}>{{ _(choice.label) }}</option>
+          {% endfor %}
+        </select>
+        {% if errors.content_type %}
+          <p id="cs-content-type-error" class="cs-field-error" role="alert">{{ errors.content_type | join(', ') }}</p>
+        {% endif %}
+      </div>
+
+      {# ---- Start date ------------------------------------------------- #}
+      <div class="cs-field">
+        <label for="cs-content-publish">{{ _("Start date") }}</label>
+        <input type="datetime-local" id="cs-content-publish" name="publish_date"
+               value="{{ (data.publish_date or '')[:16] }}"
+               {% if errors.publish_date %}aria-invalid="true"{% endif %}
+               aria-describedby="cs-content-publish-hint{% if errors.publish_date %} cs-content-publish-error{% endif %}">
+        <p id="cs-content-publish-hint" class="cs-hint">{{ _("When the news is dated, or when the event starts.") }}</p>
+        {% if errors.publish_date %}
+          <p id="cs-content-publish-error" class="cs-field-error" role="alert">{{ errors.publish_date | join(', ') }}</p>
+        {% endif %}
+      </div>
+
+      {# ---- End date (events only) ------------------------------------ #}
+      <div class="cs-field" id="cs-enddate-field"
+           {% if data.content_type != 'cs-event' %}hidden{% endif %}>
+        <label for="cs-content-end">{{ _("End date") }} <span class="cs-req" aria-hidden="true">*</span></label>
+        <input type="datetime-local" id="cs-content-end" name="end_date"
+               value="{{ (data.end_date or '')[:16] }}"
+               {% if errors.end_date %}aria-invalid="true"{% endif %}
+               aria-describedby="cs-content-end-hint{% if errors.end_date %} cs-content-end-error{% endif %}">
+        <p id="cs-content-end-hint" class="cs-hint">{{ _("Required for events, and must be after the start date.") }}</p>
+        {% if errors.end_date %}
+          <p id="cs-content-end-error" class="cs-field-error" role="alert">{{ errors.end_date | join(', ') }}</p>
+        {% endif %}
+      </div>
+
+      {# ---- Body ------------------------------------------------------- #}
+      <div class="cs-field">
+        <label for="cs-content-body">{{ _("Body") }}</label>
+        <p id="cs-content-body-guide" class="cs-hint">
+          {{ _("Allowed HTML tags:") }}
+          <code>b i em strong a p ul ol li br h3 h4 blockquote</code>.
+          {{ _("Everything else is removed when saved.") }}
+        </p>
+        <textarea id="cs-content-body" name="body" rows="10"
+                  aria-describedby="cs-content-body-guide">{{ data.body or '' }}</textarea>
+        <div class="cs-preview-wrap">
+          <p class="cs-preview-label">{{ _("Preview") }}</p>
+          <div id="cs-content-preview" class="cs-rich-text cs-content-preview" aria-live="polite"></div>
+        </div>
+      </div>
+
+      {# ---- Media URLs ------------------------------------------------- #}
+      <div class="cs-field">
+        <label>{{ _("Media links (URLs)") }}</label>
+        <p class="cs-hint">{{ _("Optional. Add http/https links to images or documents.") }}</p>
+        <div id="cs-media-list" class="cs-media-inputs">
+          {% set media = data.media or [] %}
+          {% if media %}
+            {% for url in media %}
+              <input type="url" name="media" value="{{ url }}" class="cs-media-input"
+                     placeholder="https://example.org/…" aria-label="{{ _('Media URL') }}">
+            {% endfor %}
+          {% else %}
+            <input type="url" name="media" value="" class="cs-media-input"
+                   placeholder="https://example.org/…" aria-label="{{ _('Media URL') }}">
+          {% endif %}
+        </div>
+        <button type="button" id="cs-media-add" class="cs-btn cs-btn-secondary cs-btn-sm">
+          {{ _("Add another link") }}
+        </button>
+        {% if errors.media %}
+          <p class="cs-field-error" role="alert">{{ errors.media | join(', ') }}</p>
+        {% endif %}
+      </div>
+
+      <div class="cs-form-actions">
+        <button type="submit" id="cs-content-submit" class="cs-btn cs-btn-primary">
+          <span class="cs-btn-label">{{ _("Save") }}</span>
+          <span class="cs-btn-spinner" aria-hidden="true" hidden></span>
+        </button>
+        {% if project %}
+          <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
+            {{ _("Cancel") }}
+          </a>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  {% asset 'csunesco/csunesco-js' %}
+{% endblock %}

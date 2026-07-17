@@ -1,0 +1,200 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  CS admin approval panel (increment 5, part A).
+
+  Three tabs -- Project requests (sysadmin only), Join requests, Content to
+  review. Progressive enhancement: WITHOUT JS every panel is visible (accessible
+  fallback); WITH JS only the active tab shows and `aria-current`/`aria-selected`
+  track it. The active tab is restored from the URL fragment after a PRG so a
+  reviewer stays where they were.
+
+  All `{{ ... }}` output is autoescaped -- no `| safe` on user data. Every action
+  is a POST form with a CSRF token + a confirm prompt.
+
+  Vars: is_sysadmin (bool), project_requests, join_requests, content_requests
+        (lists), counts (dict).
+#}
+
+{% block subtitle %}{{ _("Approval panel") }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  <section class="cs-hero" aria-labelledby="cs-admin-title">
+    <h1 id="cs-admin-title">{{ _("Approval panel") }}</h1>
+    <p>{{ _("Review and decide on the items awaiting your approval.") }}</p>
+  </section>
+
+  <section class="cs-admin" aria-labelledby="cs-admin-title">
+    <div class="cs-tabs" role="tablist" aria-label="{{ _('Pending items') }}">
+      {% if is_sysadmin %}
+        <button type="button" class="cs-tab" role="tab" id="cs-tabbtn-projects"
+                data-tab="projects" aria-controls="cs-tab-projects" aria-selected="false">
+          {{ _("Project requests") }}
+          <span class="cs-tab-count">{{ counts.get('project_requests', 0) }}</span>
+        </button>
+      {% endif %}
+      <button type="button" class="cs-tab" role="tab" id="cs-tabbtn-joins"
+              data-tab="joins" aria-controls="cs-tab-joins" aria-selected="false">
+        {{ _("Join requests") }}
+        <span class="cs-tab-count">{{ counts.get('join_requests', 0) }}</span>
+      </button>
+      <button type="button" class="cs-tab" role="tab" id="cs-tabbtn-content"
+              data-tab="content" aria-controls="cs-tab-content" aria-selected="false">
+        {{ _("Content to review") }}
+        <span class="cs-tab-count">{{ counts.get('content_requests', 0) }}</span>
+      </button>
+    </div>
+
+    {# ---- Project requests (sysadmin only) ---------------------------- #}
+    {% if is_sysadmin %}
+      <div class="cs-tabpanel" id="cs-tab-projects" role="tabpanel"
+           aria-labelledby="cs-tabbtn-projects" data-tabpanel="projects">
+        <h2 class="cs-visually-hidden">{{ _("Project requests") }}</h2>
+        {% if project_requests %}
+          <table class="cs-admin-table">
+            <thead>
+              <tr>
+                <th scope="col">{{ _("Project") }}</th>
+                <th scope="col">{{ _("Initiative") }}</th>
+                <th scope="col">{{ _("Actions") }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in project_requests %}
+                <tr>
+                  <td data-label="{{ _('Project') }}">
+                    <strong>{{ p.title }}</strong>
+                    {% if p.slug %}<br><span class="cs-muted">{{ p.slug }}</span>{% endif %}
+                  </td>
+                  <td data-label="{{ _('Initiative') }}">{{ p.initiative_group or '—' }}</td>
+                  <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
+                    <form method="post"
+                          action="{{ h.url_for('csunesco.project_approve', id=p.id) }}"
+                          data-confirm="{{ _('Approve this project?') }}">
+                      {{ h.csrf_input() }}
+                      <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
+                    </form>
+                    <form method="post" class="cs-reject-form"
+                          action="{{ h.url_for('csunesco.project_reject', id=p.id) }}"
+                          data-confirm="{{ _('Reject this project?') }}">
+                      {{ h.csrf_input() }}
+                      <label class="cs-visually-hidden" for="reason-p-{{ p.id }}">{{ _("Reason") }}</label>
+                      <input type="text" id="reason-p-{{ p.id }}" name="reason"
+                             class="cs-reject-reason" placeholder="{{ _('Reason (optional)') }}">
+                      <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="cs-empty">{{ _("No project requests are awaiting review.") }}</p>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {# ---- Join requests ----------------------------------------------- #}
+    <div class="cs-tabpanel" id="cs-tab-joins" role="tabpanel"
+         aria-labelledby="cs-tabbtn-joins" data-tabpanel="joins">
+      <h2 class="cs-visually-hidden">{{ _("Join requests") }}</h2>
+      {% if join_requests %}
+        <table class="cs-admin-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ _("User") }}</th>
+              <th scope="col">{{ _("Project") }}</th>
+              <th scope="col">{{ _("Actions") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for j in join_requests %}
+              <tr>
+                <td data-label="{{ _('User') }}">{{ j.user_name or j.user_id }}</td>
+                <td data-label="{{ _('Project') }}">{{ j.project_title or j.project_id }}</td>
+                <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
+                  <form method="post"
+                        action="{{ h.url_for('csunesco.join_approve', project_id=j.project_id, user_id=j.user_id) }}"
+                        data-confirm="{{ _('Approve this join request?') }}">
+                    {{ h.csrf_input() }}
+                    <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
+                  </form>
+                  <form method="post"
+                        action="{{ h.url_for('csunesco.join_reject', project_id=j.project_id, user_id=j.user_id) }}"
+                        data-confirm="{{ _('Reject this join request?') }}">
+                    {{ h.csrf_input() }}
+                    <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="cs-empty">{{ _("No join requests are awaiting review.") }}</p>
+      {% endif %}
+    </div>
+
+    {# ---- Content to review ------------------------------------------- #}
+    <div class="cs-tabpanel" id="cs-tab-content" role="tabpanel"
+         aria-labelledby="cs-tabbtn-content" data-tabpanel="content">
+      <h2 class="cs-visually-hidden">{{ _("Content to review") }}</h2>
+      {% if content_requests %}
+        <table class="cs-admin-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ _("Title") }}</th>
+              <th scope="col">{{ _("Type") }}</th>
+              <th scope="col">{{ _("Project") }}</th>
+              <th scope="col">{{ _("Actions") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in content_requests %}
+              <tr>
+                <td data-label="{{ _('Title') }}">
+                  <strong>{{ c.title }}</strong>
+                  {% if c.excerpt %}<br><span class="cs-muted">{{ c.excerpt | truncate(120) }}</span>{% endif %}
+                </td>
+                <td data-label="{{ _('Type') }}">
+                  {{ _("Event") if c.content_type == 'cs-event' else _("News") }}
+                </td>
+                <td data-label="{{ _('Project') }}">{{ c.project_title or c.project_id }}</td>
+                <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
+                  {% if is_sysadmin %}
+                    <form method="post"
+                          action="{{ h.url_for('csunesco.content_approve', id=c.id) }}"
+                          data-confirm="{{ _('Approve this content?') }}">
+                      {{ h.csrf_input() }}
+                      <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
+                    </form>
+                    <form method="post" class="cs-reject-form"
+                          action="{{ h.url_for('csunesco.content_reject', id=c.id) }}"
+                          data-confirm="{{ _('Reject this content?') }}">
+                      {{ h.csrf_input() }}
+                      <label class="cs-visually-hidden" for="reason-c-{{ c.id }}">{{ _("Reason") }}</label>
+                      <input type="text" id="reason-c-{{ c.id }}" name="reason"
+                             class="cs-reject-reason" placeholder="{{ _('Reason (optional)') }}">
+                      <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
+                    </form>
+                  {% endif %}
+                  <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                     href="{{ h.url_for('csunesco.content_edit', id=c.id) }}">{{ _("Edit") }}</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="cs-empty">{{ _("No content is awaiting review.") }}</p>
+      {% endif %}
+    </div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  {% asset 'csunesco/csunesco-js' %}
+{% endblock %}

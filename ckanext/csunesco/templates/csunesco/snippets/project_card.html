@@ -1,0 +1,23 @@
+{#
+  A single project card (shared by the hub, initiative and project-list grids).
+
+  Vars:
+    project -- a csunesco_project_list result dict, decorated with
+               `initiative_title` by the view.
+
+  All `{{ ... }}` output is autoescaped by Jinja2 -- no `| safe` on user data.
+  `short_description` was sanitized server-side; we still `striptags` it here so
+  the card teaser is plain text.
+#}
+<article class="cs-project-card">
+  <a class="cs-project-card-link" href="{{ h.csunesco_project_url(project.slug) }}">
+    {% if project.initiative_title %}
+      <span class="cs-project-card-initiative">{{ project.initiative_title }}</span>
+    {% endif %}
+    <h3 class="cs-card-title">{{ project.title }}</h3>
+    {% if project.short_description %}
+      <p class="cs-project-card-desc">{{ project.short_description | striptags | truncate(140) }}</p>
+    {% endif %}
+    <span class="cs-card-cta">{{ _("View project") }} &rarr;</span>
+  </a>
+</article>

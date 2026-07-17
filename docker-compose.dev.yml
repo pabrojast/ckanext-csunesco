@@ -1,0 +1,73 @@
+# ckanext-csunesco -- full CKAN 2.10 dev stack to exercise the plugin over HTTP.
+#
+# Brings up CKAN + Postgres + Solr + Redis with `csunesco` enabled so you can
+# drive the real landing pages, registration, admin panel and the csunesco_*
+# actions end-to-end in a browser / over the API.
+#
+# Quick start (from the repo root):
+#   docker compose -f docker-compose.dev.yml up
+#   # in another shell, once ckan is up:
+#   docker compose -f docker-compose.dev.yml exec ckan ckan db upgrade
+#   docker compose -f docker-compose.dev.yml exec ckan ckan csunesco seed-initiatives
+#   # then open the Citizen Science hub:
+#   #   http://localhost:5000/citizen-science
+#
+# The `ckan` service here BAKES the plugin into the image via Dockerfile.test
+# (COPY + pip install -e), which is the SELinux-safe default. If you prefer live
+# editing, uncomment the bind mount below -- on SELinux hosts it MUST carry `:z`
+# (e.g. `- .:/plugin:z`) or the container will get permission-denied reading it.
+
+services:
+  ckan:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    ports:
+      - "5000:5000"
+    environment:
+      # Standard CKAN dev wiring (matches the ckan/ckan-dev:2.10 service names).
+      CKAN_SQLALCHEMY_URL: postgresql://ckan_default:pass@db/ckan_test
+      CKAN_DATASTORE_WRITE_URL: postgresql://datastore_write:pass@db/datastore_test
+      CKAN_DATASTORE_READ_URL: postgresql://datastore_read:pass@db/datastore_test
+      CKAN_SOLR_URL: http://solr:8983/solr/ckan
+      CKAN_REDIS_URL: redis://redis:6379/1
+      CKAN_SITE_URL: http://localhost:5000
+      # Enable the plugin (keep the CKAN defaults + csunesco).
+      CKAN__PLUGINS: image_view text_view datatables_view csunesco
+      # Required for the Citizen-Scientist self-registration blueprint.
+      CKAN__AUTH__CREATE_USER_VIA_WEB: "true"
+    depends_on:
+      - db
+      - solr
+      - redis
+    # Live-edit alternative to the baked image (add `:z` on SELinux hosts):
+    # volumes:
+    #   - .:/plugin:z
+
+  db:
+    image: ckan/ckan-postgres-dev:2.10
+    environment:
+      POSTGRES_USER: ckan_default
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: ckan_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ckan_default"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  solr:
+    image: ckan/ckan-solr:2.10-solr9
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8983/solr/ckan/admin/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

@@ -1,0 +1,50 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  Public events index (increment 5): a paginated grid of summarized event cards.
+  Cards carry NO body -- only a plain-text excerpt + start/end dates. Empty state
+  lives inside the grid. All output is autoescaped.
+
+  Vars: items, count, page, total_pages.
+#}
+
+{% block subtitle %}{{ _("Citizen Science Events") }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  <section class="cs-hero" aria-labelledby="cs-events-title">
+    <h1 id="cs-events-title">{{ _("Citizen Science Events") }}</h1>
+    <p>{{ _("Upcoming and past events from community-led water monitoring projects.") }}</p>
+  </section>
+
+  <section class="cs-section" aria-labelledby="cs-events-results-title">
+    <h2 id="cs-events-results-title" class="cs-section-title">
+      {{ _("Events") }} <span class="cs-results-count">({{ count }})</span>
+    </h2>
+    <div class="cs-content-grid">
+      {% for item in items %}
+        {% snippet "csunesco/snippets/content_card.html", item=item %}
+      {% else %}
+        <p class="cs-empty">{{ _("No events have been published yet.") }}</p>
+      {% endfor %}
+    </div>
+
+    {% if total_pages > 1 %}
+      <nav class="cs-pagination" aria-label="{{ _('Pagination') }}">
+        <ul class="cs-pagination-list">
+          {% for p in range(1, total_pages + 1) %}
+            <li>
+              {% if p == page %}
+                <span class="cs-page cs-page-current" aria-current="page">{{ p }}</span>
+              {% else %}
+                <a class="cs-page" href="{{ h.url_for('csunesco.cs_events_index', page=p) }}"
+                   aria-label="{{ _('Go to page %(n)s') % {'n': p} }}">{{ p }}</a>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </nav>
+    {% endif %}
+  </section>
+{% endblock %}

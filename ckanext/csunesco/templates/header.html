@@ -1,0 +1,37 @@
+{% ckan_extends %}
+
+{#
+  ckanext-csunesco header override (nav wiring only).
+
+  Adds a "Citizen Science" entry to CKAN's main navigation and -- for reviewers
+  only -- a small badge linking to the approval dashboard when items are pending.
+  We super() the core block so nothing is removed (non-breaking). The badge is
+  inherently role-gated: h.csunesco_pending_count() already returns 0 for
+  anonymous users and non-managers, so it is only ever > 0 for a sysadmin or a
+  project-admin (h.csunesco_can_manage_project) -- no extra check needed here.
+#}
+{% block header_site_navigation_tabs %}
+  {{ super() }}
+
+  {% set cs_active = request and request.blueprint == 'csunesco' %}
+  <li class="nav-item">
+    <a class="nav-link{{ ' active' if cs_active }}"
+       href="{{ h.url_for('csunesco.index') }}"
+       {% if cs_active %}aria-current="page"{% endif %}>
+      {{ _('Citizen Science') }}
+    </a>
+  </li>
+
+  {% set cs_pending = h.csunesco_pending_count() %}
+  {% if cs_pending and cs_pending > 0 %}
+    <li class="nav-item">
+      {# bg-warning + text-dark keeps AA-level contrast for the count badge. #}
+      <a class="nav-link"
+         href="{{ h.url_for('csunesco.admin_dashboard') }}"
+         aria-label="{{ _('Citizen Science: %(count)s items awaiting review') % {'count': cs_pending} }}">
+        {{ _('Review') }}
+        <span class="badge bg-warning text-dark">{{ cs_pending }}</span>
+      </a>
+    </li>
+  {% endif %}
+{% endblock %}

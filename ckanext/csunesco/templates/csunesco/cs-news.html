@@ -1,0 +1,55 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  News detail page (increment 5).
+
+  content.body was SANITIZED server-side (single restrictive allowlist) BEFORE
+  storage, so it is the ONLY value rendered with `| safe`. Every other
+  `{{ ... }}` is autoescaped. Managers additionally see the status badge + an
+  edit link (the content may be pending).
+
+  Vars: content (full dict incl. body + media list).
+#}
+
+{% block subtitle %}{{ content.title }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  {% set can_manage = h.csunesco_can_manage_project(content.project_id) %}
+  <article class="cs-article">
+    <header class="cs-article-header">
+      <p class="cs-content-type-label cs-content-type-label--news">{{ _("News") }}</p>
+      <h1 class="cs-article-title">{{ content.title }}</h1>
+      {% if content.publish_date %}
+        <p class="cs-content-date">
+          <time datetime="{{ content.publish_date }}">{{ content.publish_date[:10] }}</time>
+        </p>
+      {% endif %}
+      {% if can_manage %}
+        <p class="cs-article-manage">
+          <span class="cs-status-badge cs-status-{{ content.status }}">{{ content.status }}</span>
+          <a class="cs-link" href="{{ h.url_for('csunesco.content_edit', id=content.id) }}">{{ _("Edit") }}</a>
+        </p>
+      {% endif %}
+    </header>
+
+    {# body is sanitized server-side before storage -> safe. #}
+    <div class="cs-rich-text cs-article-body">{{ content.body | safe }}</div>
+
+    {% if content.media %}
+      <section class="cs-article-media" aria-label="{{ _('Related links') }}">
+        <h2 class="cs-section-title">{{ _("Related links") }}</h2>
+        <ul class="cs-media-list">
+          {% for url in content.media %}
+            <li><a href="{{ url }}" rel="noopener noreferrer">{{ url }}</a></li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+    <p class="cs-article-back">
+      <a class="cs-link" href="{{ h.url_for('csunesco.cs_news_index') }}">&larr; {{ _("Back to all news") }}</a>
+    </p>
+  </article>
+{% endblock %}

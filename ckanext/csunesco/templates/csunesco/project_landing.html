@@ -1,0 +1,122 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  Public project landing (increment 4): hero, "At a Glance" band, a region map
+  block (async GeoJSON with a visible skeleton + "No region defined" fallback),
+  a sanitized description, and a JOIN block (POST button when logged in / login
+  + register links otherwise, plus a QR image and short link).
+
+  landing_content was sanitized server-side BEFORE storage, so it is the ONLY
+  value rendered with `| safe`. Every other `{{ ... }}` is autoescaped.
+
+  Vars: project (dict, region_geojson stripped), stats (dict), has_region (bool).
+#}
+
+{% block subtitle %}{{ project.title }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  <section class="cs-hero cs-project-hero" aria-labelledby="cs-project-title">
+    {% if project.initiative_title %}
+      <p class="cs-project-hero-initiative">{{ project.initiative_title }}</p>
+    {% endif %}
+    <h1 id="cs-project-title">{{ project.title }}</h1>
+    {% if project.short_description %}
+      <p class="cs-project-hero-desc">{{ project.short_description | striptags }}</p>
+    {% endif %}
+  </section>
+
+  {% snippet "csunesco/snippets/at_a_glance.html", stats=stats %}
+
+  {# ---- Region map ----------------------------------------------------- #}
+  <section class="cs-section" aria-labelledby="cs-map-title">
+    <h2 id="cs-map-title" class="cs-section-title">{{ _("Project Region") }}</h2>
+    <div id="cs-map" class="cs-map"
+         {% if has_region %}data-geojson-url="{{ h.csunesco_project_url(project.slug) }}/geojson"{% endif %}
+         role="img" aria-label="{{ _('Map of the project region') }}">
+      <div class="cs-map-skeleton" aria-hidden="true"{% if not has_region %} hidden{% endif %}>
+        <span class="cs-map-skeleton-text">{{ _("Loading map…") }}</span>
+      </div>
+      <p class="cs-map-fallback"{% if has_region %} hidden{% endif %}>
+        {{ _("No region defined for this project.") }}
+      </p>
+    </div>
+  </section>
+
+  {# ---- Description (pre-sanitized landing_content) -------------------- #}
+  {% if project.landing_content %}
+    <section class="cs-section cs-project-description" aria-labelledby="cs-desc-title">
+      <h2 id="cs-desc-title" class="cs-section-title">{{ _("About this project") }}</h2>
+      {# landing_content is sanitized server-side before storage -> safe. #}
+      <div class="cs-rich-text">{{ project.landing_content | safe }}</div>
+    </section>
+  {% endif %}
+
+  {# ---- News & Events -------------------------------------------------- #}
+  {% set can_manage = h.csunesco_can_manage_project(project.id) %}
+  <section class="cs-section" aria-labelledby="cs-news-events-title">
+    <div class="cs-section-header">
+      <h2 id="cs-news-events-title" class="cs-section-title">{{ _("News & Events") }}</h2>
+      {% if can_manage %}
+        <a class="cs-btn cs-btn-secondary cs-btn-sm"
+           href="{{ h.url_for('csunesco.content_new', slug=project.slug) }}">
+          {{ _("Add news or event") }}
+        </a>
+      {% endif %}
+    </div>
+    <div class="cs-content-grid">
+      {% for item in news_events %}
+        {% snippet "csunesco/snippets/content_card.html", item=item, show_status=can_manage %}
+      {% else %}
+        <p class="cs-empty">{{ _("No news or events have been published for this project yet.") }}</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ---- Join block ----------------------------------------------------- #}
+  {% set project_link = h.url_for('csunesco.project_landing', slug=project.slug, qualified=True) %}
+  {% set qr = h.csunesco_qr_data_uri(project_link) %}
+  <section class="cs-section cs-join" aria-labelledby="cs-join-title">
+    <h2 id="cs-join-title" class="cs-section-title">{{ _("Join this project") }}</h2>
+    <div class="cs-join-inner">
+      <div class="cs-join-actions">
+        {% if g.user %}
+          <form method="post" action="{{ h.csunesco_join_url(project.slug) }}" class="cs-join-form">
+            {{ h.csrf_input() }}
+            <button type="submit" class="cs-btn cs-btn-primary">{{ _("Request to join") }}</button>
+          </form>
+          <p class="cs-hint">{{ _("Your request will be reviewed by the project admin.") }}</p>
+        {% else %}
+          <p>{{ _("Log in or create a Citizen Scientist account to join this project.") }}</p>
+          <a class="cs-btn cs-btn-primary" href="{{ h.url_for('user.login') }}">{{ _("Log in") }}</a>
+          <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.register_citizen') }}">{{ _("Register") }}</a>
+        {% endif %}
+      </div>
+
+      <div class="cs-join-share">
+        {% if qr %}
+          <img class="cs-join-qr" src="{{ qr }}"
+               alt="{{ _('QR code to access this project') }}" width="160" height="160">
+        {% endif %}
+        <p class="cs-join-link">
+          <span class="cs-join-link-label">{{ _("Share this project:") }}</span>
+          <a href="{{ project_link }}">{{ project_link }}</a>
+        </p>
+      </div>
+    </div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  {# Leaflet loaded from CDN with SRI + crossorigin, lazily, ONLY on this page. #}
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
+  {% asset 'csunesco/cs-map-js' %}
+{% endblock %}
