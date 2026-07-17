@@ -258,8 +258,8 @@
   position: relative;
   overflow: hidden;
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  min-height: 260px;
+  box-shadow: 0 10px 30px rgba(0, 42, 90, 0.22);
+  min-height: 320px;
   display: flex;
   align-items: center;
   margin-bottom: calc(var(--space-unit) * 2);
@@ -272,33 +272,63 @@
 .section-title-overlay {
   position: absolute;
   inset: 0;
-  /* Deep-blue semitransparent overlay: keeps white title text at WCAG AA
-     contrast while letting the UNESCO illustration show through. */
-  background: linear-gradient(90deg, rgba(0, 42, 90, 0.62) 0%, rgba(0, 42, 90, 0.38) 100%);
+  /* Center-focused deep-blue scrim: darkest behind the centred title (WCAG AA
+     white text) while staying light at the edges so the UNESCO illustration
+     (eye, waves, palms) still reads. z-index kept BELOW the content -- see the
+     note on .section-title-content. */
+  z-index: 1;
+  background:
+    linear-gradient(90deg,
+      rgba(2, 26, 58, 0.40) 0%,
+      rgba(2, 26, 58, 0.82) 34%,
+      rgba(2, 26, 58, 0.82) 66%,
+      rgba(2, 26, 58, 0.40) 100%),
+    linear-gradient(180deg, rgba(2, 26, 58, 0.30) 0%, rgba(2, 26, 58, 0.52) 100%);
 }
 
 .section-title-content {
   position: relative;
-  z-index: 1;
+  /* The site theme raises .section-title-overlay to z-index:2, which would
+     paint the scrim OVER the title. Force the content above it so the white
+     text stays legible. !important defends against theme selector specificity. */
+  z-index: 3 !important;
   color: #fff;
-  padding: calc(var(--space-unit) * 2);
-  max-width: 720px;
+  padding: calc(var(--space-unit) * 2.5) var(--space-unit);
+  max-width: 760px;
   margin: 0 auto;
   text-align: center;
 }
 
 .section-title-content h1 {
   color: #fff;
-  margin: 0 0 var(--space-unit) 0;
-  font-size: 1.9rem;
-  line-height: 1.2;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  -webkit-text-fill-color: #fff; /* theme sets text-fill on headings; force white */
+  margin: 0;
+  font-size: 2.4rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: 0.005em;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.40);
+}
+
+/* Short accent rule under the hero title (UNESCO water-family motif). */
+.section-title-content h1::after {
+  content: "";
+  display: block;
+  width: 76px;
+  height: 4px;
+  margin: 0.9rem auto 0;
+  background: linear-gradient(90deg, var(--unesco-blue-light), #7fd3f2);
+  border-radius: 2px;
 }
 
 .section-title-description {
-  margin: 0;
-  font-size: 1.05rem;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  margin: 0.95rem auto 0;
+  max-width: 52ch;
+  font-size: 1.12rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.95);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.50);
 }
 
 /* ---- Sections + headers ------------------------------------------------- */
@@ -704,7 +734,7 @@
   }
 
   .section-title-content h1 {
-    font-size: 2.4rem;
+    font-size: 3rem;
   }
 }
 
@@ -1127,4 +1157,91 @@
   .cs-about {
     grid-template-columns: 5fr 7fr;
   }
+}
+
+/* ---------------------------------------------------------------------------
+ * Landing polish -- UNESCO water-family accents across the public hub.
+ * Additive rules only (kept at the end so they win over the base blocks on
+ * equal specificity); no existing selector is redefined destructively.
+ * ------------------------------------------------------------------------- */
+
+/* Section headings get a short accent rule, echoing the hero title. */
+.cs-section-title {
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.cs-section-title::after {
+  content: "";
+  display: block;
+  width: 56px;
+  height: 4px;
+  margin-top: 0.5rem;
+  background: linear-gradient(90deg, var(--unesco-blue), var(--unesco-blue-light));
+  border-radius: 2px;
+}
+
+/* Keep the "Projects / Browse all" row visually centred with its new accent. */
+.cs-section-header {
+  align-items: center;
+}
+
+/* Initiative cards: deeper illustration backdrop + a slim UNESCO-blue ribbon
+   separating the artwork from the caption. */
+.cs-initiative-card {
+  border-color: #e7eef6;
+}
+
+.cs-initiative-card-img {
+  background: linear-gradient(160deg, var(--unesco-blue-dark), #0a2748);
+}
+
+.cs-initiative-card-text {
+  border-top: 3px solid var(--unesco-blue);
+}
+
+/* At-a-glance: hairline dividers between the four figures on wider screens. */
+.stat-item {
+  position: relative;
+}
+
+@media (min-width: 600px) {
+  .stat-item + .stat-item::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 18%;
+    height: 64%;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.18);
+  }
+}
+
+/* Call to action: a confident UNESCO-blue gradient with an inverted button. */
+.cs-cta-band {
+  background: linear-gradient(135deg, var(--unesco-blue) 0%, var(--unesco-blue-light) 100%);
+  box-shadow: 0 8px 24px rgba(0, 114, 188, 0.22);
+}
+
+.cs-cta-band p {
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.cs-cta-band .cs-btn-primary {
+  background: #fff;
+  color: var(--unesco-blue-dark);
+}
+
+.cs-cta-band .cs-btn-primary:hover,
+.cs-cta-band .cs-btn-primary:focus {
+  background: var(--unesco-blue-pale);
+  color: var(--unesco-blue-dark);
+}
+
+/* Latest-news band on the hub: reuses the shared content-card grid. */
+.cs-news-band .cs-content-grid {
+  margin-top: var(--space-unit);
 }
