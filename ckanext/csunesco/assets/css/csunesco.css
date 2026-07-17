@@ -35,6 +35,14 @@
 .cs-hero h1 {
   margin: 0 0 var(--space-unit) 0;
   color: #fff;
+  -webkit-text-fill-color: #fff; /* theme sets text-fill on headings */
+}
+
+/* Keep the intro copy on the gradient hero white too -- the site theme forces
+   paragraphs to the dark body colour, which reads poorly on UNESCO blue. */
+.cs-hero p {
+  color: #fff;
+  -webkit-text-fill-color: #fff;
 }
 
 /* Project landing hero: illustrated river/region banner + contrast overlay. */
