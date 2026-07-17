@@ -65,6 +65,23 @@
     </div>
   </section>
 
+  {# ---- Latest news ---------------------------------------------------- #}
+  <section class="cs-section cs-news-band" aria-labelledby="cs-news-title">
+    <div class="cs-section-header">
+      <h2 id="cs-news-title" class="cs-section-title">{{ _("Latest News") }}</h2>
+      <a class="cs-link" href="{{ h.url_for('csunesco.cs_news_index') }}">
+        {{ _("Browse all news") }} &rarr;
+      </a>
+    </div>
+    <div class="cs-content-grid">
+      {% for item in h.csunesco_recent_news(3) %}
+        {% snippet "csunesco/snippets/content_card.html", item=item %}
+      {% else %}
+        <p class="cs-empty">{{ _("No news have been published yet. Check back soon.") }}</p>
+      {% endfor %}
+    </div>
+  </section>
+
   {# ---- About Citizen Science ----------------------------------------- #}
   <section class="cs-section cs-about" aria-labelledby="cs-about-title">
     <div class="cs-about-media">

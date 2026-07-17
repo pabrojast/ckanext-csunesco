@@ -99,6 +99,7 @@ class CsunescoPlugin(p.SingletonPlugin):
             # Increment 4: public Citizen Science presentation helpers.
             'csunesco_initiatives': helpers.csunesco_initiatives,
             'csunesco_aggregate_stats': helpers.csunesco_aggregate_stats,
+            'csunesco_recent_news': helpers.csunesco_recent_news,
             'csunesco_project_url': helpers.csunesco_project_url,
             'csunesco_join_url': helpers.csunesco_join_url,
             'csunesco_qr_data_uri': helpers.csunesco_qr_data_uri,

@@ -54,6 +54,23 @@ def csunesco_aggregate_stats():
         return dict(_ZERO_STATS)
 
 
+def csunesco_recent_news(limit=3):
+    """Most recent APPROVED news items for the hub's "Latest News" band.
+
+    Delegates to the ``csunesco_content_list`` action (which pins anonymous /
+    non-sysadmin callers to ``status='approved'``) and returns just the
+    summarized rows. Fails soft to an empty list so the band -- and the whole
+    page -- always render even if content listing errors.
+    """
+    try:
+        result = tk.get_action('csunesco_content_list')(
+            {}, {'content_type': 'cs-news', 'limit': limit})
+        return result.get('results', [])
+    except Exception:
+        log.warning('csunesco: recent news could not be listed')
+        return []
+
+
 def csunesco_project_url(slug):
     """Path of a project's public landing page (same-origin; safe for fetch)."""
     return tk.url_for('csunesco.project_landing', slug=slug)
