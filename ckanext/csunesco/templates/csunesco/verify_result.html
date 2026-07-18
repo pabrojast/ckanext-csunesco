@@ -1,0 +1,54 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  Result page for GET /citizen-science/verify/<token>.
+
+  ``state`` is one of: ok | expired | invalid | error. The copy never reveals
+  whether an address exists -- invalid and error share the same neutral message.
+#}
+
+{% block subtitle %}{{ _("Email verification") }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  {% if state == 'ok' %}
+    <section class="cs-hero" aria-labelledby="cs-verify-title">
+      <h1 id="cs-verify-title">{{ _("Email verified") }}</h1>
+      <p>{{ _("Your Citizen Scientist account is now active.") }}</p>
+    </section>
+    <section class="cs-card" aria-label="{{ _('Next step') }}">
+      <p>{{ _("You can now log in with your username and password.") }}</p>
+      <a class="cs-btn cs-btn-primary" href="{{ h.url_for('user.login') }}">
+        {{ _("Log in") }}
+      </a>
+    </section>
+  {% elif state == 'expired' %}
+    <section class="cs-hero" aria-labelledby="cs-verify-title">
+      <h1 id="cs-verify-title">{{ _("This link has expired") }}</h1>
+      <p>{{ _("Verification links are valid for 48 hours.") }}</p>
+    </section>
+    <section class="cs-card" aria-label="{{ _('Next step') }}">
+      <p>{{ _("Request a fresh link and we'll email it to you.") }}</p>
+      <a class="cs-btn cs-btn-primary" href="{{ h.url_for('csunesco.resend_verification') }}">
+        {{ _("Resend verification email") }}
+      </a>
+    </section>
+  {% else %}
+    {# invalid token or an unexpected error -- same neutral message. #}
+    <section class="cs-hero" aria-labelledby="cs-verify-title">
+      <h1 id="cs-verify-title">{{ _("We couldn't verify that link") }}</h1>
+      <p>{{ _("The link may be invalid or may already have been used.") }}</p>
+    </section>
+    <section class="cs-card" aria-label="{{ _('Next step') }}">
+      <p>{{ _("If your account still needs verifying, request a new link.") }}</p>
+      <a class="cs-btn cs-btn-primary" href="{{ h.url_for('csunesco.resend_verification') }}">
+        {{ _("Resend verification email") }}
+      </a>
+      <p class="cs-form-footer">
+        {{ _("Already verified?") }}
+        <a href="{{ h.url_for('user.login') }}">{{ _("Log in") }}</a>
+      </p>
+    </section>
+  {% endif %}
+{% endblock %}

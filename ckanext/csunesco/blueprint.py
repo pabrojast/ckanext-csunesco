@@ -66,6 +66,18 @@ def register_citizen():
     return registration.register_citizen()
 
 
+def verify_citizen(token):
+    """GET: activate a pending Citizen Scientist account via its email token."""
+    from ckanext.csunesco.logic import registration
+    return registration.verify_citizen(token)
+
+
+def resend_verification():
+    """GET form / POST re-issue a Citizen Scientist verification link."""
+    from ckanext.csunesco.logic import registration
+    return registration.resend_verification()
+
+
 # ---------------------------------------------------------------------------
 # Increment 5, Part A -- admin approval panel (thin lazy wrappers).
 # ---------------------------------------------------------------------------
@@ -180,6 +192,16 @@ csunesco_bp.add_url_rule('/project/<slug>/join', 'join_project', join_project,
 csunesco_bp.add_url_rule(
     '/register-citizen', 'register_citizen', register_citizen,
     methods=['GET', 'POST'],
+)
+# Email verification for the web self-registration flow. ``/verify/resend`` is a
+# static rule so Flask always matches it before the ``/verify/<token>`` pattern,
+# regardless of registration order.
+csunesco_bp.add_url_rule(
+    '/verify/resend', 'resend_verification', resend_verification,
+    methods=['GET', 'POST'],
+)
+csunesco_bp.add_url_rule(
+    '/verify/<token>', 'verify_citizen', verify_citizen, methods=['GET'],
 )
 
 # ---------------------------------------------------------------------------

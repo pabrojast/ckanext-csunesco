@@ -129,6 +129,16 @@ cs_citizen_scientist_table = Table(
     'cs_citizen_scientist', metadata,
     Column('id', types.UnicodeText, primary_key=True, default=make_uuid),
     Column('user_id', types.UnicodeText, index=True, unique=True),
+    # Optional self-declared country captured at registration (UNESCO member
+    # state). Free text -- kept for profile/reporting, never used for auth.
+    Column('country', types.UnicodeText),
+    # Email-verification state for web self-registration. API/ofform-created
+    # accounts are trusted and land already verified. ``verification_token`` is
+    # a single-use, unguessable token (indexed for the /verify lookup) that is
+    # cleared once the address is confirmed; ``token_created`` drives expiry.
+    Column('email_verified', types.Boolean, default=False),
+    Column('verification_token', types.UnicodeText, index=True),
+    Column('token_created', types.DateTime),
     Column('created', types.DateTime, default=_utcnow),
 )
 
@@ -213,6 +223,10 @@ _AUTO_HEAL_COLUMNS = [
     ('cs_content', 'extras', "TEXT DEFAULT '{}'"),
     ('cs_content', 'slug', 'TEXT'),
     ('cs_project_stats', 'member_states', 'INTEGER DEFAULT 0'),
+    ('cs_citizen_scientist', 'country', 'TEXT'),
+    ('cs_citizen_scientist', 'email_verified', 'BOOLEAN DEFAULT FALSE'),
+    ('cs_citizen_scientist', 'verification_token', 'TEXT'),
+    ('cs_citizen_scientist', 'token_created', 'TIMESTAMP'),
 ]
 
 
@@ -280,12 +294,44 @@ def ensure_tables():
 # Domain helpers
 # ---------------------------------------------------------------------------
 
-def get_or_create_citizen_scientist(user_id):
+def get_citizen_scientist(user_id):
+    """Fetch the ``CsCitizenScientist`` profile for a user id, or None."""
+    _ensure_mappers()
+    if not user_id:
+        return None
+    return (
+        Session.query(CsCitizenScientist)
+        .filter(CsCitizenScientist.user_id == user_id)
+        .first()
+    )
+
+
+def get_citizen_scientist_by_token(token):
+    """Fetch a profile by its (single-use) verification token, or None.
+
+    Empty/blank tokens never match -- a NULL ``verification_token`` (already
+    verified) must not be reachable by an empty query string.
+    """
+    _ensure_mappers()
+    if not token:
+        return None
+    return (
+        Session.query(CsCitizenScientist)
+        .filter(CsCitizenScientist.verification_token == token)
+        .first()
+    )
+
+
+def get_or_create_citizen_scientist(user_id, country=None,
+                                    verification_token=None):
     """Idempotently mark a CKAN user as a Citizen Scientist.
 
     Inserts one ``cs_citizen_scientist`` row per ``user_id``; if a row already
     exists (unique constraint on ``user_id``) it is returned unchanged and no
-    second row is created. Returns the ``CsCitizenScientist`` instance.
+    second row is created. On first insert it records the optional ``country``
+    and, when ``verification_token`` is given, stamps the token + its creation
+    time and leaves ``email_verified`` False (web self-registration); with no
+    token the profile is considered already verified (API/ofform path).
 
     Callers own transaction control: the mappers are wired lazily here so the
     helper is safe to call before ``ensure_tables()`` has run this process.
@@ -302,7 +348,43 @@ def get_or_create_citizen_scientist(user_id):
 
     profile = CsCitizenScientist()
     profile.user_id = user_id
+    profile.country = country or None
+    if verification_token:
+        profile.email_verified = False
+        profile.verification_token = verification_token
+        profile.token_created = _utcnow()
+    else:
+        # No token -> trusted server-to-server creation; nothing to verify.
+        profile.email_verified = True
     Session.add(profile)
+    Session.commit()
+    return profile
+
+
+def set_verification_token(user_id, token):
+    """Stamp a fresh verification token on an UNVERIFIED profile (commits).
+
+    Used by the resend flow. Returns the profile, or None when there is no
+    profile or it is already verified (nothing to resend for).
+    """
+    _ensure_mappers()
+    profile = get_citizen_scientist(user_id)
+    if profile is None or profile.email_verified:
+        return None
+    profile.verification_token = token
+    profile.token_created = _utcnow()
+    Session.commit()
+    return profile
+
+
+def verify_citizen_scientist(profile):
+    """Mark a profile verified and clear its token (commits). Idempotent."""
+    _ensure_mappers()
+    if profile is None:
+        return None
+    profile.email_verified = True
+    profile.verification_token = None
+    profile.token_created = None
     Session.commit()
     return profile
 

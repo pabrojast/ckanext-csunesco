@@ -15,16 +15,21 @@
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
-  {% if success %}
-    {# Confirmation state: the account is active, invite the user to log in. #}
+  {% if pending_verification %}
+    {# Pending state: the account exists but is INACTIVE until the emailed link
+       is opened. Deliberately NO login CTA yet -- login is blocked until then. #}
     <section class="cs-hero" aria-labelledby="cs-reg-success-title">
-      <h1 id="cs-reg-success-title">{{ _("Welcome, Citizen Scientist!") }}</h1>
-      <p>{{ _("Your account has been created and is ready to use.") }}</p>
+      <h1 id="cs-reg-success-title">{{ _("Almost there — check your email") }}</h1>
+      <p>{{ _("We've sent you a link to activate your account.") }}</p>
     </section>
     <section class="cs-card" aria-label="{{ _('Next step') }}">
-      <p>{{ _("You can now log in with your username and password.") }}</p>
-      <a class="cs-btn cs-btn-primary" href="{{ h.url_for('user.login') }}">
-        {{ _("Log in") }}
+      <p>{{ _("Open the verification link we emailed you to activate your account, then log in.") }}</p>
+      {% if email %}
+        <p class="cs-hint">{{ _("Sent to:") }} <strong>{{ email }}</strong></p>
+      {% endif %}
+      <p class="cs-hint">{{ _("The link expires in 48 hours. If it doesn't arrive, check your spam folder or request a new one.") }}</p>
+      <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.resend_verification') }}">
+        {{ _("Resend verification email") }}
       </a>
     </section>
   {% else %}

@@ -24,3 +24,9 @@ CS_INITIATIVE_GROUP_TYPE = 'group'
 # it is only enforced when BOTH ``ckan.recaptcha.publickey`` and
 # ``ckan.recaptcha.privatekey`` are configured (see logic/registration.py).
 RECAPTCHA_SITEVERIFY_URL = 'https://www.google.com/recaptcha/api/siteverify'
+
+# Email-verification window for web self-registration. A Citizen Scientist
+# account created through the web form is left in CKAN ``pending`` state (cannot
+# log in) until the emailed link is opened within this many hours; after that the
+# link is expired and a fresh one must be requested via the resend form.
+VERIFICATION_TOKEN_TTL_HOURS = 48

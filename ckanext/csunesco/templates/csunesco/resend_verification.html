@@ -1,0 +1,52 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  GET renders the resend form; POST always renders the same neutral "sent"
+  confirmation (``sent=True``) so the endpoint cannot be used to enumerate
+  accounts. The form carries CKAN's CSRF token.
+#}
+
+{% block subtitle %}{{ _("Resend verification email") }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  {% if sent %}
+    <section class="cs-hero" aria-labelledby="cs-resend-title">
+      <h1 id="cs-resend-title">{{ _("Check your inbox") }}</h1>
+      <p>{{ _("If your account still needs verifying, we've emailed a fresh link.") }}</p>
+    </section>
+    <section class="cs-card" aria-label="{{ _('Next step') }}">
+      <p class="cs-hint">{{ _("The link expires in 48 hours. Remember to check your spam folder.") }}</p>
+      <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('user.login') }}">
+        {{ _("Back to log in") }}
+      </a>
+    </section>
+  {% else %}
+    <section class="cs-hero" aria-labelledby="cs-resend-title">
+      <h1 id="cs-resend-title">{{ _("Resend verification email") }}</h1>
+      <p>{{ _("Enter the email you registered with and we'll send a new activation link.") }}</p>
+    </section>
+    <section class="cs-card cs-form-card" aria-labelledby="cs-resend-form-title">
+      <h2 id="cs-resend-form-title" class="cs-form-heading">{{ _("Request a new link") }}</h2>
+      <form method="post"
+            action="{{ h.url_for('csunesco.resend_verification') }}"
+            class="cs-form" novalidate>
+        {{ h.csrf_input() }}
+        <div class="cs-field">
+          <label for="cs-resend-email">{{ _("Email") }} <span class="cs-req" aria-hidden="true">*</span></label>
+          <input type="email" id="cs-resend-email" name="email"
+                 autocomplete="email" aria-required="true">
+        </div>
+        <div class="cs-form-actions">
+          <button type="submit" class="cs-btn cs-btn-primary">
+            {{ _("Send link") }}
+          </button>
+        </div>
+      </form>
+      <p class="cs-form-footer">
+        <a href="{{ h.url_for('user.login') }}">{{ _("Back to log in") }}</a>
+      </p>
+    </section>
+  {% endif %}
+{% endblock %}

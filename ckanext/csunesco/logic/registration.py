@@ -16,7 +16,9 @@ Design notes (from advisors, see .mix/plan.md):
     keys are configured, verified SERVER-SIDE (score > 0.5); skipped silently
     otherwise.
 """
+import datetime
 import logging
+import secrets
 
 from flask import request
 
@@ -78,24 +80,31 @@ def _render(extra_vars):
     return tk.render('csunesco/register_citizen.html', extra_vars=extra_vars)
 
 
-def create_citizen_scientist(context, data):
+def create_citizen_scientist(context, data, verification_token=None):
     """Core create-user + CS-profile flow, shared by the web view and the API.
 
     ``data`` is a plain dict with keys ``email``, ``username``, ``password`` and
-    (optional) ``fullname`` / ``country``. It creates an ACTIVE CKAN account via
-    the ``user_create`` action (using the passed ``context``) and idempotently
-    inserts the ``cs_citizen_scientist`` profile row. Every validation/creation
-    failure is collapsed into a single generic ``ValidationError`` so callers
-    never leak per-field internals (no account enumeration). ``check_access`` for
-    ``user_create`` is left to the caller's context, so a ``NotAuthorized`` from
-    a locked-down instance propagates unchanged.
+    (optional) ``fullname`` / ``country``. It creates a CKAN account via the
+    ``user_create`` action (using the passed ``context``) and idempotently
+    inserts the ``cs_citizen_scientist`` profile row (persisting ``country``).
 
-    Returns the created user dict (from ``user_create``).
+    When ``verification_token`` is given (the WEB self-registration path) the new
+    account is held in CKAN ``pending`` state -- it cannot log in until the
+    emailed ``/verify`` link activates it -- and the token is stored on its
+    profile. With no token (the trusted API/ofform path) the account is active
+    and the profile lands already verified.
+
+    Every validation/creation failure is collapsed into a single generic
+    ``ValidationError`` so callers never leak per-field internals (no account
+    enumeration). ``check_access`` for ``user_create`` is left to the caller's
+    context, so a ``NotAuthorized`` from a locked-down instance propagates
+    unchanged. Returns the created user dict (from ``user_create``).
     """
     email = (data.get('email') or '').strip()
     username = (data.get('username') or '').lower().strip()
     fullname = (data.get('fullname') or '').strip()
     password = data.get('password') or ''
+    country = (data.get('country') or '').strip()
 
     # Server-side minimums (mirror the web form). Any failure -> generic error.
     if not username or not email or not password:
@@ -126,19 +135,73 @@ def create_citizen_scientist(context, data):
         log.warning('csunesco: unexpected error creating citizen scientist')
         raise ValidationError({'message': GENERIC_ERROR})
 
+    # Web path: hold the account in ``pending`` state until the emailed link is
+    # opened. Both CKAN core login and the custom authenticator gate on
+    # ``user.is_active()``, so a pending account cannot sign in.
+    if verification_token:
+        try:
+            user_obj = model.User.get(new_user['id'])
+            if user_obj is not None:
+                user_obj.set_pending()
+                model.Session.commit()
+        except Exception:
+            model.Session.rollback()
+            log.warning('csunesco: could not set pending state on new account')
+
     # NON-ATOMICITY CAVEAT: the account now exists, but the profile insert below
     # is a SEPARATE transaction -- if it fails the user is still created. We log
     # a generic warning and continue rather than crash or leak internals. The
     # profile insert is idempotent (unique user_id), so retries are safe.
     try:
         from ckanext.csunesco import db
-        db.get_or_create_citizen_scientist(new_user['id'])
+        db.get_or_create_citizen_scientist(
+            new_user['id'], country=country,
+            verification_token=verification_token)
     except Exception:
         model.Session.rollback()
         log.warning('csunesco: citizen scientist profile row could not be '
                     'created (account already exists)')
 
     return new_user
+
+
+def _send_verification_email(recipient_name, recipient_email, token):
+    """Email a single-use verification link. Returns True on a successful send.
+
+    Best-effort: a mailer failure is logged (never raised) so registration still
+    completes -- the user can request a fresh link from the resend form.
+    """
+    try:
+        from ckan.lib.mailer import mail_recipient, MailerException
+    except ImportError:
+        log.warning('csunesco: mailer unavailable; verification email skipped')
+        return False
+
+    verify_url = tk.url_for('csunesco.verify_citizen', token=token,
+                            _external=True)
+    hours = constants.VERIFICATION_TOKEN_TTL_HOURS
+    subject = tk._('Verify your UNESCO Citizen Science account')
+    body = tk._(
+        'Welcome to UNESCO Citizen Science!\n\n'
+        'Please confirm your email address to activate your account by '
+        'opening this link:\n\n{url}\n\n'
+        'The link expires in {hours} hours. If you did not create this '
+        'account, you can safely ignore this message.'
+    ).format(url=verify_url, hours=hours)
+    body_html = tk._(
+        '<p>Welcome to <strong>UNESCO Citizen Science</strong>!</p>'
+        '<p>Please confirm your email address to activate your account:</p>'
+        '<p><a href="{url}">Verify my account</a></p>'
+        '<p>The link expires in {hours} hours. If you did not create this '
+        'account, you can safely ignore this message.</p>'
+    ).format(url=verify_url, hours=hours)
+    try:
+        mail_recipient(recipient_name or recipient_email, recipient_email,
+                       subject, body, body_html=body_html)
+        return True
+    except MailerException:
+        log.warning('csunesco: verification email could not be sent')
+        return False
 
 
 def register_citizen():
@@ -190,6 +253,10 @@ def register_citizen():
         'user': tk.g.user,
     }
 
+    # Single-use, unguessable token that gates activation. The account is created
+    # in ``pending`` state (cannot log in) until the emailed link is opened.
+    verification_token = secrets.token_urlsafe(32)
+
     try:
         create_citizen_scientist(context, {
             'email': email,
@@ -197,7 +264,7 @@ def register_citizen():
             'fullname': fullname,
             'password': password,
             'country': country,
-        })
+        }, verification_token=verification_token)
     except NotAuthorized:
         # Self-registration via the web is disabled
         # (ckan.auth.create_user_via_web = false). Show the same generic error.
@@ -208,8 +275,82 @@ def register_citizen():
         # error inside create_citizen_scientist -> no account-enumeration hint.
         return _fail()
 
-    # Success: re-render a branded confirmation state with a "Log in" CTA
-    # (the account is active). We use a ``success`` flag rather than a redirect
-    # so the confirmation stays in this plugin's template without needing a
-    # separate success endpoint.
-    return _render({'data': {}, 'errors': {}, 'success': True})
+    # Best-effort activation email (the resend form is the fallback).
+    _send_verification_email(fullname or username, email, verification_token)
+
+    # Confirmation state: the account is PENDING -> invite the user to check
+    # their inbox rather than to log in. A ``pending_verification`` flag keeps the
+    # confirmation inside this plugin's template (no separate success endpoint).
+    return _render({'data': {}, 'errors': {},
+                    'pending_verification': True, 'email': email})
+
+
+def _render_verify(state):
+    """Render the /verify result page for a single ``state`` string."""
+    return tk.render('csunesco/verify_result.html',
+                     extra_vars={'state': state})
+
+
+def verify_citizen(token):
+    """GET /verify/<token>: activate a pending Citizen Scientist account.
+
+    Looks the token up, checks it has not expired, then flips the CKAN account to
+    ``active`` and marks the profile verified (clearing the token so the link is
+    single-use). Renders an ``ok`` / ``expired`` / ``invalid`` / ``error`` state
+    and never reveals whether a given address exists.
+    """
+    from ckanext.csunesco import db
+    profile = db.get_citizen_scientist_by_token(token)
+    if profile is None:
+        return _render_verify('invalid')
+
+    created = getattr(profile, 'token_created', None)
+    ttl = datetime.timedelta(hours=constants.VERIFICATION_TOKEN_TTL_HOURS)
+    if created is None or (datetime.datetime.utcnow() - created) > ttl:
+        return _render_verify('expired')
+
+    try:
+        user_obj = model.User.get(profile.user_id)
+        if user_obj is not None:
+            user_obj.activate()
+            model.Session.commit()
+        db.verify_citizen_scientist(profile)
+    except Exception:
+        model.Session.rollback()
+        log.warning('csunesco: could not activate a verified citizen scientist')
+        return _render_verify('error')
+
+    return _render_verify('ok')
+
+
+def resend_verification():
+    """GET renders the resend form; POST re-issues a link (generic response).
+
+    To avoid account enumeration the POST ALWAYS renders the same "if your
+    account still needs verifying, we've sent a fresh link" confirmation, whether
+    or not a matching pending account was found.
+    """
+    if request.method == 'GET':
+        return tk.render('csunesco/resend_verification.html',
+                         extra_vars={'sent': False})
+
+    email = request.form.get('email', '').strip()
+    if email:
+        try:
+            from ckanext.csunesco import db
+            users = (model.Session.query(model.User)
+                     .filter(model.User.email == email).all())
+            for user_obj in users:
+                profile = db.get_citizen_scientist(user_obj.id)
+                if (profile is not None and not profile.email_verified
+                        and user_obj.is_pending()):
+                    token = secrets.token_urlsafe(32)
+                    db.set_verification_token(user_obj.id, token)
+                    _send_verification_email(
+                        user_obj.fullname or user_obj.name, email, token)
+                    break
+        except Exception:
+            log.warning('csunesco: resend verification could not be processed')
+
+    return tk.render('csunesco/resend_verification.html',
+                     extra_vars={'sent': True})
