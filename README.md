@@ -24,9 +24,25 @@ workflow — see [`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
 - **Admin approval panel** — `/citizen-science/admin` aggregates pending
   project-requests and join-requests for sysadmins and project admins
   (`csunesco_admin_pending_list`).
-- **News / events / media** — per-project content (`cs-news`, `cs-events`,
-  `cs-media`) editable by project admins, HTML sanitised with `bleach`, exposed
-  through public `side_effect_free` `csunesco_content_list` / `_show`.
+- **Content management** — per-project content of four types: news (`cs-news`),
+  events (`cs-event`), **publications** (`cs-publication`, with document links,
+  optional DOI/authors) and **maps** (`cs-map`, an embedded Terria share link
+  validated against a configured base-URL allowlist). Editable by project
+  admins, HTML sanitised with `bleach`, exposed through public
+  `side_effect_free` `csunesco_content_list` / `_show`, with public indexes at
+  `/citizen-science/news`, `/events`, `/publications` and `/maps`. Content
+  pushed from the CS Toolbox app carries `source: 'app'` and **always** lands
+  `pending` (sysadmin review), even though the app pushes with a sysadmin token.
+- **App-data pipeline** — a project admin (from the portal) or a project owner
+  (from the CS Toolbox app) can publish a form's collected observations on
+  IHP-WINS. The request is a `cs_data_source` row that **always** starts
+  `pending`; on sysadmin approval the plugin creates a real CKAN dataset whose
+  CSV + GeoJSON resources point at the live proxy routes
+  (`/citizen-science/data/<id>.csv|.geojson`), which fetch ofform's public
+  endpoints with a TTL cache. The project landing gains a **Data** section with
+  an observation map (Leaflet), download links and — when
+  `ckanext.data_stories.enabled` is on — a "Create a data story" entry point
+  so users can combine their datasets in Data Stories / Terria.
 
 ## Endpoints & permissions
 
@@ -51,6 +67,9 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | GET | `/citizen-science/project/<slug>/geojson` | Async region GeoJSON for the map | public |
 | GET | `/citizen-science/news` · `/news/<slug>` | News index / detail | public (approved) |
 | GET | `/citizen-science/events` · `/events/<slug>` | Events index / detail | public (approved) |
+| GET | `/citizen-science/publications` · `/publications/<slug>` | Publications index / detail | public (approved) |
+| GET | `/citizen-science/maps` · `/maps/<slug>` | Maps index / detail (Terria embed) | public (approved) |
+| GET | `/citizen-science/data/<id>.csv` · `.geojson` | Live data proxy for an **approved** data source (fetches ofform's public endpoints, TTL-cached) | public |
 | GET·POST | `/citizen-science/register-citizen` | Citizen Scientist self-registration (account created **pending** until email is verified) | public — gated by `ckan.auth.create_user_via_web`; reuses core `user_create` auth |
 | GET | `/citizen-science/verify/<token>` | Activate a pending account via its emailed link | public (single-use token) |
 | GET·POST | `/citizen-science/verify/resend` | Request a fresh verification link | public (generic response) |
@@ -58,10 +77,12 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | POST | `/citizen-science/project/<slug>/join` | Request to join a project | authenticated |
 | GET·POST | `/citizen-science/project/<slug>/content/new` | Add news/event to a project | sysadmin **or** that project's admin |
 | GET·POST | `/citizen-science/content/<id>/edit` | Edit an existing content item | sysadmin **or** project admin |
-| GET | `/citizen-science/admin` | Approval panel (pending projects/joins/content) | sysadmin **or** any project admin |
+| GET·POST | `/citizen-science/project/<slug>/data/connect` | Connect a CS Toolbox form's data (request, lands pending) | sysadmin **or** that project's admin |
+| GET | `/citizen-science/admin` | Approval panel (pending projects/joins/content/data) | sysadmin **or** any project admin |
 | POST | `/citizen-science/admin/project/<id>/approve` · `/reject` | Moderate a project request | sysadmin |
 | POST | `/citizen-science/admin/join/<project_id>/<user_id>/approve` · `/reject` | Moderate a join request | sysadmin **or** project admin |
 | POST | `/citizen-science/admin/content/<id>/approve` · `/reject` | Moderate a content item | sysadmin |
+| POST | `/citizen-science/admin/data/<id>/approve` · `/reject` | Moderate a data source (approve creates the CKAN dataset) | sysadmin |
 
 All POST forms carry CKAN's CSRF token (`h.csrf_input()`); mutating routes use
 POST-redirect-GET.
@@ -78,10 +99,13 @@ enumerate accounts.
 | `csunesco_content_list`, `csunesco_content_show` | public (read; approved only for non-sysadmins) |
 | `csunesco_project_request_create` | authenticated |
 | `csunesco_join_request_create` | authenticated |
-| `csunesco_content_create`, `csunesco_content_update` | sysadmin **or** project admin |
+| `csunesco_content_create`, `csunesco_content_update` | sysadmin **or** project admin (an explicit `source: 'app'` forces `pending` even for sysadmins) |
+| `csunesco_data_source_list`, `csunesco_data_source_show` | public (read; approved only for non-privileged callers) |
+| `csunesco_data_source_create` | sysadmin **or** project admin — **always** creates `pending`; idempotent per `(project, form)` |
 | `csunesco_admin_pending_list` | sysadmin **or** any project admin |
 | `csunesco_project_approve`, `csunesco_project_reject` | sysadmin |
 | `csunesco_content_approve`, `csunesco_content_reject` | sysadmin |
+| `csunesco_data_source_approve`, `csunesco_data_source_reject` | sysadmin (approve creates/refreshes the CKAN dataset) |
 | `csunesco_join_approve`, `csunesco_join_reject` | sysadmin **or** project admin |
 | `csunesco_register_citizen_scientist` | **sysadmin token only** — server-to-server (ofform); idempotent |
 
@@ -115,6 +139,44 @@ The declared **country** is persisted on the CS profile. Requires a working SMTP
 config (`smtp.*`). The server-to-server `csunesco_register_citizen_scientist`
 action is unaffected — trusted (sysadmin) callers still create active,
 already-verified accounts.
+
+## Configuration
+
+All options are read lazily (no restart-ordering constraints beyond a normal
+config reload). Features gated on an option **fail closed** when it is unset.
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `ckanext.csunesco.terria_base_url` | *(unset — maps disabled)* | Space-separated allowlist of Terria base URLs a `cs-map` may embed (e.g. `https://ihp-wins.unesco.org/terria`). Unset ⇒ the `cs-map` validator rejects every URL and stored maps render as plain links. List every host if Terria lives on several. |
+| `ckanext.csunesco.ofform_base_url` | *(unset — data pipeline disabled)* | The **only** origin the data proxy will fetch (the CS Toolbox API base, e.g. `https://ofform-api.aquedra.com`). Anti-SSRF: form ids are int-coerced into a fixed path under this base. |
+| `ckanext.csunesco.ofform_cache_ttl` | `60` | Seconds a proxied response (CSV / dashboard JSON) is cached per form. |
+| `ckanext.csunesco.dataset_owner_org` | *(unset)* | Organization (name or id) that owns the datasets created on data-source approval, used while `cs_project.organization_id` is not populated. Approval fails with a clear message when neither is set. |
+| `ckanext.csunesco.dataset_defaults` | `{}` | Optional JSON object merged into `package_create` — use it to satisfy portal-schema (e.g. schemingdcat) required fields, licences, etc. |
+| `ckanext.data_stories.enabled` | — | Not ours (ckanext-pages), but when true the project landing shows a "Create a data story" entry point. |
+
+Terria embeds additionally require the Terria host to allow framing (no
+`X-Frame-Options: DENY`); otherwise the map page falls back to a plain link.
+
+### Sysadmin review runbook
+
+Everything users publish flows through **one** approval panel at
+`/citizen-science/admin`, and the navbar shows a **Review n** badge whenever
+something is pending (the badge and the tab counters share one query, so they
+never disagree). Four tabs:
+
+1. **Project requests** (sysadmin) — approve turns the requester into the
+   project's admin and seeds its counters.
+2. **Join requests** (sysadmin or project admin).
+3. **Content to review** — news, events, publications and maps; portal-authored
+   sysadmin content publishes directly, everything else (including *all*
+   app-authored content) waits here.
+4. **Data to review** (sysadmin) — approving creates/refreshes a live CKAN
+   dataset fed by the CS Toolbox app (CSV + GeoJSON proxy resources). If
+   dataset creation fails (e.g. missing `dataset_owner_org` or portal-schema
+   fields), the row **stays pending** and can be retried after fixing config.
+   Data truncates at ofform's 20 000-row export cap. If a form owner later
+   reverts the form to private in the app, the proxy starts returning 502 for
+   that source.
 
 ## Requirements
 

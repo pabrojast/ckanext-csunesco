@@ -36,6 +36,17 @@ services:
       CKAN__PLUGINS: image_view text_view datatables_view csunesco
       # Required for the Citizen-Scientist self-registration blueprint.
       CKAN__AUTH__CREATE_USER_VIA_WEB: "true"
+      # --- Optional csunesco features (uncomment to test manually) ----------
+      # Terria base allowlist for cs-map content (unset = maps fail closed):
+      # CKAN___CKANEXT__CSUNESCO__TERRIA_BASE_URL: https://ihp-wins.unesco.org/terria
+      # CS Toolbox API base for the live data proxy (host.docker.internal
+      # reaches an ofform dev server on the host):
+      # CKAN___CKANEXT__CSUNESCO__OFFORM_BASE_URL: http://host.docker.internal:8000
+      # CKAN___CKANEXT__CSUNESCO__OFFORM_CACHE_TTL: "60"
+      # Org that owns datasets created on data-source approval:
+      # CKAN___CKANEXT__CSUNESCO__DATASET_OWNER_ORG: citizen-science
+      # Extra package_create fields (portal schema defaults), JSON:
+      # CKAN___CKANEXT__CSUNESCO__DATASET_DEFAULTS: '{"license_id": "cc-by"}'
     depends_on:
       - db
       - solr

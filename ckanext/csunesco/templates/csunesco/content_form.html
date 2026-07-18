@@ -28,7 +28,7 @@
 
 {% block cs_content %}
   <section class="cs-hero" aria-labelledby="cs-editor-title">
-    <h1 id="cs-editor-title">{{ _("Add news or event") if is_new else _("Edit content") }}</h1>
+    <h1 id="cs-editor-title">{{ _("Add content") if is_new else _("Edit content") }}</h1>
     {% if project %}
       <p>{{ _("For project:") }} <strong>{{ project.title }}</strong></p>
     {% endif %}
@@ -108,6 +108,37 @@
         {% endif %}
       </div>
 
+      {# ---- Terria map URL (maps only) --------------------------------- #}
+      <div class="cs-field" id="cs-terria-field"
+           {% if data.content_type != 'cs-map' %}hidden{% endif %}>
+        <label for="cs-content-terria">{{ _("Map share link") }} <span class="cs-req" aria-hidden="true">*</span></label>
+        <input type="url" id="cs-content-terria" name="terria_url"
+               value="{{ data.terria_url or '' }}"
+               placeholder="https://…/terria/#share=…"
+               {% if errors.terria_url %}aria-invalid="true"{% endif %}
+               aria-describedby="cs-content-terria-hint{% if errors.terria_url %} cs-content-terria-error{% endif %}">
+        <p id="cs-content-terria-hint" class="cs-hint">
+          {{ _("Build your map scene in the IHP-WINS map viewer (Terria), use its Share button and paste the link here. Only links to the official map viewer are accepted.") }}
+        </p>
+        {% if errors.terria_url %}
+          <p id="cs-content-terria-error" class="cs-field-error" role="alert">{{ errors.terria_url | join(', ') }}</p>
+        {% endif %}
+      </div>
+
+      {# ---- Publication details (publications only) -------------------- #}
+      <div class="cs-field" id="cs-publication-fields"
+           {% if data.content_type != 'cs-publication' %}hidden{% endif %}>
+        <label for="cs-content-authors">{{ _("Authors") }}</label>
+        <input type="text" id="cs-content-authors" name="authors"
+               value="{{ data.authors or '' }}"
+               placeholder="{{ _('e.g. A. Author, B. Author') }}">
+        <label for="cs-content-doi">{{ _("DOI") }}</label>
+        <input type="text" id="cs-content-doi" name="doi"
+               value="{{ data.doi or '' }}"
+               placeholder="10.xxxx/xxxxx">
+        <p class="cs-hint">{{ _("Optional. List the publication's authors and DOI if it has one.") }}</p>
+      </div>
+
       {# ---- Body ------------------------------------------------------- #}
       <div class="cs-field">
         <label for="cs-content-body">{{ _("Body") }}</label>
@@ -126,8 +157,12 @@
 
       {# ---- Media URLs ------------------------------------------------- #}
       <div class="cs-field">
-        <label>{{ _("Media links (URLs)") }}</label>
-        <p class="cs-hint">{{ _("Optional. Add http/https links to images or documents.") }}</p>
+        <label id="cs-media-label"
+               data-label-default="{{ _('Media links (URLs)') }}"
+               data-label-publication="{{ _('Document links (URLs)') }}">{{ _("Media links (URLs)") }}</label>
+        <p class="cs-hint" id="cs-media-hint"
+           data-hint-default="{{ _('Optional. Add http/https links to images or documents.') }}"
+           data-hint-publication="{{ _('Required. Add at least one link to the publication document (PDF, DOI landing page, …).') }}">{{ _("Optional. Add http/https links to images or documents.") }}</p>
         <div id="cs-media-list" class="cs-media-inputs">
           {% set media = data.media or [] %}
           {% if media %}

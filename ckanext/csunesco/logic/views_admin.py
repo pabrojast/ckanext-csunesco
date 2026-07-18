@@ -76,9 +76,9 @@ def admin_dashboard():
         log.warning('csunesco: admin pending list unavailable')
         data = {
             'project_requests': [], 'join_requests': [],
-            'content_requests': [],
+            'content_requests': [], 'data_requests': [],
             'counts': {'project_requests': 0, 'join_requests': 0,
-                       'content_requests': 0, 'total': 0},
+                       'content_requests': 0, 'data_requests': 0, 'total': 0},
         }
 
     return tk.render('csunesco/cs-admin-dashboard.html', extra_vars={
@@ -86,6 +86,7 @@ def admin_dashboard():
         'project_requests': data.get('project_requests', []),
         'join_requests': data.get('join_requests', []),
         'content_requests': data.get('content_requests', []),
+        'data_requests': data.get('data_requests', []),
         'counts': data.get('counts', {}),
     })
 
@@ -146,3 +147,14 @@ def content_reject(id):
     reason = sanitize_html((request.form.get('reason') or '').strip())
     return _decide('csunesco_content_reject', {'id': id, 'reason': reason},
                    'content', tk._('Content rejected.'))
+
+
+def data_source_approve(id):
+    return _decide('csunesco_data_source_approve', {'id': id}, 'data',
+                   tk._('Data source approved. The dataset is now live.'))
+
+
+def data_source_reject(id):
+    reason = sanitize_html((request.form.get('reason') or '').strip())
+    return _decide('csunesco_data_source_reject', {'id': id, 'reason': reason},
+                   'data', tk._('Data source rejected.'))

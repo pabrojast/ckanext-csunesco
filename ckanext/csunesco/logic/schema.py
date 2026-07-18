@@ -42,7 +42,9 @@ def content_schema(content_type):
     here (it is SANITIZED in the action before storage, not by navl). Dates are
     coerced to ``datetime`` by ``csunesco_valid_iso_date``. For ``cs-event`` both
     a start (``publish_date``) and an end (``end_date``) are required and the end
-    must be strictly later than the start.
+    must be strictly later than the start. ``cs-publication`` requires at least
+    one document link in ``media``; ``cs-map`` requires an allowlisted Terria
+    share URL in ``terria_url``.
     """
     not_empty = tk.get_validator('not_empty')
     ignore_missing = tk.get_validator('ignore_missing')
@@ -59,10 +61,23 @@ def content_schema(content_type):
         'publish_date': [ignore_missing, v.csunesco_valid_iso_date],
         'end_date': [ignore_missing, v.csunesco_valid_iso_date],
         'featured': [ignore_missing, boolean_validator],
+        'terria_url': [
+            ignore_missing, unicode_safe, v.csunesco_valid_terria_url],
+        'doi': [ignore_missing, unicode_safe],
+        'authors': [ignore_missing, unicode_safe],
     }
     if content_type == 'cs-event':
         # Events need a start + an end, with end strictly after start.
         schema['publish_date'] = [not_empty, v.csunesco_valid_iso_date]
         schema['end_date'] = [
             not_empty, v.csunesco_valid_iso_date, v.csunesco_end_after_start]
+    elif content_type == 'cs-publication':
+        # Publications must link at least one document (the '[]' JSON string is
+        # truthy, hence the extra nonempty check after list validation).
+        schema['media'] = [
+            not_empty, v.csunesco_valid_media_list,
+            v.csunesco_nonempty_media_list]
+    elif content_type == 'cs-map':
+        schema['terria_url'] = [
+            not_empty, unicode_safe, v.csunesco_valid_terria_url]
     return schema

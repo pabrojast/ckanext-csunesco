@@ -27,12 +27,19 @@ _TYPE_VIEW = {
                 'csunesco.cs_news_index', 'csunesco.cs_news_show'),
     'cs-event': ('csunesco/cs-events_list.html', 'csunesco/cs-events.html',
                  'csunesco.cs_events_index', 'csunesco.cs_events_show'),
+    'cs-publication': (
+        'csunesco/cs-publications_list.html', 'csunesco/cs-publications.html',
+        'csunesco.cs_publications_index', 'csunesco.cs_publications_show'),
+    'cs-map': ('csunesco/cs-maps_list.html', 'csunesco/cs-maps.html',
+               'csunesco.cs_maps_index', 'csunesco.cs_maps_show'),
 }
 
 # Selectable content types for the editor form.
 _CONTENT_TYPE_CHOICES = [
     {'value': 'cs-news', 'label': 'News'},
     {'value': 'cs-event', 'label': 'Event'},
+    {'value': 'cs-publication', 'label': 'Publication'},
+    {'value': 'cs-map', 'label': 'Map'},
 ]
 
 
@@ -119,6 +126,22 @@ def cs_events_show(slug):
     return _content_show('cs-event', slug)
 
 
+def cs_publications_index():
+    return _content_index('cs-publication')
+
+
+def cs_publications_show(slug):
+    return _content_show('cs-publication', slug)
+
+
+def cs_maps_index():
+    return _content_index('cs-map')
+
+
+def cs_maps_show(slug):
+    return _content_show('cs-map', slug)
+
+
 # ---------------------------------------------------------------------------
 # Editor (create / edit)
 # ---------------------------------------------------------------------------
@@ -134,6 +157,9 @@ def _read_content_form():
         'end_date': (form.get('end_date') or '').strip(),
         'media': [u.strip() for u in form.getlist('media') if u.strip()],
         'featured': bool(form.get('featured')),
+        'terria_url': (form.get('terria_url') or '').strip(),
+        'doi': (form.get('doi') or '').strip(),
+        'authors': (form.get('authors') or '').strip(),
     }
 
 
@@ -240,6 +266,9 @@ def content_edit(id):
             'end_date': content.get('end_date') or '',
             'media': content.get('media') or [],
             'featured': bool(content.get('featured')),
+            'terria_url': content.get('terria_url') or '',
+            'doi': content.get('doi') or '',
+            'authors': content.get('authors') or '',
         }
         return _render_content_form('edit', project, content, data, {})
 

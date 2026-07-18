@@ -1,0 +1,65 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  Map detail page: an approved Terria scene embedded as an iframe.
+
+  The iframe src comes ONLY from h.csunesco_terria_embed_url, which re-checks
+  the stored URL against the configured Terria base allowlist at render time
+  (defense in depth: rows stored before a config change fall back to a plain
+  link, never an embed). The Terria URL is NEVER passed through the HTML
+  sanitizer or rendered with `| safe` -- only content.body is (sanitized
+  server-side before storage).
+
+  Vars: content (full dict incl. terria_url from extras).
+#}
+
+{% block subtitle %}{{ content.title }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  {% set can_manage = h.csunesco_can_manage_project(content.project_id) %}
+  {% set embed = h.csunesco_terria_embed_url(content.terria_url) %}
+  <article class="cs-article">
+    <header class="cs-article-header">
+      <p class="cs-content-type-label cs-content-type-label--map">{{ _("Map") }}</p>
+      <h1 class="cs-article-title">{{ content.title }}</h1>
+      {% if content.publish_date %}
+        <p class="cs-content-date">
+          <time datetime="{{ content.publish_date }}">{{ content.publish_date[:10] }}</time>
+        </p>
+      {% endif %}
+      {% if can_manage %}
+        <p class="cs-article-manage">
+          <span class="cs-status-badge cs-status-{{ content.status }}">{{ content.status }}</span>
+          <a class="cs-link" href="{{ h.url_for('csunesco.content_edit', id=content.id) }}">{{ _("Edit") }}</a>
+        </p>
+      {% endif %}
+    </header>
+
+    {# body is sanitized server-side before storage -> safe. #}
+    <div class="cs-rich-text cs-article-body">{{ content.body | safe }}</div>
+
+    {% if embed %}
+      <section class="cs-map-embed" aria-label="{{ _('Interactive map') }}">
+        <iframe src="{{ embed }}"
+                title="{{ content.title }}"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                referrerpolicy="no-referrer"
+                loading="lazy"
+                style="width: 100%; min-height: 560px; border: 1px solid #d9dee3; border-radius: 8px;"></iframe>
+        <p class="cs-map-open">
+          <a class="cs-link" href="{{ embed }}" rel="noopener noreferrer" target="_blank">{{ _("Open the map full screen") }}</a>
+        </p>
+      </section>
+    {% elif content.terria_url %}
+      <p class="cs-map-open">
+        <a class="cs-link" href="{{ content.terria_url }}" rel="noopener noreferrer">{{ _("Open the map") }}</a>
+      </p>
+    {% endif %}
+
+    <p class="cs-article-back">
+      <a class="cs-link" href="{{ h.url_for('csunesco.cs_maps_index') }}">&larr; {{ _("Back to all maps") }}</a>
+    </p>
+  </article>
+{% endblock %}

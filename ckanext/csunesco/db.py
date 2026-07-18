@@ -125,6 +125,32 @@ cs_project_stats_table = Table(
     Column('modified', types.DateTime, default=_utcnow),
 )
 
+cs_data_source_table = Table(
+    'cs_data_source', metadata,
+    Column('id', types.UnicodeText, primary_key=True, default=make_uuid),
+    Column('project_id', types.UnicodeText, index=True),
+    # The CS Toolbox (ofform) form whose PUBLIC endpoints feed this source.
+    Column('form_id', types.Integer),
+    Column('title', types.UnicodeText),
+    Column('description', types.Text),
+    # pending -> approved / rejected; approval is sysadmin-only and ALWAYS
+    # required (even sysadmin-created sources start pending).
+    Column('status', types.UnicodeText, index=True, default=u'pending'),
+    # Where the connect request originated: this portal ('ckan') or the app.
+    Column('source', types.UnicodeText, default=u'ckan'),
+    Column('created_by', types.UnicodeText, index=True),
+    Column('reviewed_by', types.UnicodeText),
+    Column('reviewed_at', types.DateTime),
+    Column('rejection_reason', types.Text),
+    # The CKAN package created on approval (proxy-backed resources).
+    Column('ckan_package_id', types.UnicodeText),
+    Column('extras', types.Text, default=u'{}'),
+    Column('created', types.DateTime, default=_utcnow),
+    Column('modified', types.DateTime, default=_utcnow),
+    UniqueConstraint('project_id', 'form_id',
+                     name='uq_cs_data_source_project_form'),
+)
+
 cs_citizen_scientist_table = Table(
     'cs_citizen_scientist', metadata,
     Column('id', types.UnicodeText, primary_key=True, default=make_uuid),
@@ -151,6 +177,7 @@ _ALL_TABLES = [
     cs_content_table,
     cs_project_stats_table,
     cs_citizen_scientist_table,
+    cs_data_source_table,
 ]
 
 
@@ -178,6 +205,10 @@ class CsCitizenScientist(DomainObject):
     pass
 
 
+class CsDataSource(DomainObject):
+    pass
+
+
 _mapped = False
 
 
@@ -191,6 +222,7 @@ def _ensure_mappers():
     mapper(CsContent, cs_content_table)
     mapper(CsProjectStats, cs_project_stats_table)
     mapper(CsCitizenScientist, cs_citizen_scientist_table)
+    mapper(CsDataSource, cs_data_source_table)
     _mapped = True
 
 
@@ -906,6 +938,116 @@ def _count_pending_content(project_ids=None):
     return query.count()
 
 
+# ---------------------------------------------------------------------------
+# Data-source helpers (app-data pipeline)
+# ---------------------------------------------------------------------------
+#
+# Same "commit is the caller's job" convention as the other helpers.
+
+
+def data_source_dictize(data_source):
+    """Flatten a ``CsDataSource`` to a plain dict (``extras`` merged in)."""
+    if data_source is None:
+        return None
+    result = {
+        'id': data_source.id,
+        'project_id': data_source.project_id,
+        'form_id': data_source.form_id,
+        'title': data_source.title,
+        'description': data_source.description,
+        'status': data_source.status,
+        'source': data_source.source,
+        'created_by': data_source.created_by,
+        'reviewed_by': data_source.reviewed_by,
+        'reviewed_at': _iso(data_source.reviewed_at),
+        'rejection_reason': data_source.rejection_reason,
+        'ckan_package_id': data_source.ckan_package_id,
+        'created': _iso(data_source.created),
+        'modified': _iso(data_source.modified),
+    }
+    extras = _load_json(data_source.extras, {})
+    if isinstance(extras, dict):
+        for key, value in extras.items():
+            result.setdefault(key, value)
+    return result
+
+
+def get_data_source(id):
+    """Fetch a ``CsDataSource`` by primary key (None if not found)."""
+    _ensure_mappers()
+    if not id:
+        return None
+    return Session.query(CsDataSource).get(id)
+
+
+def get_data_source_by_form(project_id, form_id):
+    """Fetch the (unique) row for ``(project_id, form_id)`` (None if absent)."""
+    _ensure_mappers()
+    if not project_id or form_id is None:
+        return None
+    return (
+        Session.query(CsDataSource)
+        .filter(CsDataSource.project_id == project_id)
+        .filter(CsDataSource.form_id == form_id)
+        .first()
+    )
+
+
+def list_data_sources(project_id=None, status=None, limit=50, offset=0):
+    """List data sources with filtering + paging. Returns ``(total, rows)``."""
+    _ensure_mappers()
+    query = Session.query(CsDataSource)
+    if project_id:
+        query = query.filter(CsDataSource.project_id == project_id)
+    if status:
+        query = query.filter(CsDataSource.status == status)
+    total = query.count()
+    rows = (
+        query.order_by(CsDataSource.created.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    return total, rows
+
+
+def pending_data_sources(limit=20, offset=0):
+    """Pending data sources (sysadmin scope only). ``(total, [dict, ...])``.
+
+    Approval is sysadmin-only (like project requests), so unlike joins/content
+    there is no project-admin scoping. Rows are decorated with their project
+    title/slug for the review tab.
+    """
+    _ensure_mappers()
+    query = (
+        Session.query(CsDataSource, CsProject.title, CsProject.slug)
+        .outerjoin(CsProject, CsProject.id == CsDataSource.project_id)
+        .filter(CsDataSource.status == 'pending')
+    )
+    total = query.count()
+    rows = (
+        query.order_by(CsDataSource.created.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    results = []
+    for data_source, title, slug in rows:
+        item = data_source_dictize(data_source)
+        item['project_title'] = title
+        item['project_slug'] = slug
+        results.append(item)
+    return total, results
+
+
+def _count_pending_data_sources():
+    return (
+        Session.query(CsDataSource.id)
+        .filter(CsDataSource.status == 'pending')
+        .count()
+    )
+
+
 def _resolve_user(context):
     """Resolve the acting ``User`` object from a CKAN action context."""
     user_obj = context.get('auth_user_obj')
@@ -930,7 +1072,7 @@ def pending_counts(context):
     _ensure_mappers()
     user_obj = _resolve_user(context)
     zero = {'project_requests': 0, 'join_requests': 0,
-            'content_requests': 0, 'total': 0}
+            'content_requests': 0, 'data_requests': 0, 'total': 0}
     if user_obj is None:
         return dict(zero)
 
@@ -938,6 +1080,8 @@ def pending_counts(context):
         projects = _count_pending_projects()
         joins = _count_pending_joins(None)
         content = _count_pending_content(None)
+        # Data-source approval is sysadmin-only, so only sysadmins ever see it.
+        data_sources = _count_pending_data_sources()
     else:
         project_ids = admin_project_ids(user_obj.id)
         if not project_ids:
@@ -945,10 +1089,12 @@ def pending_counts(context):
         projects = 0
         joins = _count_pending_joins(project_ids)
         content = _count_pending_content(project_ids)
+        data_sources = 0
 
     return {
         'project_requests': projects,
         'join_requests': joins,
         'content_requests': content,
-        'total': projects + joins + content,
+        'data_requests': data_sources,
+        'total': projects + joins + content + data_sources,
     }

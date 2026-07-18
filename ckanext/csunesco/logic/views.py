@@ -209,11 +209,23 @@ def project_landing(slug):
         log.warning('csunesco: project landing news/events unavailable')
         news_events = []
 
+    # Connected app-data sources. The action widens scope for managers (they
+    # also see their pending/rejected rows with status badges); the public gets
+    # approved sources only. Fails soft so the landing always renders.
+    try:
+        ds_listing = tk.get_action('csunesco_data_source_list')(
+            _context(), {'project_id': project['id'], 'limit': 20})
+        data_sources = ds_listing.get('results', [])
+    except Exception:
+        log.warning('csunesco: project landing data sources unavailable')
+        data_sources = []
+
     return tk.render('csunesco/project_landing.html', extra_vars={
         'project': project,
         'stats': project.get('stats') or {},
         'has_region': has_region,
         'news_events': news_events,
+        'data_sources': data_sources,
     })
 
 

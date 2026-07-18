@@ -19,3 +19,11 @@ cs-map-js:
   output: js/cs-map.js
   contents:
     - js/cs-map.js
+
+# Observation maps for connected app-data sources on the project landing. Same
+# footprint as cs-map-js: Leaflet from CDN + vanilla DOM, no preload.
+cs-data-map-js:
+  filters: rjsmin
+  output: js/cs-data-map.js
+  contents:
+    - js/cs-data-map.js

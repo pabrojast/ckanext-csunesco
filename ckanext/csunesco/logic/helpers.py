@@ -146,6 +146,40 @@ def csunesco_can_manage_project(project_id):
         return False
 
 
+def csunesco_data_stories_new_url():
+    """URL of the Data Stories editor, or ``None`` when the feature is off.
+
+    Data Stories (ckanext-pages) is the portal's tool for combining datasets
+    into narrative visualizations. Gated on its own config flag AND on the
+    route actually existing, so the button simply disappears on portals
+    without the plugin -- never a broken link.
+    """
+    try:
+        if not tk.asbool(tk.config.get('ckanext.data_stories.enabled')):
+            return None
+        return tk.url_for('data_stories.create')
+    except Exception:
+        return None
+
+
+def csunesco_terria_embed_url(url):
+    """Return ``url`` when it is under an allowlisted Terria base, else None.
+
+    Re-runs the SAME base-allowlist check as the ``csunesco_valid_terria_url``
+    validator at render time (defense in depth: a row stored before a config
+    change must not become an embeddable iframe). Templates fall back to a plain
+    link -- or nothing -- when this returns ``None``.
+    """
+    if not url:
+        return None
+    try:
+        from ckanext.csunesco.logic import validators
+        validators.csunesco_valid_terria_url(url)
+        return url
+    except Exception:
+        return None
+
+
 def csunesco_member_state_title(name):
     """Human title for a member-state group name (falls back to the name).
 

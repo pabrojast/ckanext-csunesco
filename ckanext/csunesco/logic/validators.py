@@ -19,9 +19,13 @@ import ckan.plugins.toolkit as tk
 
 from ckanext.csunesco import constants
 
-# Content types accepted for cs_content rows (news + events in this increment;
-# media is a future increment and intentionally not accepted yet).
-CONTENT_TYPES = {'cs-news', 'cs-event'}
+# Content types accepted for cs_content rows (news, events, publications and
+# Terria maps; media is a future increment and intentionally not accepted yet).
+CONTENT_TYPES = {'cs-news', 'cs-event', 'cs-publication', 'cs-map'}
+
+# Config option holding the space-separated allowlist of Terria base URLs a
+# cs-map may embed. Unset means maps are disabled (fail closed).
+TERRIA_BASE_URL_OPTION = 'ckanext.csunesco.terria_base_url'
 
 # slug: lowercase alphanumerics joined by single hyphens (no leading/trailing/
 # doubled hyphens).
@@ -156,10 +160,40 @@ def csunesco_valid_document_url(value):
 
 
 def csunesco_valid_content_type(value):
-    """Accept only the known content types (``cs-news`` / ``cs-event``)."""
+    """Accept only the known content types (news / event / publication / map)."""
     if value not in CONTENT_TYPES:
         raise tk.Invalid(tk._('Unknown content type: %s') % value)
     return value
+
+
+def terria_allowed_bases():
+    """The configured Terria base URLs (normalized, no trailing slash)."""
+    raw = tk.config.get(TERRIA_BASE_URL_OPTION) or ''
+    return [base.rstrip('/') for base in raw.split() if base.strip()]
+
+
+def csunesco_valid_terria_url(value):
+    """Accept only share/scene URLs under a configured Terria base.
+
+    The prefix check requires the character after the base to be ``/``, ``#`` or
+    ``?`` (or an exact match) so ``https://terria.example.evil.com`` can never
+    satisfy a ``https://terria.example`` base. Unset config fails closed.
+    """
+    if value in (None, ''):
+        return value
+    url = str(value).strip()
+    bases = terria_allowed_bases()
+    if not bases:
+        raise tk.Invalid(tk._('Terria maps are not enabled on this portal'))
+    parsed = urlparse(url)
+    if parsed.scheme not in ('http', 'https'):
+        raise tk.Invalid(tk._('Map URL must use http or https'))
+    for base in bases:
+        if url == base or url.startswith((base + '/', base + '#', base + '?')):
+            return url
+    raise tk.Invalid(tk._(
+        'Map URL must start with one of the allowed Terria addresses: %s'
+    ) % ', '.join(bases))
 
 
 def _parse_iso_datetime(value):
@@ -244,6 +278,21 @@ def csunesco_valid_media_list(value):
     return json.dumps(urls)
 
 
+def csunesco_nonempty_media_list(value):
+    """Run AFTER ``csunesco_valid_media_list``: require at least one URL.
+
+    Needed because a ``'[]'`` JSON string is truthy and slips past ``not_empty``;
+    publications must carry at least one document link.
+    """
+    try:
+        items = json.loads(value) if isinstance(value, str) else (value or [])
+    except (ValueError, TypeError):
+        items = []
+    if not items:
+        raise tk.Invalid(tk._('At least one document link is required'))
+    return value
+
+
 def get_validators():
     return {
         'csunesco_valid_initiative': csunesco_valid_initiative,
@@ -252,7 +301,9 @@ def get_validators():
         'csunesco_valid_country_list': csunesco_valid_country_list,
         'csunesco_valid_document_url': csunesco_valid_document_url,
         'csunesco_valid_content_type': csunesco_valid_content_type,
+        'csunesco_valid_terria_url': csunesco_valid_terria_url,
         'csunesco_valid_iso_date': csunesco_valid_iso_date,
         'csunesco_end_after_start': csunesco_end_after_start,
         'csunesco_valid_media_list': csunesco_valid_media_list,
+        'csunesco_nonempty_media_list': csunesco_nonempty_media_list,
     }

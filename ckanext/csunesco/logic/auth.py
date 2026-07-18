@@ -205,6 +205,53 @@ def csunesco_content_show(context, data_dict):
 
 
 # ---------------------------------------------------------------------------
+# Data sources (app-data pipeline)
+# ---------------------------------------------------------------------------
+
+def csunesco_data_source_create(context, data_dict):
+    # Sysadmin or the target project's admin. Same shape as content_create:
+    # when the project is not resolvable from the auth payload we let any
+    # authenticated user through and the action re-checks on the resolved
+    # project (defence in depth).
+    project_id = (data_dict or {}).get('project_id')
+    if project_id:
+        if _is_sysadmin(context) or _is_project_admin(context, project_id):
+            return {'success': True}
+        return {'success': False,
+                'msg': tk._('Only the project admin can connect data')}
+    if context.get('user'):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('You must be logged in to connect data')}
+
+
+def csunesco_data_source_approve(context, data_dict):
+    if _is_sysadmin(context):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only sysadmins can approve data sources')}
+
+
+def csunesco_data_source_reject(context, data_dict):
+    if _is_sysadmin(context):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only sysadmins can reject data sources')}
+
+
+@tk.auth_allow_anonymous_access
+def csunesco_data_source_list(context, data_dict):
+    # Public read; the action pins non-privileged callers to approved sources.
+    return {'success': True}
+
+
+@tk.auth_allow_anonymous_access
+def csunesco_data_source_show(context, data_dict):
+    # Public read; the action hides unapproved sources from unauthorized users.
+    return {'success': True}
+
+
+# ---------------------------------------------------------------------------
 # Server-to-server Citizen Scientist registration (Increment 9)
 # ---------------------------------------------------------------------------
 
@@ -239,6 +286,11 @@ def get_auth_functions():
         'csunesco_content_reject': csunesco_content_reject,
         'csunesco_content_list': csunesco_content_list,
         'csunesco_content_show': csunesco_content_show,
+        'csunesco_data_source_create': csunesco_data_source_create,
+        'csunesco_data_source_approve': csunesco_data_source_approve,
+        'csunesco_data_source_reject': csunesco_data_source_reject,
+        'csunesco_data_source_list': csunesco_data_source_list,
+        'csunesco_data_source_show': csunesco_data_source_show,
         'csunesco_register_citizen_scientist':
             csunesco_register_citizen_scientist,
     }

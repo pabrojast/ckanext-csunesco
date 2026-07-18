@@ -1,0 +1,81 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  Connect-app-data form: a project manager links a PUBLIC form from the CS
+  Toolbox app so its observations are published on IHP-WINS (after sysadmin
+  approval). POSTs to csunesco_data_source_create via the data_connect view.
+
+  All `{{ ... }}` output is autoescaped.
+
+  Vars: project (dict), data (echoed values), errors (dict).
+#}
+
+{% block subtitle %}{{ _("Connect app data") }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  <section class="cs-hero" aria-labelledby="cs-data-connect-title">
+    <h1 id="cs-data-connect-title">{{ _("Connect data from the CS Toolbox app") }}</h1>
+    <p>{{ _("For project:") }} <strong>{{ project.title }}</strong></p>
+  </section>
+
+  <section class="cs-card cs-form-card" aria-labelledby="cs-data-connect-form-title">
+    <h2 id="cs-data-connect-form-title" class="cs-form-heading">{{ _("Data source details") }}</h2>
+
+    <p class="cs-hint">
+      {{ _("The form must be published and set to public in the CS Toolbox app. After a UNESCO administrator approves your request, the observations appear on this project page and as a live dataset on IHP-WINS.") }}
+    </p>
+
+    {% if errors and errors.message %}
+      <div class="cs-form-error" role="alert">{{ errors.message }}</div>
+    {% endif %}
+
+    <form method="post"
+          action="{{ h.url_for('csunesco.data_connect', slug=project.slug) }}"
+          class="cs-form" novalidate>
+      {{ h.csrf_input() }}
+
+      <div class="cs-field">
+        <label for="cs-data-form-id">{{ _("CS Toolbox form ID") }} <span class="cs-req" aria-hidden="true">*</span></label>
+        <input type="number" id="cs-data-form-id" name="form_id" min="1"
+               value="{{ data.form_id or '' }}" required aria-required="true"
+               {% if errors.form_id %}aria-invalid="true"{% endif %}
+               aria-describedby="cs-data-form-id-hint{% if errors.form_id %} cs-data-form-id-error{% endif %}">
+        <p id="cs-data-form-id-hint" class="cs-hint">
+          {{ _("The numeric ID shown in the form's public dashboard address in the app (…/public/forms/ID).") }}
+        </p>
+        {% if errors.form_id %}
+          <p id="cs-data-form-id-error" class="cs-field-error" role="alert">{{ errors.form_id | join(', ') }}</p>
+        {% endif %}
+      </div>
+
+      <div class="cs-field">
+        <label for="cs-data-title">{{ _("Dataset title") }} <span class="cs-req" aria-hidden="true">*</span></label>
+        <input type="text" id="cs-data-title" name="title" value="{{ data.title or '' }}"
+               required aria-required="true"
+               {% if errors.title %}aria-invalid="true"{% endif %}
+               aria-describedby="{% if errors.title %}cs-data-title-error{% endif %}">
+        {% if errors.title %}
+          <p id="cs-data-title-error" class="cs-field-error" role="alert">{{ errors.title | join(', ') }}</p>
+        {% endif %}
+      </div>
+
+      <div class="cs-field">
+        <label for="cs-data-description">{{ _("Description") }}</label>
+        <textarea id="cs-data-description" name="description" rows="4">{{ data.description or '' }}</textarea>
+        <p class="cs-hint">{{ _("Optional. What is being measured, where and how.") }}</p>
+        {% if errors.description %}
+          <p class="cs-field-error" role="alert">{{ errors.description | join(', ') }}</p>
+        {% endif %}
+      </div>
+
+      <div class="cs-form-actions">
+        <button type="submit" class="cs-btn cs-btn-primary">{{ _("Submit for review") }}</button>
+        <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
+          {{ _("Cancel") }}
+        </a>
+      </div>
+    </form>
+  </section>
+{% endblock %}

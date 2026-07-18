@@ -69,9 +69,17 @@
   <section class="cs-section cs-news-band" aria-labelledby="cs-news-title">
     <div class="cs-section-header">
       <h2 id="cs-news-title" class="cs-section-title">{{ _("Latest News") }}</h2>
-      <a class="cs-link" href="{{ h.url_for('csunesco.cs_news_index') }}">
-        {{ _("Browse all news") }} &rarr;
-      </a>
+      <span class="cs-section-header-links">
+        <a class="cs-link" href="{{ h.url_for('csunesco.cs_news_index') }}">
+          {{ _("Browse all news") }} &rarr;
+        </a>
+        <a class="cs-link" href="{{ h.url_for('csunesco.cs_publications_index') }}">
+          {{ _("Publications") }} &rarr;
+        </a>
+        <a class="cs-link" href="{{ h.url_for('csunesco.cs_maps_index') }}">
+          {{ _("Maps") }} &rarr;
+        </a>
+      </span>
     </div>
     <div class="cs-content-grid">
       {% for item in h.csunesco_recent_news(3) %}

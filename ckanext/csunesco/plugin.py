@@ -108,6 +108,11 @@ class CsunescoPlugin(p.SingletonPlugin):
             'csunesco_pending_count': helpers.csunesco_pending_count,
             'csunesco_can_manage_project':
                 helpers.csunesco_can_manage_project,
+            # Content management: allowlisted Terria embed for cs-map pages.
+            'csunesco_terria_embed_url': helpers.csunesco_terria_embed_url,
+            # Data pipeline: entry point into Data Stories (None when disabled).
+            'csunesco_data_stories_new_url':
+                helpers.csunesco_data_stories_new_url,
         }
 
     # IClick

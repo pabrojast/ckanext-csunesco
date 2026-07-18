@@ -3,8 +3,9 @@
 {#
   CS admin approval panel (increment 5, part A).
 
-  Three tabs -- Project requests (sysadmin only), Join requests, Content to
-  review. Progressive enhancement: WITHOUT JS every panel is visible (accessible
+  Four tabs -- Project requests (sysadmin only), Join requests, Content to
+  review, Data to review (sysadmin only).
+  Progressive enhancement: WITHOUT JS every panel is visible (accessible
   fallback); WITH JS only the active tab shows and `aria-current`/`aria-selected`
   track it. The active tab is restored from the URL fragment after a PRG so a
   reviewer stays where they were.
@@ -45,6 +46,13 @@
         {{ _("Content to review") }}
         <span class="cs-tab-count">{{ counts.get('content_requests', 0) }}</span>
       </button>
+      {% if is_sysadmin %}
+        <button type="button" class="cs-tab" role="tab" id="cs-tabbtn-data"
+                data-tab="data" aria-controls="cs-tab-data" aria-selected="false">
+          {{ _("Data to review") }}
+          <span class="cs-tab-count">{{ counts.get('data_requests', 0) }}</span>
+        </button>
+      {% endif %}
     </div>
 
     {# ---- Project requests (sysadmin only) ---------------------------- #}
@@ -159,7 +167,7 @@
                   {% if c.excerpt %}<br><span class="cs-muted">{{ c.excerpt | truncate(120) }}</span>{% endif %}
                 </td>
                 <td data-label="{{ _('Type') }}">
-                  {{ _("Event") if c.content_type == 'cs-event' else _("News") }}
+                  {{ {'cs-event': _("Event"), 'cs-publication': _("Publication"), 'cs-map': _("Map")}.get(c.content_type, _("News")) }}
                 </td>
                 <td data-label="{{ _('Project') }}">{{ c.project_title or c.project_id }}</td>
                 <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
@@ -191,6 +199,62 @@
         <p class="cs-empty">{{ _("No content is awaiting review.") }}</p>
       {% endif %}
     </div>
+
+    {# ---- Data to review (sysadmin only) ------------------------------- #}
+    {% if is_sysadmin %}
+      <div class="cs-tabpanel" id="cs-tab-data" role="tabpanel"
+           aria-labelledby="cs-tabbtn-data" data-tabpanel="data">
+        <h2 class="cs-visually-hidden">{{ _("Data to review") }}</h2>
+        <p class="cs-hint">
+          {{ _("Approving a data source publishes a live dataset on IHP-WINS fed by the CS Toolbox app.") }}
+        </p>
+        {% if data_requests %}
+          <table class="cs-admin-table">
+            <thead>
+              <tr>
+                <th scope="col">{{ _("Title") }}</th>
+                <th scope="col">{{ _("Project") }}</th>
+                <th scope="col">{{ _("App form") }}</th>
+                <th scope="col">{{ _("Origin") }}</th>
+                <th scope="col">{{ _("Actions") }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for d in data_requests %}
+                <tr>
+                  <td data-label="{{ _('Title') }}">
+                    <strong>{{ d.title }}</strong>
+                    {% if d.description %}<br><span class="cs-muted">{{ d.description | striptags | truncate(120) }}</span>{% endif %}
+                  </td>
+                  <td data-label="{{ _('Project') }}">{{ d.project_title or d.project_id }}</td>
+                  <td data-label="{{ _('App form') }}">#{{ d.form_id }}</td>
+                  <td data-label="{{ _('Origin') }}">{{ _("App") if d.source == 'app' else _("Portal") }}</td>
+                  <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
+                    <form method="post"
+                          action="{{ h.url_for('csunesco.data_source_approve', id=d.id) }}"
+                          data-confirm="{{ _('Approve this data source and publish its dataset?') }}">
+                      {{ h.csrf_input() }}
+                      <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
+                    </form>
+                    <form method="post" class="cs-reject-form"
+                          action="{{ h.url_for('csunesco.data_source_reject', id=d.id) }}"
+                          data-confirm="{{ _('Reject this data source?') }}">
+                      {{ h.csrf_input() }}
+                      <label class="cs-visually-hidden" for="reason-d-{{ d.id }}">{{ _("Reason") }}</label>
+                      <input type="text" id="reason-d-{{ d.id }}" name="reason"
+                             class="cs-reject-reason" placeholder="{{ _('Reason (optional)') }}">
+                      <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="cs-empty">{{ _("No data sources are awaiting review.") }}</p>
+        {% endif %}
+      </div>
+    {% endif %}
   </section>
 {% endblock %}
 

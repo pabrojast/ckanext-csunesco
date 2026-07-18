@@ -1,7 +1,8 @@
 # encoding: utf-8
 """CS content actions: create / update / approve / reject / list / show.
 
-Content (news + events) is stored as ``cs_content`` rows discriminated by
+Content (news, events, publications and Terria maps) is stored as ``cs_content``
+rows discriminated by
 ``content_type`` (water-family "Page + extras" shape). Moderation mirrors the
 project flow: a non-sysadmin author's content is ``pending`` until a sysadmin
 approves it; a sysadmin authoring content publishes it as ``approved`` directly.
@@ -37,7 +38,12 @@ MAX_LIST_LIMIT = 100
 EXCERPT_LENGTH = 240
 
 # Content types this increment accepts (kept in sync with the validator set).
-CONTENT_TYPES = {'cs-news', 'cs-event'}
+CONTENT_TYPES = {'cs-news', 'cs-event', 'cs-publication', 'cs-map'}
+
+# Where a row was authored: on this portal ('ckan') or pushed from the CS
+# Toolbox app ('app'). App-authored content ALWAYS queues for sysadmin review,
+# even though the app pushes with a sysadmin service token.
+CONTENT_SOURCES = {'ckan', 'app'}
 
 _TAG_RE = re.compile(r'<[^>]*>')
 _WS_RE = re.compile(r'\s+')
@@ -118,6 +124,32 @@ def _validated_content(context, data_dict, content_type):
     return data
 
 
+def _resolve_source(data_dict):
+    """Normalize + validate the ``source`` flag (defaults to ``ckan``)."""
+    source = (data_dict.get('source') or 'ckan').strip().lower()
+    if source not in CONTENT_SOURCES:
+        raise tk.ValidationError({'source': [tk._(
+            'Source must be one of: %s') % ', '.join(sorted(CONTENT_SOURCES))]})
+    return source
+
+
+def _type_extras(data):
+    """Type-specific extras: only the keys that belong to the content type.
+
+    Values are ``None`` for non-applicable keys so ``_merge_extras`` drops stale
+    values after a type switch on update.
+    """
+    content_type = data.get('content_type')
+    return {
+        'terria_url': (data.get('terria_url') or None
+                       if content_type == 'cs-map' else None),
+        'doi': (data.get('doi') or None
+                if content_type == 'cs-publication' else None),
+        'authors': (data.get('authors') or None
+                    if content_type == 'cs-publication' else None),
+    }
+
+
 def csunesco_content_create(context, data_dict):
     """Create a news/event row for an APPROVED project (project-admin/sysadmin)."""
     if not context.get('user'):
@@ -139,6 +171,7 @@ def csunesco_content_create(context, data_dict):
 
     content_type = (data_dict.get('content_type') or '').strip()
     data = _validated_content(context, data_dict, content_type)
+    source = _resolve_source(data_dict)
 
     is_sysadmin = auth._is_sysadmin(context)
     body = sanitize_html(data.get('body'))
@@ -159,8 +192,18 @@ def csunesco_content_create(context, data_dict):
     content.created_by = current_user_id(context)
     content.slug = db.unique_content_slug(data['title'])
     # Sysadmin-authored content is published straight away; everyone else queues.
-    content.status = 'approved' if is_sysadmin else 'pending'
-    content.extras = json.dumps({'excerpt': _excerpt(body)})
+    # App-pushed content queues too: the app's service token is a sysadmin, but
+    # the real author is a project member, so it must go through review.
+    content.status = ('approved' if is_sysadmin and source != 'app'
+                      else 'pending')
+    extras = {'excerpt': _excerpt(body)}
+    extras.update({k: v for k, v in _type_extras(data).items() if v})
+    if source == 'app':
+        extras['source'] = 'app'
+        app_author = sanitize_html((data_dict.get('author') or '').strip())
+        if app_author:
+            extras['app_author'] = app_author
+    content.extras = json.dumps(extras)
     content.created = now
     content.modified = now
     model.Session.add(content)
@@ -205,7 +248,8 @@ def csunesco_content_update(context, data_dict):
     # A non-sysadmin edit must go back through review.
     if not is_sysadmin:
         content.status = 'pending'
-    content.extras = json.dumps(_merge_extras(content, excerpt=_excerpt(body)))
+    content.extras = json.dumps(_merge_extras(
+        content, excerpt=_excerpt(body), **_type_extras(data)))
     content.modified = _utcnow()
     model.Session.commit()
     return db.content_dictize(content)

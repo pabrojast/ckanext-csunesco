@@ -112,9 +112,12 @@ def csunesco_admin_pending_list(context, data_dict):
             context, None, limit, offset)
         _content_count, content_requests = _pending_content(
             context, None, limit, offset)
+        # Data-source approval is sysadmin-only (it creates portal datasets).
+        _data_count, data_requests = db.pending_data_sources(limit, offset)
     else:
-        # Project-admins never see project requests.
+        # Project-admins never see project requests nor data-source requests.
         project_requests = []
+        data_requests = []
         scope = project_ids or []
         _join_count, join_requests = _pending_join_requests(
             context, scope, limit, offset)
@@ -125,6 +128,7 @@ def csunesco_admin_pending_list(context, data_dict):
         'project_requests': project_requests,
         'join_requests': join_requests,
         'content_requests': content_requests,
+        'data_requests': data_requests,
         # Identical numbers to the header badge (single cached source).
         'counts': _get_pending_counts(context),
         'limit': limit,

@@ -182,7 +182,8 @@ def test_document_url_rejects_other_schemes(url):
 # csunesco_valid_content_type
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize('ctype', ['cs-news', 'cs-event'])
+@pytest.mark.parametrize('ctype', [
+    'cs-news', 'cs-event', 'cs-publication', 'cs-map'])
 def test_content_type_accepts_known(ctype):
     assert v.csunesco_valid_content_type(ctype) == ctype
 
@@ -191,6 +192,80 @@ def test_content_type_accepts_known(ctype):
 def test_content_type_rejects_unknown(ctype):
     with pytest.raises(tk.Invalid):
         v.csunesco_valid_content_type(ctype)
+
+
+def test_content_types_in_sync_with_action_module():
+    # CONTENT_TYPES is deliberately duplicated in the action module (so the
+    # action layer never imports validators just for the set) -- this test is
+    # the guard that keeps both copies identical.
+    content = pytest.importorskip('ckanext.csunesco.logic.action.content')
+    assert content.CONTENT_TYPES == v.CONTENT_TYPES
+
+
+# ---------------------------------------------------------------------------
+# csunesco_valid_terria_url (base allowlist, fail closed)
+# ---------------------------------------------------------------------------
+
+def test_terria_url_passes_empty_through():
+    assert v.csunesco_valid_terria_url('') == ''
+    assert v.csunesco_valid_terria_url(None) is None
+
+
+def test_terria_url_fails_closed_without_config(monkeypatch):
+    monkeypatch.setattr(v, 'terria_allowed_bases', lambda: [])
+    with pytest.raises(tk.Invalid):
+        v.csunesco_valid_terria_url('https://maps.example/terria/#share=abc')
+
+
+def test_terria_url_accepts_configured_base(monkeypatch):
+    monkeypatch.setattr(
+        v, 'terria_allowed_bases', lambda: ['https://maps.example/terria'])
+    for url in (
+        'https://maps.example/terria',                 # exact
+        'https://maps.example/terria/#share=g-abc',    # share link
+        'https://maps.example/terria#share=g-abc',     # no trailing slash
+        'https://maps.example/terria?start=1',         # query form
+    ):
+        assert v.csunesco_valid_terria_url(url) == url
+
+
+@pytest.mark.parametrize('url', [
+    'https://evil.example/#share=x',
+    # Base-prefix trick: the base followed by a dot is a DIFFERENT host.
+    'https://maps.example.evil.com/#share=x',
+    'javascript:alert(1)',
+    'ftp://maps.example/terria/#share=x',
+])
+def test_terria_url_rejects_bad(monkeypatch, url):
+    monkeypatch.setattr(
+        v, 'terria_allowed_bases', lambda: ['https://maps.example'])
+    with pytest.raises(tk.Invalid):
+        v.csunesco_valid_terria_url(url)
+
+
+def test_terria_allowed_bases_parses_and_normalizes(monkeypatch):
+    monkeypatch.setitem(
+        tk.config, v.TERRIA_BASE_URL_OPTION,
+        'https://a.example/terria/  https://b.example')
+    assert v.terria_allowed_bases() == [
+        'https://a.example/terria', 'https://b.example']
+
+
+# ---------------------------------------------------------------------------
+# csunesco_nonempty_media_list
+# ---------------------------------------------------------------------------
+
+def test_nonempty_media_list_rejects_empty():
+    # '[]' is a truthy string, so not_empty alone cannot catch it.
+    with pytest.raises(tk.Invalid):
+        v.csunesco_nonempty_media_list('[]')
+    with pytest.raises(tk.Invalid):
+        v.csunesco_nonempty_media_list('not json either')
+
+
+def test_nonempty_media_list_accepts_nonempty():
+    value = '["https://a.example/doc.pdf"]'
+    assert v.csunesco_nonempty_media_list(value) == value
 
 
 # ---------------------------------------------------------------------------
@@ -376,3 +451,96 @@ def test_content_schema_event_requires_end_after_start():
     assert not_empty in s['publish_date']
     assert not_empty in s['end_date']
     assert v.csunesco_end_after_start in s['end_date']
+
+
+def test_content_schema_publication_requires_documents():
+    s = schema.content_schema('cs-publication')
+    not_empty = tk.get_validator('not_empty')
+    assert not_empty in s['media']
+    assert v.csunesco_valid_media_list in s['media']
+    assert v.csunesco_nonempty_media_list in s['media']
+    # DOI / authors are optional publication metadata.
+    assert 'doi' in s and 'authors' in s
+
+
+def test_content_schema_map_requires_terria_url():
+    s = schema.content_schema('cs-map')
+    not_empty = tk.get_validator('not_empty')
+    assert not_empty in s['terria_url']
+    assert v.csunesco_valid_terria_url in s['terria_url']
+
+
+def test_content_schema_news_keeps_new_fields_optional():
+    s = schema.content_schema('cs-news')
+    not_empty = tk.get_validator('not_empty')
+    assert not_empty not in s['terria_url']
+    assert not_empty not in s['media']
+
+
+# ---------------------------------------------------------------------------
+# ofform client (pure parts: geojson conversion + SSRF guards)
+# ---------------------------------------------------------------------------
+
+def test_rows_to_geojson_skips_invalid_rows_and_flattens_answers():
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    data = {'rows': [
+        {'id': 1, 'date': '2026-07-01T10:00:00', 'lat': -33.45, 'lng': -70.66,
+         'source': 'native',
+         'answers': {'ph': 7.123456789, 'tags': ['a', 'b'], 'site': 'X',
+                     'nested': {'k': 1}}},
+        {'id': 2, 'lat': None, 'lng': -70},       # missing lat -> skipped
+        {'id': 3, 'lat': 95, 'lng': 10},          # out of range -> skipped
+        {'id': 4, 'lat': 'nan', 'lng': 'inf'},    # non-finite -> skipped
+        'not-a-dict',                             # malformed row -> skipped
+    ]}
+    result = ofform.rows_to_geojson(data)
+    assert result['type'] == 'FeatureCollection'
+    assert len(result['features']) == 1
+    feature = result['features'][0]
+    assert feature['geometry'] == {
+        'type': 'Point', 'coordinates': [-70.66, -33.45]}
+    props = feature['properties']
+    # ``date`` is the per-feature time key Terria's time slider uses.
+    assert props['date'] == '2026-07-01T10:00:00'
+    assert props['ph'] == 7.123457            # floats rounded to 6 decimals
+    assert props['tags'] == 'a|b'             # lists joined
+    assert props['site'] == 'X'
+    assert json.loads(props['nested']) == {'k': 1}   # dicts JSON-dumped
+
+
+def test_rows_to_geojson_tolerates_empty_input():
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    empty = {'type': 'FeatureCollection', 'features': []}
+    assert ofform.rows_to_geojson(None) == empty
+    assert ofform.rows_to_geojson({}) == empty
+
+
+def test_ofform_form_id_coercion_guards_the_path():
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    assert ofform._coerce_form_id('7') == 7
+    for bad in ('../../etc/passwd', 'abc', 0, -3, None):
+        with pytest.raises(ofform.OfformError):
+            ofform._coerce_form_id(bad)
+
+
+def test_ofform_fetch_fails_closed_without_base_url(monkeypatch):
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    monkeypatch.setitem(tk.config, ofform.BASE_URL_OPTION, '')
+    with pytest.raises(ofform.OfformError):
+        ofform._fetch('/public/forms/1/export.csv')
+
+
+def test_package_name_is_munged_and_bounded():
+    package_sync = pytest.importorskip(
+        'ckanext.csunesco.logic.package_sync')
+
+    class _Project:
+        slug = 'x' * 200
+
+    class _DataSource:
+        form_id = 42
+
+    name = package_sync.package_name(_Project, _DataSource)
+    assert len(name) <= package_sync.MAX_NAME_LENGTH
+    assert name.startswith('cs-data-')
+    assert name.endswith('-42')

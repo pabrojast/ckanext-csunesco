@@ -63,8 +63,9 @@ ofform `/cs/*` endpoints and the `csunesco_*` actions they drive:
 | Join a project | `POST /cs/projects/{id}/join` | `join_request` | `csunesco_join_request_create` |
 | Approve a join | `POST /cs/projects/{id}/join/{user_id}/approve` | `join_approve` | `csunesco_join_approve` |
 | Retry failed sync | `POST /cs/projects/{id}/retry-sync` | re-queues `failed` rows | (whatever the requeued rows target) |
-| Publish news/event/media | `POST /cs/content` (`cs_content.py`) | `content` | `csunesco_content_create` |
+| Publish news/event/publication/map | `POST /cs/content` (`cs_content.py`) | `content` | `csunesco_content_create` (payload carries `source: 'app'` + `author`, so it **always** lands `pending` on CKAN despite the sysadmin token) |
 | List project content | `GET /cs/content` | — (read) | `csunesco_content_list` |
+| Publish a form's data | `POST /cs/forms/{form_id}/publish-data` (`cs_projects.py`) | `dataset_publish` | `csunesco_data_source_create` (lands `pending`; on sysadmin approval CKAN creates a dataset whose CSV/GeoJSON resources proxy `GET /public/forms/{id}/export.csv` and `/dashboard-data`; the endpoint flips the form to `visibility=public` first) |
 
 The outbox worker's `kind → write-client method` dispatch lives in
 `cs_sync._DISPATCH`. The write-client wrappers are in `ihpwins_write.py`.
@@ -84,9 +85,12 @@ ofform):
   `csunesco_project_stats_show`.
 - **Members / join:** `csunesco_join_request_create`, `csunesco_join_approve`,
   `csunesco_join_reject`.
-- **Content (news/events/media):** `csunesco_content_create`,
+- **Content (news/events/publications/maps):** `csunesco_content_create`,
   `csunesco_content_update`, `csunesco_content_approve`,
   `csunesco_content_reject`, `csunesco_content_list`, `csunesco_content_show`.
+- **Data sources (app-data pipeline):** `csunesco_data_source_create`,
+  `csunesco_data_source_approve`, `csunesco_data_source_reject`,
+  `csunesco_data_source_list`, `csunesco_data_source_show`.
 - **Admin panel:** `csunesco_admin_pending_list`, `csunesco_aggregate_stats`.
 
 ## 5. Identity model (registration dual-write)

@@ -152,10 +152,68 @@ def cs_events_show(slug):
     return views_content.cs_events_show(slug)
 
 
+def cs_publications_index():
+    """Public paginated publications index."""
+    from ckanext.csunesco.logic import views_content
+    return views_content.cs_publications_index()
+
+
+def cs_publications_show(slug):
+    """Public publication detail page (documents + sanitized body)."""
+    from ckanext.csunesco.logic import views_content
+    return views_content.cs_publications_show(slug)
+
+
+def cs_maps_index():
+    """Public paginated maps index."""
+    from ckanext.csunesco.logic import views_content
+    return views_content.cs_maps_index()
+
+
+def cs_maps_show(slug):
+    """Public map detail page (allowlisted Terria embed)."""
+    from ckanext.csunesco.logic import views_content
+    return views_content.cs_maps_show(slug)
+
+
 def content_new(slug):
     """Content editor for a project (GET form / POST create)."""
     from ckanext.csunesco.logic import views_content
     return views_content.content_new(slug)
+
+
+# ---------------------------------------------------------------------------
+# App-data pipeline -- live proxy, connect flow and its admin decisions.
+# ---------------------------------------------------------------------------
+
+def data_source_csv(id):
+    """Live CSV proxy for an APPROVED data source (public)."""
+    from ckanext.csunesco.logic import views_data
+    return views_data.data_source_csv(id)
+
+
+def data_source_geojson(id):
+    """Live GeoJSON proxy for an APPROVED data source (public)."""
+    from ckanext.csunesco.logic import views_data
+    return views_data.data_source_geojson(id)
+
+
+def data_connect(slug):
+    """Connect-app-data form for a project (GET form / POST request)."""
+    from ckanext.csunesco.logic import views_data
+    return views_data.data_connect(slug)
+
+
+def data_source_approve(id):
+    """POST: approve a pending data source (creates the CKAN dataset)."""
+    from ckanext.csunesco.logic import views_admin
+    return views_admin.data_source_approve(id)
+
+
+def data_source_reject(id):
+    """POST: reject a pending data source with an optional reason."""
+    from ckanext.csunesco.logic import views_admin
+    return views_admin.data_source_reject(id)
 
 
 def content_edit(id):
@@ -231,6 +289,12 @@ csunesco_bp.add_url_rule(
 csunesco_bp.add_url_rule(
     '/admin/content/<id>/reject', 'content_reject', content_reject,
     methods=['POST'])
+csunesco_bp.add_url_rule(
+    '/admin/data/<id>/approve', 'data_source_approve', data_source_approve,
+    methods=['POST'])
+csunesco_bp.add_url_rule(
+    '/admin/data/<id>/reject', 'data_source_reject', data_source_reject,
+    methods=['POST'])
 
 # Public news + events.
 csunesco_bp.add_url_rule('/news', 'cs_news_index', cs_news_index,
@@ -241,6 +305,16 @@ csunesco_bp.add_url_rule('/events', 'cs_events_index', cs_events_index,
                          methods=['GET'])
 csunesco_bp.add_url_rule('/events/<slug>', 'cs_events_show', cs_events_show,
                          methods=['GET'])
+csunesco_bp.add_url_rule(
+    '/publications', 'cs_publications_index', cs_publications_index,
+    methods=['GET'])
+csunesco_bp.add_url_rule(
+    '/publications/<slug>', 'cs_publications_show', cs_publications_show,
+    methods=['GET'])
+csunesco_bp.add_url_rule('/maps', 'cs_maps_index', cs_maps_index,
+                         methods=['GET'])
+csunesco_bp.add_url_rule('/maps/<slug>', 'cs_maps_show', cs_maps_show,
+                         methods=['GET'])
 
 # Content editor (create under a project / edit an existing item).
 csunesco_bp.add_url_rule(
@@ -248,6 +322,16 @@ csunesco_bp.add_url_rule(
     methods=['GET', 'POST'])
 csunesco_bp.add_url_rule('/content/<id>/edit', 'content_edit', content_edit,
                          methods=['GET', 'POST'])
+
+# App-data pipeline: public live proxy + the manager connect flow.
+csunesco_bp.add_url_rule(
+    '/data/<id>.csv', 'data_source_csv', data_source_csv, methods=['GET'])
+csunesco_bp.add_url_rule(
+    '/data/<id>.geojson', 'data_source_geojson', data_source_geojson,
+    methods=['GET'])
+csunesco_bp.add_url_rule(
+    '/project/<slug>/data/connect', 'data_connect', data_connect,
+    methods=['GET', 'POST'])
 
 
 def get_blueprints():

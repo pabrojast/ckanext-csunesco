@@ -107,20 +107,41 @@
 
     var typeSelect = document.getElementById("cs-content-type");
     var endField = document.getElementById("cs-enddate-field");
+    var terriaField = document.getElementById("cs-terria-field");
+    var publicationFields = document.getElementById("cs-publication-fields");
+    var mediaLabel = document.getElementById("cs-media-label");
+    var mediaHint = document.getElementById("cs-media-hint");
     var body = document.getElementById("cs-content-body");
     var preview = document.getElementById("cs-content-preview");
     var mediaList = document.getElementById("cs-media-list");
     var mediaAdd = document.getElementById("cs-media-add");
     var submit = document.getElementById("cs-content-submit");
 
-    // Show the end-date field only for events.
-    function syncEndField() {
-      if (!typeSelect || !endField) { return; }
-      endField.hidden = typeSelect.value !== "cs-event";
+    // Show/relabel the type-specific fields (end date for events, Terria link
+    // for maps, authors/DOI + required document links for publications).
+    function syncTypeFields() {
+      if (!typeSelect) { return; }
+      var type = typeSelect.value;
+      if (endField) { endField.hidden = type !== "cs-event"; }
+      if (terriaField) { terriaField.hidden = type !== "cs-map"; }
+      if (publicationFields) {
+        publicationFields.hidden = type !== "cs-publication";
+      }
+      var isPublication = type === "cs-publication";
+      if (mediaLabel) {
+        mediaLabel.textContent = isPublication
+          ? mediaLabel.getAttribute("data-label-publication")
+          : mediaLabel.getAttribute("data-label-default");
+      }
+      if (mediaHint) {
+        mediaHint.textContent = isPublication
+          ? mediaHint.getAttribute("data-hint-publication")
+          : mediaHint.getAttribute("data-hint-default");
+      }
     }
     if (typeSelect) {
-      typeSelect.addEventListener("change", syncEndField);
-      syncEndField();
+      typeSelect.addEventListener("change", syncTypeFields);
+      syncTypeFields();
     }
 
     // Live, allowlist-filtered preview of the body.

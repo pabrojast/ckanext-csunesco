@@ -2,7 +2,7 @@
 """Behavioral ORM tests for ckanext-csunesco against a REAL SQLAlchemy engine.
 
 No web stack, no Postgres/Solr: every test builds a FRESH in-memory SQLite
-engine, creates the five ``cs_*`` tables on CKAN's shared metadata and binds the
+engine, creates the plugin's ``cs_*`` tables on CKAN's shared metadata and binds the
 plugin's module-level scoped ``Session`` to that engine. This proves the classic
 ``Table`` + ``mapper`` wiring, the column defaults, the ``UniqueConstraint`` and
 the pure/data helpers (dictize, unique-slug, stats SQL) all produce a working
@@ -30,7 +30,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture
 def session():
-    """A fresh in-memory SQLite DB with the five cs_* tables + bound Session.
+    """A fresh in-memory SQLite DB with the plugin's cs_* tables + bound Session.
 
     Wires the classic mappers once, creates ONLY the plugin's tables on the
     shared metadata against a throwaway engine, and reconfigures the plugin's
@@ -212,6 +212,105 @@ def test_content_dictize_summary_vs_full(session):
     summary = db.content_dictize(row, summary=True)
     assert 'body' not in summary          # deferred/omitted for list rows
     assert summary['media'] == ['http://img/a.png']
+
+
+def test_data_source_defaults_and_unique_project_form(session):
+    ds = db.CsDataSource()
+    ds.project_id = 'p1'
+    ds.form_id = 7
+    ds.title = 'Water quality'
+    session.add(ds)
+    session.commit()
+
+    got = session.query(db.CsDataSource).one()
+    assert got.id, 'uuid primary-key default should populate on insert'
+    assert got.status == 'pending'      # column default: ALWAYS reviewed
+    assert got.source == 'ckan'         # column default
+    assert got.created is not None
+
+    dup = db.CsDataSource()
+    dup.project_id = 'p1'
+    dup.form_id = 7
+    dup.title = 'Duplicate'
+    session.add(dup)
+    with pytest.raises(IntegrityError):
+        session.commit()
+    session.rollback()
+
+
+def test_data_source_dictize_merges_extras(session):
+    ds = db.CsDataSource()
+    ds.project_id = 'p1'
+    ds.form_id = 3
+    ds.title = 'T'
+    ds.extras = json.dumps({'resource_ids': ['r1', 'r2']})
+    session.add(ds)
+    session.commit()
+
+    result = db.data_source_dictize(session.query(db.CsDataSource).one())
+    assert result['resource_ids'] == ['r1', 'r2']
+    assert result['status'] == 'pending'
+    assert result['form_id'] == 3
+    assert db.data_source_dictize(None) is None
+
+
+class _FakeUser:
+    def __init__(self, user_id, sysadmin):
+        self.id = user_id
+        self.sysadmin = sysadmin
+
+
+def test_pending_counts_includes_data_requests_for_sysadmin(session):
+    ds = db.CsDataSource()
+    ds.project_id = 'p1'
+    ds.form_id = 1
+    ds.title = 'T'
+    session.add(ds)
+    session.commit()
+
+    counts = db.pending_counts({'auth_user_obj': _FakeUser('u1', True)})
+    assert counts['data_requests'] == 1
+    assert counts['total'] == counts['project_requests'] \
+        + counts['join_requests'] + counts['content_requests'] + 1
+
+
+def test_pending_counts_hides_data_requests_from_project_admin(session):
+    member = db.CsProjectMember()
+    member.project_id = 'p1'
+    member.user_id = 'u2'
+    member.role = 'admin'
+    member.status = 'active'
+    session.add(member)
+    ds = db.CsDataSource()
+    ds.project_id = 'p1'
+    ds.form_id = 2
+    ds.title = 'T'
+    session.add(ds)
+    session.commit()
+
+    counts = db.pending_counts({'auth_user_obj': _FakeUser('u2', False)})
+    assert counts['data_requests'] == 0
+
+
+def test_content_dictize_promotes_type_extras(session):
+    # Publication / map metadata lives in extras (no dedicated columns) and
+    # must surface at the top level via the setdefault merge.
+    content = db.CsContent()
+    content.slug = 'm1'
+    content.content_type = 'cs-map'
+    content.title = 'M'
+    content.extras = json.dumps({
+        'terria_url': 'https://maps.example/terria/#share=g-1',
+        'doi': '10.1234/abcd',
+        'authors': 'A. Author',
+    })
+    session.add(content)
+    session.commit()
+
+    result = db.content_dictize(db.get_content('m1'))
+    assert result['terria_url'] == 'https://maps.example/terria/#share=g-1'
+    assert result['doi'] == '10.1234/abcd'
+    assert result['authors'] == 'A. Author'
 
 
 # ---------------------------------------------------------------------------
