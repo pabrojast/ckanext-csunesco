@@ -51,7 +51,9 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | GET | `/citizen-science/project/<slug>/geojson` | Async region GeoJSON for the map | public |
 | GET | `/citizen-science/news` · `/news/<slug>` | News index / detail | public (approved) |
 | GET | `/citizen-science/events` · `/events/<slug>` | Events index / detail | public (approved) |
-| GET·POST | `/citizen-science/register-citizen` | Citizen Scientist self-registration | public — gated by `ckan.auth.create_user_via_web`; reuses core `user_create` auth |
+| GET·POST | `/citizen-science/register-citizen` | Citizen Scientist self-registration (account created **pending** until email is verified) | public — gated by `ckan.auth.create_user_via_web`; reuses core `user_create` auth |
+| GET | `/citizen-science/verify/<token>` | Activate a pending account via its emailed link | public (single-use token) |
+| GET·POST | `/citizen-science/verify/resend` | Request a fresh verification link | public (generic response) |
 | GET·POST | `/citizen-science/project/new` | Propose a project (request) | authenticated |
 | POST | `/citizen-science/project/<slug>/join` | Request to join a project | authenticated |
 | GET·POST | `/citizen-science/project/<slug>/content/new` | Add news/event to a project | sysadmin **or** that project's admin |
@@ -102,6 +104,17 @@ Server-side checks (the browser form is progressive-enhancement only — it carr
 - Core `user_create` then enforces CKAN's own rules (name charset + uniqueness,
   email format + uniqueness, password policy). Any failure — including duplicates
   — collapses to one generic error.
+
+**Email verification (web flow).** A web self-registration lands the CKAN account
+in `pending` state — login is blocked (both core `default_authenticate` and the
+custom authenticator gate on `user.is_active`) until the user opens the emailed
+`/citizen-science/verify/<token>` link, which flips the account to `active`.
+Tokens are single-use and expire after `VERIFICATION_TOKEN_TTL_HOURS` (48h);
+`/citizen-science/verify/resend` re-issues one (generic response, no enumeration).
+The declared **country** is persisted on the CS profile. Requires a working SMTP
+config (`smtp.*`). The server-to-server `csunesco_register_citizen_scientist`
+action is unaffected — trusted (sysadmin) callers still create active,
+already-verified accounts.
 
 ## Requirements
 
