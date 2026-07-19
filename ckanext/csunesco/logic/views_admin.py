@@ -90,6 +90,17 @@ def admin_dashboard():
             organizations = tk.get_action('organization_list')(context, {})
         except Exception:
             log.warning('csunesco: organization list unavailable')
+        # Review context per pending source: is the form live/public, how many
+        # observations, date range -- plus an "open in the app" link. Probes
+        # are short-timeout + TTL-cached; any failure degrades to a warning
+        # chip, never an error page.
+        try:
+            from ckanext.csunesco.logic import ofform
+            for row in data['data_requests']:
+                row['probe'] = ofform.probe_form(row.get('form_id'))
+                row['app_url'] = ofform.public_form_url(row.get('form_id'))
+        except Exception:
+            log.warning('csunesco: data-source probes unavailable')
 
     return tk.render('csunesco/cs-admin-dashboard.html', extra_vars={
         'is_sysadmin': _is_sysadmin(),

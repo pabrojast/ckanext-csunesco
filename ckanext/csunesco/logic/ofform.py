@@ -28,9 +28,15 @@ log = logging.getLogger(__name__)
 
 BASE_URL_OPTION = 'ckanext.csunesco.ofform_base_url'
 CACHE_TTL_OPTION = 'ckanext.csunesco.ofform_cache_ttl'
+# The app's FRONTEND base (for "open in the app" links shown to reviewers) --
+# distinct from the API base the proxy fetches from.
+APP_URL_OPTION = 'ckanext.csunesco.ofform_app_url'
 
 DEFAULT_CACHE_TTL = 60
 REQUEST_TIMEOUT = 15
+# The review-panel probe must never hold the admin page hostage: shorter
+# timeout than the proxy, and results are TTL-cached like everything else.
+PROBE_TIMEOUT = 6
 # Hard cap on a proxied payload (bytes): protects CKAN worker memory from a
 # runaway upstream response. ofform itself truncates dashboard data at 20k rows.
 MAX_PROXY_BYTES = 20_000_000
@@ -96,7 +102,7 @@ def cache_clear():
         _cache.clear()
 
 
-def _fetch(path):
+def _fetch(path, timeout=REQUEST_TIMEOUT):
     """GET ``{base}{path}`` with a timeout + size cap. Returns raw bytes.
 
     ``path`` is ALWAYS built by this module from an int form id -- never from a
@@ -109,7 +115,7 @@ def _fetch(path):
     request = urllib.request.Request(
         url, headers={'Accept': 'application/json, text/csv, */*'})
     try:
-        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as resp:
+        with urllib.request.urlopen(request, timeout=timeout) as resp:
             chunks = []
             total = 0
             while True:
@@ -132,14 +138,14 @@ def _fetch(path):
         raise OfformError('network error')
 
 
-def fetch_dashboard_data(form_id):
+def fetch_dashboard_data(form_id, timeout=REQUEST_TIMEOUT):
     """The public dashboard-data JSON for a form (TTL-cached dict)."""
     form_id = _coerce_form_id(form_id)
     key = ('dashboard', form_id)
     cached = _cache_get(key)
     if cached is not None:
         return cached
-    raw = _fetch('/public/forms/%d/dashboard-data' % form_id)
+    raw = _fetch('/public/forms/%d/dashboard-data' % form_id, timeout=timeout)
     try:
         data = json.loads(raw.decode('utf-8'))
     except (ValueError, UnicodeDecodeError):
@@ -162,6 +168,67 @@ def fetch_csv(form_id):
     text = raw.decode('utf-8', errors='replace')
     _cache_set(key, text)
     return text
+
+
+# ---------------------------------------------------------------------------
+# Review-time probe (admin panel context for approving data sources)
+# ---------------------------------------------------------------------------
+
+
+def public_form_url(form_id):
+    """The app-frontend URL of a form's public dashboard, or ``None``.
+
+    Requires ``ckanext.csunesco.ofform_app_url`` (the PWA base). Used only to
+    render "open in the app" links for reviewers -- never fetched server-side.
+    """
+    base = (tk.config.get(APP_URL_OPTION) or '').strip().rstrip('/')
+    if not base:
+        return None
+    try:
+        return '%s/public/forms/%d' % (base, _coerce_form_id(form_id))
+    except OfformError:
+        return None
+
+
+def summarize_dashboard(data):
+    """Pure review summary of a dashboard-data payload (unit-testable).
+
+    Returns ``{'ok': True, 'total', 'truncated', 'first_date', 'last_date',
+    'with_coords'}`` -- the context a reviewer needs to approve with eyes open.
+    """
+    data = data or {}
+    rows = data.get('rows') or []
+    dates = sorted(
+        str(row.get('date'))
+        for row in rows
+        if isinstance(row, dict) and row.get('date'))
+    with_coords = sum(
+        1 for row in rows
+        if isinstance(row, dict) and _valid_coord(row.get('lat'),
+                                                  row.get('lng')))
+    return {
+        'ok': True,
+        'total': data.get('total') if data.get('total') is not None
+        else len(rows),
+        'truncated': bool(data.get('truncated')),
+        'first_date': dates[0][:10] if dates else None,
+        'last_date': dates[-1][:10] if dates else None,
+        'with_coords': with_coords,
+    }
+
+
+def probe_form(form_id):
+    """Live health/summary check of a form's public data for the review panel.
+
+    ``{'ok': False}`` when the form is unreachable, not public or ofform is
+    not configured -- the reviewer sees a clear warning instead of approving a
+    source that would 502. Short timeout + shared TTL cache.
+    """
+    try:
+        data = fetch_dashboard_data(form_id, timeout=PROBE_TIMEOUT)
+    except OfformError:
+        return {'ok': False}
+    return summarize_dashboard(data)
 
 
 # ---------------------------------------------------------------------------

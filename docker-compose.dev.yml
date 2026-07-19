@@ -43,6 +43,8 @@ services:
       # reaches an ofform dev server on the host):
       # CKAN___CKANEXT__CSUNESCO__OFFORM_BASE_URL: http://host.docker.internal:8000
       # CKAN___CKANEXT__CSUNESCO__OFFORM_CACHE_TTL: "60"
+      # App FRONTEND base for "Open in the app" links in the review panel:
+      # CKAN___CKANEXT__CSUNESCO__OFFORM_APP_URL: http://localhost:5173
       # Org that owns datasets created on data-source approval:
       # CKAN___CKANEXT__CSUNESCO__DATASET_OWNER_ORG: citizen-science
       # Extra package_create fields (portal schema defaults), JSON:

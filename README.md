@@ -150,6 +150,7 @@ config reload). Features gated on an option **fail closed** when it is unset.
 | `ckanext.csunesco.terria_base_url` | *(unset — maps disabled)* | Space-separated allowlist of Terria base URLs a `cs-map` may embed (e.g. `https://ihp-wins.unesco.org/terria`). Unset ⇒ the `cs-map` validator rejects every URL and stored maps render as plain links. List every host if Terria lives on several. |
 | `ckanext.csunesco.ofform_base_url` | *(unset — data pipeline disabled)* | The **only** origin the data proxy will fetch (the CS Toolbox API base, e.g. `https://ofform-api.aquedra.com`). Anti-SSRF: form ids are int-coerced into a fixed path under this base. |
 | `ckanext.csunesco.ofform_cache_ttl` | `60` | Seconds a proxied response (CSV / dashboard JSON) is cached per form. |
+| `ckanext.csunesco.ofform_app_url` | *(unset — links hidden)* | The CS Toolbox **frontend** base (e.g. `https://ofform.aquedra.com`). Used only to render "Open in the app" links in the review panel. |
 | `ckanext.csunesco.dataset_owner_org` | *(unset)* | **Fallback** organization for datasets created on data-source approval. The actual owner is resolved in priority order: the sysadmin's choice in the approval form → the org suggested by the app (`owner_org` in the request; ofform keeps its orgs synchronized with the portal via `ckan_slug`) → `cs_project.organization_id` → this option. A suggestion that does not exist on the portal falls back to this default. |
 | `ckanext.csunesco.dataset_defaults` | `{}` | Optional JSON object merged into `package_create` — use it to satisfy portal-schema (e.g. schemingdcat) required fields, licences, etc. |
 | `ckanext.data_stories.enabled` | — | Not ours (ckanext-pages), but when true the project landing shows a "Create a data story" entry point. |
@@ -170,7 +171,10 @@ never disagree). Four tabs:
 3. **Content to review** — news, events, publications and maps; portal-authored
    sysadmin content publishes directly, everything else (including *all*
    app-authored content) waits here.
-4. **Data to review** (sysadmin) — approving creates/refreshes a live CKAN
+4. **Data to review** (sysadmin) — each row shows a live probe of the form's
+   public data (reachable? observations, geolocated count, date range) and an
+   "Open in the app" link (`ofform_app_url`), so nothing is approved blind.
+   Approving creates/refreshes a live CKAN
    dataset fed by the CS Toolbox app (CSV + GeoJSON proxy resources). The
    approve form includes an **organization picker** preselected with the
    app-suggested org (when it exists on the portal) or the configured
@@ -180,6 +184,17 @@ never disagree). Four tabs:
    Data truncates at ofform's 20 000-row export cap. If a form owner later
    reverts the form to private in the app, the proxy starts returning 502 for
    that source.
+
+### Next stages (agreed, not yet built)
+
+- Email notification / daily digest to sysadmins when items land in the
+  review queue (SMTP is already configured on the portal).
+- Automatic `cs_project_stats` counters (observations/sites) refreshed from
+  the proxy fetch totals instead of manual upkeep.
+- Bulk approve (checkbox selection) in the content and data tabs.
+- Per-project `trusted` flag auto-approving news/events only (policy call).
+- Auto-enqueue the data-source request when approving an app-originated
+  project that already has published forms.
 
 ## Requirements
 

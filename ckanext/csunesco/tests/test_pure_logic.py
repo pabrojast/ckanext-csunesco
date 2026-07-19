@@ -515,6 +515,37 @@ def test_rows_to_geojson_tolerates_empty_input():
     assert ofform.rows_to_geojson({}) == empty
 
 
+def test_summarize_dashboard_review_context():
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    data = {
+        'total': 3, 'truncated': False,
+        'rows': [
+            {'id': 1, 'date': '2026-03-02T10:00:00', 'lat': -33.4, 'lng': -70.6},
+            {'id': 2, 'date': '2026-01-15T08:00:00', 'lat': None, 'lng': -70},
+            {'id': 3, 'date': '2026-07-01T12:00:00', 'lat': -33.5, 'lng': -70.7},
+        ],
+    }
+    summary = ofform.summarize_dashboard(data)
+    assert summary['ok'] is True
+    assert summary['total'] == 3
+    assert summary['first_date'] == '2026-01-15'
+    assert summary['last_date'] == '2026-07-01'
+    assert summary['with_coords'] == 2
+    # Empty/missing payloads degrade to zeros, never raise.
+    empty = ofform.summarize_dashboard(None)
+    assert empty['ok'] is True and empty['total'] == 0
+
+
+def test_public_form_url_requires_config(monkeypatch):
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    monkeypatch.setitem(tk.config, ofform.APP_URL_OPTION, '')
+    assert ofform.public_form_url(7) is None
+    monkeypatch.setitem(
+        tk.config, ofform.APP_URL_OPTION, 'https://app.example/')
+    assert ofform.public_form_url(7) == 'https://app.example/public/forms/7'
+    assert ofform.public_form_url('nope') is None
+
+
 def test_ofform_form_id_coercion_guards_the_path():
     ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
     assert ofform._coerce_form_id('7') == 7

@@ -146,6 +146,12 @@
     </div>
 
     {# ---- Content to review ------------------------------------------- #}
+    {% set show_endpoints = {
+      'cs-news': 'csunesco.cs_news_show',
+      'cs-event': 'csunesco.cs_events_show',
+      'cs-publication': 'csunesco.cs_publications_show',
+      'cs-map': 'csunesco.cs_maps_show',
+    } %}
     <div class="cs-tabpanel" id="cs-tab-content" role="tabpanel"
          aria-labelledby="cs-tabbtn-content" data-tabpanel="content">
       <h2 class="cs-visually-hidden">{{ _("Content to review") }}</h2>
@@ -187,6 +193,13 @@
                              class="cs-reject-reason" placeholder="{{ _('Reason (optional)') }}">
                       <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
                     </form>
+                  {% endif %}
+                  {% if c.slug %}
+                    {# The reviewer sees the item exactly as the public will
+                       (detail pages already allow sysadmins on pending rows,
+                       incl. the embedded Terria map for cs-map). #}
+                    <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                       href="{{ h.url_for(show_endpoints.get(c.content_type, 'csunesco.cs_news_show'), slug=c.slug) }}">{{ _("View") }}</a>
                   {% endif %}
                   <a class="cs-btn cs-btn-secondary cs-btn-sm"
                      href="{{ h.url_for('csunesco.content_edit', id=c.id) }}">{{ _("Edit") }}</a>
@@ -231,6 +244,19 @@
                     {% if d.description %}<br><span class="cs-muted">{{ d.description | striptags | truncate(120) }}</span>{% endif %}
                     {% if d.owner_org and not suggested %}
                       <br><span class="cs-muted">{{ _("App organization not on this portal:") }} {{ d.owner_org }}</span>
+                    {% endif %}
+                    {% if d.probe %}
+                      <br>
+                      {% if d.probe.ok %}
+                        <span class="cs-muted">
+                          ✓ {{ _("%(n)s observations") % {'n': d.probe.total} }}{% if d.probe.with_coords is not none %} ({{ d.probe.with_coords }} {{ _("geolocated") }}){% endif %}{% if d.probe.first_date %} · {{ d.probe.first_date }} → {{ d.probe.last_date or d.probe.first_date }}{% endif %}{% if d.probe.truncated %} · {{ _("truncated") }}{% endif %}
+                        </span>
+                      {% else %}
+                        <span class="cs-status-badge cs-status-rejected">{{ _("Form not reachable or not public in the app") }}</span>
+                      {% endif %}
+                    {% endif %}
+                    {% if d.app_url %}
+                      <br><a class="cs-link" href="{{ d.app_url }}" target="_blank" rel="noopener noreferrer">{{ _("Open in the app") }} ↗</a>
                     {% endif %}
                   </td>
                   <td data-label="{{ _('Project') }}">{{ d.project_title or d.project_id }}</td>
