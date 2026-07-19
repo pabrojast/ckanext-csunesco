@@ -530,6 +530,23 @@ def test_ofform_fetch_fails_closed_without_base_url(monkeypatch):
         ofform._fetch('/public/forms/1/export.csv')
 
 
+def test_is_sysadmin_tolerates_flask_login_anonymous_user():
+    # On portals with flask-login-style auth plugins (IHP-WINS), anonymous API
+    # calls carry an AnonymousUser (no .sysadmin/.id) in auth_user_obj; the
+    # helpers must treat it as "no user", never AttributeError (500).
+    auth = pytest.importorskip('ckanext.csunesco.logic.auth')
+    action_pkg = pytest.importorskip('ckanext.csunesco.logic.action')
+
+    class _AnonymousUser:
+        is_anonymous = True
+        is_authenticated = False
+
+    context = {'auth_user_obj': _AnonymousUser(), 'user': ''}
+    assert auth._is_sysadmin(context) is False
+    assert auth._user_obj(context) is None
+    assert action_pkg.current_user_id(context) is None
+
+
 def test_package_name_is_munged_and_bounded():
     package_sync = pytest.importorskip(
         'ckanext.csunesco.logic.package_sync')

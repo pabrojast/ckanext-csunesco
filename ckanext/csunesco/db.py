@@ -1049,9 +1049,13 @@ def _count_pending_data_sources():
 
 
 def _resolve_user(context):
-    """Resolve the acting ``User`` object from a CKAN action context."""
+    """Resolve the acting ``User`` object from a CKAN action context.
+
+    A flask-login ``AnonymousUser`` in ``auth_user_obj`` (anonymous API calls
+    on portals with auth plugins) counts as "no user".
+    """
     user_obj = context.get('auth_user_obj')
-    if user_obj is not None:
+    if user_obj is not None and not getattr(user_obj, 'is_anonymous', False):
         return user_obj
     model = context.get('model')
     username = context.get('user')

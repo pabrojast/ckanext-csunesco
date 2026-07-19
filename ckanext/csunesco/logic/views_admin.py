@@ -41,7 +41,7 @@ def _positive_int(value, default):
 
 def _is_sysadmin():
     user_obj = getattr(tk.g, 'userobj', None)
-    return bool(user_obj and user_obj.sysadmin)
+    return bool(user_obj and getattr(user_obj, 'sysadmin', False))
 
 
 def _not_authorized_response():

@@ -16,9 +16,11 @@ def current_user_id(context):
     Prefers the already-loaded ``auth_user_obj`` and only falls back to a lookup
     by username, mirroring how core CKAN actions resolve the acting user.
     """
+    # Anonymous API calls may carry a flask-login AnonymousUser here (no
+    # ``id`` attribute) on portals like IHP-WINS -- treat it as "no user".
     user_obj = context.get('auth_user_obj')
-    if user_obj is not None:
-        return user_obj.id
+    if user_obj is not None and not getattr(user_obj, 'is_anonymous', False):
+        return getattr(user_obj, 'id', None)
     username = context.get('user')
     if not username:
         return None

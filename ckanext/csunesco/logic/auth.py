@@ -21,9 +21,15 @@ import ckan.model as model
 # ---------------------------------------------------------------------------
 
 def _user_obj(context):
-    """Resolve the acting ``User`` object from context (None when anonymous)."""
+    """Resolve the acting ``User`` object from context (None when anonymous).
+
+    On portals with flask-login-style auth plugins (e.g. ckanext-auth on
+    IHP-WINS), anonymous API calls put an ``AnonymousUser`` object -- with no
+    ``sysadmin``/``id`` attributes -- into ``auth_user_obj``; treat it as "no
+    user" instead of returning it.
+    """
     user_obj = context.get('auth_user_obj')
-    if user_obj is not None:
+    if user_obj is not None and not getattr(user_obj, 'is_anonymous', False):
         return user_obj
     username = context.get('user')
     if not username:
@@ -34,7 +40,8 @@ def _user_obj(context):
 def _is_sysadmin(context):
     """True when the acting user is a CKAN sysadmin (IHP admin)."""
     user_obj = _user_obj(context)
-    return bool(user_obj and user_obj.sysadmin)
+    return bool(user_obj is not None
+                and getattr(user_obj, 'sysadmin', False))
 
 
 def _is_project_admin(context, project_id):
