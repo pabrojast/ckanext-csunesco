@@ -4,10 +4,17 @@
   Base template for the Citizen Science (UNESCO) section.
   Child templates fill `cs_content`; the wrapper keeps the accessible
   landmark structure (<main>/<section> headings) in one place.
+
+  The section has no sidebar, so the WHOLE `secondary` block is emptied --
+  otherwise core page.html renders an empty <aside class="col-sm-3"> that
+  pushes the content off-center -- and `primary` is overridden (not just
+  `primary_content`) to take the full row width.
 #}
 
-{% block primary_content %}
-  <main id="content" role="main" class="cs-main">
+{% block secondary %}{% endblock %}
+
+{% block primary %}
+  <main class="primary col-sm-12 cs-main" role="main">
     {% block cs_content %}{% endblock %}
   </main>
 {% endblock %}
