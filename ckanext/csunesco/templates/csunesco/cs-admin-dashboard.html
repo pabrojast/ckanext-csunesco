@@ -221,10 +221,17 @@
             </thead>
             <tbody>
               {% for d in data_requests %}
+                {# Preselect the app-suggested org when it exists on the portal;
+                   otherwise the configured default. The reviewer can change it. #}
+                {% set suggested = d.owner_org if d.owner_org in organizations else None %}
+                {% set preselected = suggested or default_owner_org %}
                 <tr>
                   <td data-label="{{ _('Title') }}">
                     <strong>{{ d.title }}</strong>
                     {% if d.description %}<br><span class="cs-muted">{{ d.description | striptags | truncate(120) }}</span>{% endif %}
+                    {% if d.owner_org and not suggested %}
+                      <br><span class="cs-muted">{{ _("App organization not on this portal:") }} {{ d.owner_org }}</span>
+                    {% endif %}
                   </td>
                   <td data-label="{{ _('Project') }}">{{ d.project_title or d.project_id }}</td>
                   <td data-label="{{ _('App form') }}">#{{ d.form_id }}</td>
@@ -234,6 +241,19 @@
                           action="{{ h.url_for('csunesco.data_source_approve', id=d.id) }}"
                           data-confirm="{{ _('Approve this data source and publish its dataset?') }}">
                       {{ h.csrf_input() }}
+                      {% if organizations %}
+                        <label class="cs-visually-hidden" for="org-d-{{ d.id }}">{{ _("Dataset organization") }}</label>
+                        <select id="org-d-{{ d.id }}" name="owner_org" class="cs-org-select">
+                          {% if preselected not in organizations %}
+                            {# Neither the suggestion nor the default exists yet:
+                               make the reviewer choose explicitly. #}
+                            <option value="" selected>{{ _("Choose organization…") }}</option>
+                          {% endif %}
+                          {% for org in organizations %}
+                            <option value="{{ org }}" {% if org == preselected %}selected{% endif %}>{{ org }}</option>
+                          {% endfor %}
+                        </select>
+                      {% endif %}
                       <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
                     </form>
                     <form method="post" class="cs-reject-form"

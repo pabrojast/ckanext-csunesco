@@ -103,6 +103,10 @@ def csunesco_data_source_create(context, data_dict):
     if source not in DATA_SOURCES:
         raise tk.ValidationError({'source': [tk._(
             'Source must be one of: %s') % ', '.join(sorted(DATA_SOURCES))]})
+    # Suggested CKAN organization for the dataset (the app keeps its orgs
+    # synchronized with the portal). NOT validated here -- the sysadmin sees
+    # and may change it at approval time, where it is resolved and checked.
+    owner_org = (data_dict.get('owner_org') or '').strip() or None
 
     now = _utcnow()
     existing = db.get_data_source_by_form(project.id, form_id)
@@ -116,6 +120,14 @@ def csunesco_data_source_create(context, data_dict):
             existing.rejection_reason = None
             existing.reviewed_by = None
             existing.reviewed_at = None
+            extras = db._load_json(existing.extras, {})
+            if not isinstance(extras, dict):
+                extras = {}
+            if owner_org:
+                extras['owner_org'] = owner_org
+            else:
+                extras.pop('owner_org', None)
+            existing.extras = json.dumps(extras)
             existing.modified = now
             model.Session.commit()
             return db.data_source_dictize(existing)
@@ -133,6 +145,8 @@ def csunesco_data_source_create(context, data_dict):
     data_source.status = 'pending'
     data_source.source = source
     data_source.created_by = current_user_id(context)
+    if owner_org:
+        data_source.extras = json.dumps({'owner_org': owner_org})
     data_source.created = now
     data_source.modified = now
     model.Session.add(data_source)
@@ -143,8 +157,11 @@ def csunesco_data_source_create(context, data_dict):
 def csunesco_data_source_approve(context, data_dict):
     """Approve a pending data source (sysadmin): creates the CKAN dataset.
 
-    The dataset is created BEFORE the status flips; if creation fails the row
-    stays pending and a generic error is raised (details go to the log only).
+    Optional ``owner_org`` overrides which organization owns the dataset
+    (default: the app-suggested org when it exists on the portal, else the
+    configured fallback). The dataset is created BEFORE the status flips; if
+    creation fails the row stays pending and a generic error is raised
+    (details go to the log only).
     """
     tk.check_access('csunesco_data_source_approve', context, data_dict)
     data_dict = data_dict or {}
@@ -158,9 +175,11 @@ def csunesco_data_source_approve(context, data_dict):
     project = db.get_project(data_source.project_id)
     if project is None:
         raise tk.ValidationError({'project_id': [tk._('Project not found')]})
+    override_org = (data_dict.get('owner_org') or '').strip() or None
 
     try:
-        sync = package_sync.ensure_dataset(context, project, data_source)
+        sync = package_sync.ensure_dataset(
+            context, project, data_source, override_org=override_org)
     except tk.ValidationError:
         raise
     except Exception:
@@ -180,6 +199,9 @@ def csunesco_data_source_approve(context, data_dict):
     if not isinstance(extras, dict):
         extras = {}
     extras['resource_ids'] = sync['resource_ids']
+    # Record the org that actually took the dataset so re-approvals and the
+    # admin UI show the real owner (not just the original suggestion).
+    extras['owner_org'] = sync['owner_org']
     data_source.extras = json.dumps(extras)
     data_source.modified = now
     model.Session.commit()

@@ -60,11 +60,37 @@ def _dataset_defaults():
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _owner_org(project):
+def resolve_owner_org(project, data_source, override_org=None):
+    """Which organization owns the dataset, in priority order.
+
+    1. ``override_org`` — the sysadmin's explicit choice at approval time.
+    2. The org suggested by the app (stored in the row's extras: ofform keeps
+       its organizations synchronized with the portal via ``ckan_slug``).
+    3. The project's own organization (``cs_project.organization_id``,
+       reserved for a future project→org mapping).
+    4. The configured default (``ckanext.csunesco.dataset_owner_org``).
+    """
+    if override_org:
+        return override_org
+    from ckanext.csunesco import db
+    extras = db._load_json(data_source.extras, {})
+    suggested = (extras.get('owner_org') or '').strip() \
+        if isinstance(extras, dict) else ''
+    if suggested:
+        return suggested
     org = getattr(project, 'organization_id', None)
     if org:
         return org
     return (tk.config.get(OWNER_ORG_OPTION) or '').strip() or None
+
+
+def _org_exists(context, owner_org):
+    try:
+        tk.get_action('organization_show')(
+            dict(context), {'id': owner_org})
+        return True
+    except tk.ObjectNotFound:
+        return False
 
 
 def _proxy_url(data_source_id, extension):
@@ -95,18 +121,35 @@ def _resource_dicts(data_source):
     ]
 
 
-def ensure_dataset(context, project, data_source):
+def ensure_dataset(context, project, data_source, override_org=None):
     """Create or refresh the CKAN package for ``data_source``.
 
-    Returns ``{'package_id': ..., 'resource_ids': [...]}``. Raises whatever the
-    core actions raise -- the caller decides how to surface failure (the approve
-    action leaves the row pending and reports a generic error).
+    ``override_org`` is the sysadmin's approval-time choice; otherwise the
+    app-suggested org from the row's extras applies, then the configured
+    default (see ``resolve_owner_org``). A suggested org that does NOT exist
+    on the portal falls back to the default instead of failing — the reviewer
+    saw (and could change) the selection in the approval form.
+
+    Returns ``{'package_id': ..., 'resource_ids': [...], 'owner_org': ...}``.
+    Raises whatever the core actions raise -- the caller decides how to surface
+    failure (the approve action leaves the row pending and reports it).
     """
-    owner_org = _owner_org(project)
+    owner_org = resolve_owner_org(project, data_source, override_org)
+    if owner_org and not _org_exists(context, owner_org):
+        if override_org:
+            # An EXPLICIT choice that does not resolve is an input error.
+            raise tk.ValidationError({'owner_org': [tk._(
+                'Organization not found: %s') % override_org]})
+        log.warning('csunesco: suggested org does not exist on this portal; '
+                    'falling back to the default organization')
+        owner_org = (tk.config.get(OWNER_ORG_OPTION) or '').strip() or None
+        if owner_org and not _org_exists(context, owner_org):
+            owner_org = None
     if not owner_org:
         raise tk.ValidationError({'owner_org': [tk._(
-            'No organization is configured for Citizen Science datasets. '
-            'Set ckanext.csunesco.dataset_owner_org.')]})
+            'No organization is available for Citizen Science datasets. '
+            'Set ckanext.csunesco.dataset_owner_org to an existing '
+            'organization or pick one when approving.')]})
 
     package_dict = dict(_dataset_defaults())
     package_dict.update({
@@ -142,4 +185,5 @@ def ensure_dataset(context, project, data_source):
                 dict(context), dict(resource, package_id=package['id']))
             resource_ids.append(created['id'])
 
-    return {'package_id': package['id'], 'resource_ids': resource_ids}
+    return {'package_id': package['id'], 'resource_ids': resource_ids,
+            'owner_org': owner_org}

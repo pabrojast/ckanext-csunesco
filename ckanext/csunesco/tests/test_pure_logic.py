@@ -561,3 +561,30 @@ def test_package_name_is_munged_and_bounded():
     assert len(name) <= package_sync.MAX_NAME_LENGTH
     assert name.startswith('cs-data-')
     assert name.endswith('-42')
+
+
+def test_resolve_owner_org_priority(monkeypatch):
+    # override > app-suggested (extras) > project org > configured default.
+    package_sync = pytest.importorskip(
+        'ckanext.csunesco.logic.package_sync')
+    monkeypatch.setitem(
+        tk.config, package_sync.OWNER_ORG_OPTION, 'default-org')
+
+    class _Project:
+        organization_id = None
+
+    class _DataSource:
+        extras = json.dumps({'owner_org': 'app-org'})
+
+    class _BareSource:
+        extras = '{}'
+
+    resolve = package_sync.resolve_owner_org
+    assert resolve(_Project, _DataSource, 'chosen-org') == 'chosen-org'
+    assert resolve(_Project, _DataSource) == 'app-org'
+    assert resolve(_Project, _BareSource) == 'default-org'
+    project_with_org = _Project()
+    project_with_org.organization_id = 'project-org'
+    assert resolve(project_with_org, _BareSource) == 'project-org'
+    # App suggestion still beats the project org (it is more specific).
+    assert resolve(project_with_org, _DataSource) == 'app-org'

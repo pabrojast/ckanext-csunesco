@@ -81,6 +81,16 @@ def admin_dashboard():
                        'content_requests': 0, 'data_requests': 0, 'total': 0},
         }
 
+    # Organization picker for the data tab (sysadmin only, fail-soft): the
+    # approve form preselects the app-suggested org when it exists on the
+    # portal, else the configured default -- and the reviewer can change it.
+    organizations = []
+    if _is_sysadmin() and data.get('data_requests'):
+        try:
+            organizations = tk.get_action('organization_list')(context, {})
+        except Exception:
+            log.warning('csunesco: organization list unavailable')
+
     return tk.render('csunesco/cs-admin-dashboard.html', extra_vars={
         'is_sysadmin': _is_sysadmin(),
         'project_requests': data.get('project_requests', []),
@@ -88,6 +98,9 @@ def admin_dashboard():
         'content_requests': data.get('content_requests', []),
         'data_requests': data.get('data_requests', []),
         'counts': data.get('counts', {}),
+        'organizations': organizations,
+        'default_owner_org': (
+            tk.config.get('ckanext.csunesco.dataset_owner_org') or '').strip(),
     })
 
 
@@ -150,7 +163,11 @@ def content_reject(id):
 
 
 def data_source_approve(id):
-    return _decide('csunesco_data_source_approve', {'id': id}, 'data',
+    data_dict = {'id': id}
+    owner_org = (request.form.get('owner_org') or '').strip()
+    if owner_org:
+        data_dict['owner_org'] = owner_org
+    return _decide('csunesco_data_source_approve', data_dict, 'data',
                    tk._('Data source approved. The dataset is now live.'))
 
 

@@ -150,7 +150,7 @@ config reload). Features gated on an option **fail closed** when it is unset.
 | `ckanext.csunesco.terria_base_url` | *(unset — maps disabled)* | Space-separated allowlist of Terria base URLs a `cs-map` may embed (e.g. `https://ihp-wins.unesco.org/terria`). Unset ⇒ the `cs-map` validator rejects every URL and stored maps render as plain links. List every host if Terria lives on several. |
 | `ckanext.csunesco.ofform_base_url` | *(unset — data pipeline disabled)* | The **only** origin the data proxy will fetch (the CS Toolbox API base, e.g. `https://ofform-api.aquedra.com`). Anti-SSRF: form ids are int-coerced into a fixed path under this base. |
 | `ckanext.csunesco.ofform_cache_ttl` | `60` | Seconds a proxied response (CSV / dashboard JSON) is cached per form. |
-| `ckanext.csunesco.dataset_owner_org` | *(unset)* | Organization (name or id) that owns the datasets created on data-source approval, used while `cs_project.organization_id` is not populated. Approval fails with a clear message when neither is set. |
+| `ckanext.csunesco.dataset_owner_org` | *(unset)* | **Fallback** organization for datasets created on data-source approval. The actual owner is resolved in priority order: the sysadmin's choice in the approval form → the org suggested by the app (`owner_org` in the request; ofform keeps its orgs synchronized with the portal via `ckan_slug`) → `cs_project.organization_id` → this option. A suggestion that does not exist on the portal falls back to this default. |
 | `ckanext.csunesco.dataset_defaults` | `{}` | Optional JSON object merged into `package_create` — use it to satisfy portal-schema (e.g. schemingdcat) required fields, licences, etc. |
 | `ckanext.data_stories.enabled` | — | Not ours (ckanext-pages), but when true the project landing shows a "Create a data story" entry point. |
 
@@ -171,7 +171,10 @@ never disagree). Four tabs:
    sysadmin content publishes directly, everything else (including *all*
    app-authored content) waits here.
 4. **Data to review** (sysadmin) — approving creates/refreshes a live CKAN
-   dataset fed by the CS Toolbox app (CSV + GeoJSON proxy resources). If
+   dataset fed by the CS Toolbox app (CSV + GeoJSON proxy resources). The
+   approve form includes an **organization picker** preselected with the
+   app-suggested org (when it exists on the portal) or the configured
+   default — the reviewer can change it before approving. If
    dataset creation fails (e.g. missing `dataset_owner_org` or portal-schema
    fields), the row **stays pending** and can be retried after fixing config.
    Data truncates at ofform's 20 000-row export cap. If a form owner later
