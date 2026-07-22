@@ -262,6 +262,36 @@ def _flatten_value(value):
         return str(value)
 
 
+def observation_site_keys(dashboard_data):
+    """Distinct coordinate keys (rounded to 4 decimals ~ 11 m) of the rows.
+
+    The working definition of a "site monitored". Returned as a set so
+    multi-source refreshes can union across forms without double counting.
+    """
+    rows = (dashboard_data or {}).get('rows') or []
+    return {
+        (round(float(row['lat']), 4), round(float(row['lng']), 4))
+        for row in rows
+        if isinstance(row, dict) and _valid_coord(row.get('lat'),
+                                                  row.get('lng'))
+    }
+
+
+def observation_stats(dashboard_data):
+    """Pure counters from a dashboard-data payload (unit-testable).
+
+    ``observations`` prefers the upstream ``total`` (accurate even when the
+    row list is truncated); ``sites`` counts :func:`observation_site_keys`.
+    """
+    data = dashboard_data or {}
+    total = data.get('total')
+    return {
+        'observations': int(total) if total is not None
+        else len(data.get('rows') or []),
+        'sites': len(observation_site_keys(data)),
+    }
+
+
 def rows_to_geojson(dashboard_data):
     """Convert ofform dashboard-data into a GeoJSON ``FeatureCollection``.
 

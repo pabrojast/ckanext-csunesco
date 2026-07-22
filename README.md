@@ -189,8 +189,6 @@ never disagree). Four tabs:
 
 - Email notification / daily digest to sysadmins when items land in the
   review queue (SMTP is already configured on the portal).
-- Automatic `cs_project_stats` counters (observations/sites) refreshed from
-  the proxy fetch totals instead of manual upkeep.
 - Bulk approve (checkbox selection) in the content and data tabs.
 - Per-project `trusted` flag auto-approving news/events only (policy call).
 - Auto-enqueue the data-source request when approving an app-originated
@@ -220,7 +218,16 @@ ckan.auth.create_user_via_web = true
 ```bash
 ckan -c /etc/ckan/default/ckan.ini csunesco init-db          # also self-heals on load
 ckan -c /etc/ckan/default/ckan.ini csunesco seed-initiatives # the 4 initiative groups
+ckan -c /etc/ckan/default/ckan.ini csunesco stats-refresh    # observation counters (cron-able)
 ```
+
+**At-a-Glance counters.** Observations and monitored sites are recomputed
+from the connected (approved) app data sources: automatically on data-source
+approval and on every landing-page map view, and in bulk via `csunesco
+stats-refresh` (schedule it if you want them fresh without traffic). Citizen
+scientists = distinct registered profiles ∪ active members of approved
+projects; member states = distinct countries declared across approved
+projects. Outages keep the last stored values (never zeroed).
 
 ## ofform integration
 

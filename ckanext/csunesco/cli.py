@@ -23,6 +23,38 @@ def init_db():
     click.echo('ckanext-csunesco: database tables ensured.')
 
 
+@csunesco.command('stats-refresh')
+def stats_refresh():
+    """Recompute observation counters from the connected app data (cron-able).
+
+    Iterates every APPROVED data source, fetches its public dashboard data
+    from the CS Toolbox app and stores per-project totals (observations +
+    distinct monitored sites). Safe to run any time; outages keep the last
+    known values instead of zeroing.
+    """
+    from ckanext.csunesco import db
+    from ckanext.csunesco.logic.action.data import refresh_project_stats
+
+    db.ensure_mappers()
+    _total, sources = db.list_data_sources(status='approved', limit=1000)
+    project_ids = sorted({s.project_id for s in sources if s.project_id})
+    if not project_ids:
+        click.echo('no approved data sources; nothing to refresh.')
+        return
+    for project_id in project_ids:
+        try:
+            result = refresh_project_stats(project_id)
+        except Exception as exc:
+            click.echo('failed:  %s (%s)' % (project_id, type(exc).__name__))
+            continue
+        if result is None:
+            click.echo('skipped: %s (upstream unavailable)' % project_id)
+        else:
+            click.echo('updated: %s (observations=%s, sites=%s)' % (
+                project_id, result['observations'],
+                result['sites_monitored']))
+
+
 @csunesco.command('seed-initiatives')
 def seed_initiatives():
     """Idempotently create/sync the Citizen Science initiative groups.

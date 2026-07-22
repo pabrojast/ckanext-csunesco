@@ -516,6 +516,25 @@ def test_rows_to_geojson_skips_invalid_rows_and_flattens_answers():
     assert json.loads(props['nested']) == {'k': 1}   # dicts JSON-dumped
 
 
+def test_observation_stats_counts_totals_and_distinct_sites():
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    data = {
+        'total': 500,                       # upstream total wins (truncation)
+        'rows': [
+            {'lat': -33.4501, 'lng': -70.66},
+            {'lat': -33.45012, 'lng': -70.66004},   # same site at 4 decimals
+            {'lat': -33.5, 'lng': -70.7},
+            {'lat': None, 'lng': -70},              # no coords -> no site
+        ],
+    }
+    stats = ofform.observation_stats(data)
+    assert stats['observations'] == 500
+    assert stats['sites'] == 2
+    # Without an upstream total, fall back to the row count.
+    assert ofform.observation_stats({'rows': [{'a': 1}]})['observations'] == 1
+    assert ofform.observation_stats(None) == {'observations': 0, 'sites': 0}
+
+
 def test_rows_to_geojson_tolerates_empty_input():
     ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
     empty = {'type': 'FeatureCollection', 'features': []}

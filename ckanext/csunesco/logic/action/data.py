@@ -205,7 +205,14 @@ def csunesco_data_source_approve(context, data_dict):
     data_source.extras = json.dumps(extras)
     data_source.modified = now
     model.Session.commit()
-    return db.data_source_dictize(data_source)
+    result = db.data_source_dictize(data_source)
+    # Newly approved data should reflect in the At-a-Glance counters right
+    # away (the probe already warmed the cache). Never fails the approval.
+    try:
+        refresh_project_stats(data_source.project_id)
+    except Exception:
+        log.warning('csunesco: stats refresh after approval failed')
+    return result
 
 
 def csunesco_data_source_reject(context, data_dict):
@@ -229,6 +236,40 @@ def csunesco_data_source_reject(context, data_dict):
     data_source.modified = now
     model.Session.commit()
     return db.data_source_dictize(data_source)
+
+
+def refresh_project_stats(project_id):
+    """Recompute observations/sites for a project from its APPROVED sources.
+
+    Fetches each connected form's public dashboard data (TTL-cached), sums the
+    observation totals and unions the distinct site coordinates across
+    sources. Fail-soft by design: an unreachable source contributes nothing,
+    and when EVERY upstream is down the last stored values are kept (never
+    zeroed by an outage). Commits on success; returns the stored dict or
+    ``None`` when nothing was refreshed.
+    """
+    from ckanext.csunesco.logic import ofform
+    _total, sources = db.list_data_sources(
+        project_id=project_id, status='approved', limit=100)
+    if not sources:
+        return None
+    observations = 0
+    sites = set()
+    fetched = 0
+    for source in sources:
+        try:
+            data = ofform.fetch_dashboard_data(source.form_id)
+        except ofform.OfformError:
+            continue
+        observations += ofform.observation_stats(data)['observations']
+        sites |= ofform.observation_site_keys(data)
+        fetched += 1
+    if not fetched:
+        return None
+    db.stats_set(project_id, observations=observations,
+                 sites_monitored=len(sites))
+    model.Session.commit()
+    return {'observations': observations, 'sites_monitored': len(sites)}
 
 
 def _can_view_unapproved(context, data_source):

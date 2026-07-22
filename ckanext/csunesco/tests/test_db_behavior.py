@@ -382,28 +382,67 @@ def test_aggregate_stats_only_counts_approved(session):
     approved.slug = 'a'
     approved.title = 'A'
     approved.status = 'approved'
+    approved.countries = json.dumps(['Chile', 'Peru'])
     pending = db.CsProject()
     pending.slug = 'b'
     pending.title = 'B'
     pending.status = 'pending'
+    pending.countries = json.dumps(['France'])   # excluded (not approved)
     session.add_all([approved, pending])
     session.flush()
 
     for project, observations in ((approved, 10), (pending, 99)):
         stats = db.CsProjectStats()
         stats.project_id = project.id
-        stats.citizen_scientists = 1
         stats.observations = observations
         stats.sites_monitored = 2
-        stats.member_states = 3
         session.add(stats)
+    # Citizen scientists = registered profiles UNION active members of
+    # approved projects (u1 is both -> counted once; pending member ignored).
+    profile = db.CsCitizenScientist()
+    profile.user_id = 'u1'
+    active = db.CsProjectMember()
+    active.project_id = approved.id
+    active.user_id = 'u1'
+    active.status = 'active'
+    other = db.CsProjectMember()
+    other.project_id = approved.id
+    other.user_id = 'u2'
+    other.status = 'active'
+    waiting = db.CsProjectMember()
+    waiting.project_id = approved.id
+    waiting.user_id = 'u3'
+    waiting.status = 'pending'
+    session.add_all([profile, active, other, waiting])
     session.commit()
 
     agg = db.aggregate_stats()
     assert agg['observations'] == 10       # pending project excluded
-    assert agg['citizen_scientists'] == 1
     assert agg['sites_monitored'] == 2
-    assert agg['member_states'] == 3
+    assert agg['citizen_scientists'] == 2  # u1 (deduped) + u2
+    assert agg['member_states'] == 2       # Chile + Peru (France excluded)
+
+
+def test_stats_set_writes_absolute_values(session):
+    project = db.CsProject()
+    project.slug = 'abs'
+    project.title = 'Abs'
+    project.status = 'approved'
+    session.add(project)
+    session.flush()
+
+    db.stats_set(project.id, observations=123, sites_monitored=7)
+    session.commit()
+    stats = db.get_stats(project.id)
+    assert stats.observations == 123
+    assert stats.sites_monitored == 7
+
+    # Absolute semantics: a second refresh REPLACES, never accumulates.
+    db.stats_set(project.id, observations=50)
+    session.commit()
+    stats = db.get_stats(project.id)
+    assert stats.observations == 50
+    assert stats.sites_monitored == 7      # untouched field preserved
 
 
 def test_aggregate_stats_zero_when_empty(session):

@@ -592,38 +592,92 @@ def stats_increment(project_id, field, delta):
     ).scalar()
 
 
-def aggregate_stats():
-    """Sum the four counters across all APPROVED projects in ONE query.
+def stats_set(project_id, observations=None, sites_monitored=None):
+    """Set ABSOLUTE values for the data-derived counters of one project.
 
-    Joins each project's counter row to its project and restricts to
-    ``status='approved'``, wrapping every ``SUM`` in ``COALESCE(..., 0)`` so the
-    result is always four integers (zeros when there are no approved projects,
-    or no counter rows at all). Read-only: a single SELECT on the caller's
-    session, never commits. The ``status`` literal is a bound parameter -- there
-    is no SQL-injection surface here.
+    Unlike :func:`stats_increment` (event counters like joins), the
+    observation counters are periodically recomputed from the connected data
+    sources, so they need a setter, not a delta. Field names are hard-coded --
+    no injection surface. Ensures the counter row exists; runs in the caller's
+    session (commit is the caller's job, matching the other helpers).
+    """
+    _ensure_mappers()
+    ensure_stats(project_id)
+    updates = {}
+    if observations is not None:
+        updates['observations'] = int(observations)
+    if sites_monitored is not None:
+        updates['sites_monitored'] = int(sites_monitored)
+    if not updates:
+        return
+    sets = ', '.join('{0} = :{0}'.format(field) for field in updates)
+    params = dict(updates, modified=_utcnow(), pid=project_id)
+    Session.execute(
+        sa.text('UPDATE cs_project_stats SET ' + sets +
+                ', modified = :modified WHERE project_id = :pid'),
+        params,
+    )
+    # The raw UPDATE bypasses the ORM: expire any identity-mapped instance so
+    # the next get_stats() read reloads the fresh values instead of stale ones.
+    cached = Session.query(CsProjectStats).get(project_id)
+    if cached is not None:
+        Session.expire(cached)
+
+
+def aggregate_stats():
+    """At-a-glance totals across APPROVED projects (hub band).
+
+    * ``observations`` / ``sites_monitored``: summed from the per-project
+      counter rows (kept fresh from the connected data sources by
+      ``stats_set`` refreshes).
+    * ``citizen_scientists``: DISTINCT people -- registered Citizen Scientist
+      profiles UNION active members of approved projects -- so migrated or
+      web-registered scientists count even before they join a project.
+    * ``member_states``: DISTINCT countries declared across approved projects
+      (the per-project integer counter was never fed by anything).
+
+    Read-only; never commits. All literals are bound parameters.
     """
     _ensure_mappers()
     row = Session.execute(
         sa.text(
             'SELECT '
-            'COALESCE(SUM(s.citizen_scientists), 0), '
             'COALESCE(SUM(s.observations), 0), '
-            'COALESCE(SUM(s.sites_monitored), 0), '
-            'COALESCE(SUM(s.member_states), 0) '
+            'COALESCE(SUM(s.sites_monitored), 0) '
             'FROM cs_project_stats s '
             'JOIN cs_project p ON p.id = s.project_id '
             'WHERE p.status = :status'
         ),
         {'status': 'approved'},
     ).first()
-    if row is None:
-        return {'citizen_scientists': 0, 'observations': 0,
-                'sites_monitored': 0, 'member_states': 0}
+    observations = int(row[0] or 0) if row is not None else 0
+    sites = int(row[1] or 0) if row is not None else 0
+
+    profile_ids = {
+        user_id for (user_id,) in
+        Session.query(CsCitizenScientist.user_id).all() if user_id
+    }
+    member_ids = {
+        user_id for (user_id,) in
+        Session.query(CsProjectMember.user_id)
+        .join(CsProject, CsProject.id == CsProjectMember.project_id)
+        .filter(CsProject.status == 'approved')
+        .filter(CsProjectMember.status == 'active')
+        .all() if user_id
+    }
+
+    countries = set()
+    for (raw,) in (Session.query(CsProject.countries)
+                   .filter(CsProject.status == 'approved').all()):
+        parsed = _load_json(raw, [])
+        if isinstance(parsed, list):
+            countries.update(str(c).strip() for c in parsed if str(c).strip())
+
     return {
-        'citizen_scientists': int(row[0] or 0),
-        'observations': int(row[1] or 0),
-        'sites_monitored': int(row[2] or 0),
-        'member_states': int(row[3] or 0),
+        'citizen_scientists': len(profile_ids | member_ids),
+        'observations': observations,
+        'sites_monitored': sites,
+        'member_states': len(countries),
     }
 
 
