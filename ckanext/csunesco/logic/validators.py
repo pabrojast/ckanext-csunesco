@@ -49,13 +49,26 @@ def _initiative_names():
 
 
 def csunesco_valid_initiative(value):
-    """Accept only one of the known Citizen Science initiative group names."""
+    """Accept a known Citizen Science initiative name (hyphen-tolerant).
+
+    The CS Toolbox app historically used hyphenated slugs (``river-watch``,
+    ``island-watch``) for groups whose canonical CKAN names have none
+    (``riverwatch``, ``islandwatch``); the outbox retries those payloads
+    verbatim, so aliases must NORMALIZE to the canonical name here rather
+    than bounce forever. The returned (stored) value is always canonical.
+    """
     if value in (None, ''):
         return value
-    if value not in _initiative_names():
-        raise tk.Invalid(
-            tk._('Unknown Citizen Science initiative: %s') % value)
-    return value
+    names = _initiative_names()
+    candidate = str(value).strip().lower()
+    if candidate in names:
+        return candidate
+    dehyphenated = {name.replace('-', ''): name for name in names}
+    alias = dehyphenated.get(candidate.replace('-', ''))
+    if alias is not None:
+        return alias
+    raise tk.Invalid(
+        tk._('Unknown Citizen Science initiative: %s') % value)
 
 
 def csunesco_valid_slug(value):

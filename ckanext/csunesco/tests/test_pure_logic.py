@@ -40,6 +40,14 @@ def test_valid_initiative_accepts_known_name():
     assert v.csunesco_valid_initiative('riverwatch') == 'riverwatch'
 
 
+def test_valid_initiative_normalizes_hyphenated_aliases():
+    # The CS Toolbox app sends hyphenated slugs; they must normalize to the
+    # canonical group names (never bounce, never store the alias).
+    assert v.csunesco_valid_initiative('river-watch') == 'riverwatch'
+    assert v.csunesco_valid_initiative('island-watch') == 'islandwatch'
+    assert v.csunesco_valid_initiative('beresilient') == 'be-resilient'
+
+
 def test_valid_initiative_passes_empty_through():
     assert v.csunesco_valid_initiative('') == ''
     assert v.csunesco_valid_initiative(None) is None
