@@ -249,7 +249,7 @@
                       <br>
                       {% if d.probe.ok %}
                         <span class="cs-muted">
-                          ✓ {{ _("%(n)s observations") % {'n': d.probe.total} }}{% if d.probe.with_coords is not none %} ({{ d.probe.with_coords }} {{ _("geolocated") }}){% endif %}{% if d.probe.first_date %} · {{ d.probe.first_date }} → {{ d.probe.last_date or d.probe.first_date }}{% endif %}{% if d.probe.truncated %} · {{ _("truncated") }}{% endif %}
+                          ✓ {{ _("%(n)s observations", n=d.probe.total) }}{% if d.probe.with_coords is not none %} ({{ d.probe.with_coords }} {{ _("geolocated") }}){% endif %}{% if d.probe.first_date %} · {{ d.probe.first_date }} → {{ d.probe.last_date or d.probe.first_date }}{% endif %}{% if d.probe.truncated %} · {{ _("truncated") }}{% endif %}
                         </span>
                       {% else %}
                         <span class="cs-status-badge cs-status-rejected">{{ _("Form not reachable or not public in the app") }}</span>

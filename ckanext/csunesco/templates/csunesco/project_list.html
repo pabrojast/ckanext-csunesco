@@ -70,7 +70,7 @@
               {% else %}
                 <a class="cs-page"
                    href="{{ h.url_for('csunesco.project_list', page=p, initiative=selected_initiative, q=q) }}"
-                   aria-label="{{ _('Go to page %(n)s') % {'n': p} }}">{{ p }}</a>
+                   aria-label="{{ _('Go to page %(n)s', n=p) }}">{{ p }}</a>
               {% endif %}
             </li>
           {% endfor %}

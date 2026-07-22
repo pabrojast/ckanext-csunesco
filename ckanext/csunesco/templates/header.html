@@ -28,7 +28,7 @@
       {# bg-warning + text-dark keeps AA-level contrast for the count badge. #}
       <a class="nav-link"
          href="{{ h.url_for('csunesco.admin_dashboard') }}"
-         aria-label="{{ _('Citizen Science: %(count)s items awaiting review') % {'count': cs_pending} }}">
+         aria-label="{{ _('Citizen Science: %(count)s items awaiting review', count=cs_pending) }}">
         {{ _('Review') }}
         <span class="badge bg-warning text-dark">{{ cs_pending }}</span>
       </a>

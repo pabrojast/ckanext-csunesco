@@ -15,7 +15,9 @@
 {% block cs_content %}
   <section class="cs-hero" aria-labelledby="cs-init-title">
     <h1 id="cs-init-title">{{ initiative.title }}</h1>
-    <p>{{ _("Community projects contributing to the %(name)s initiative.") % {'name': initiative.title} }}</p>
+    {# Newstyle gettext: variables go as kwargs of _() — an explicit `%` after
+       _() crashes because gettext already formatted with an empty mapping. #}
+    <p>{{ _("Community projects contributing to the %(name)s initiative.", name=initiative.title) }}</p>
   </section>
 
   <section class="cs-section" aria-labelledby="cs-init-projects-title">
