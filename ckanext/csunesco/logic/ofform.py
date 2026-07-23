@@ -113,7 +113,12 @@ def _fetch(path, timeout=REQUEST_TIMEOUT):
         raise OfformError('ofform base URL is not configured')
     url = base + path
     request = urllib.request.Request(
-        url, headers={'Accept': 'application/json, text/csv, */*'})
+        url, headers={
+            'Accept': 'application/json, text/csv, */*',
+            # Explicit UA: Cloudflare's bot protection 403s the default
+            # Python-urllib agent, silently breaking the whole proxy.
+            'User-Agent': 'ckanext-csunesco (IHP-WINS data proxy)',
+        })
     try:
         with urllib.request.urlopen(request, timeout=timeout) as resp:
             chunks = []
