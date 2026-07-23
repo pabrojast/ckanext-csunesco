@@ -151,11 +151,16 @@ def ensure_dataset(context, project, data_source, override_org=None):
             'Set ckanext.csunesco.dataset_owner_org to an existing '
             'organization or pick one when approving.')]})
 
+    title = data_source.title or project.title
     package_dict = dict(_dataset_defaults())
     package_dict.update({
         'name': package_name(project, data_source),
-        'title': data_source.title or project.title,
+        'title': title,
+        # Fluent/schemingdcat portals read title_translated and would fall
+        # back to the slug otherwise; vanilla CKAN silently ignores the key.
+        'title_translated': {'en': title},
         'notes': data_source.description or '',
+        'notes_translated': {'en': data_source.description or ''},
         'owner_org': owner_org,
     })
     # Portal schemas (schemingdcat) require a per-dataset identifier; the
