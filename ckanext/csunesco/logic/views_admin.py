@@ -203,6 +203,9 @@ def content_reject(id):
 
 # Tope defensivo de filas por request de bulk-approve (el panel pagina de a 20).
 BULK_APPROVE_MAX = 100
+# Data sources: cada aprobación crea un dataset CKAN (lento, puede fallar por
+# fila), así que el lote es más chico.
+BULK_DATA_APPROVE_MAX = 20
 
 
 def content_bulk_approve():
@@ -235,6 +238,43 @@ def content_bulk_approve():
         tk.h.flash_error(
             tk._('%(n)s item(s) could not be approved.') % {'n': failed})
     return _redirect_dashboard('content')
+
+
+def data_source_bulk_approve():
+    """Approve a batch of data sources (checkbox selection, P2b).
+
+    Best-effort per row WITHOUT an org override: a sysadmin approval honors
+    the app-suggested org (as the single-row form preselects it) and an
+    initiative-admin approval falls to the project/default org. Rows whose
+    org cannot be resolved fail individually (ValidationError) and are
+    reported in the summary — the rest of the batch still lands.
+    """
+    if not tk.g.user:
+        return _not_authorized_response()
+    ids = [i for i in request.form.getlist('data_ids')
+           if i][:BULK_DATA_APPROVE_MAX]
+    if not ids:
+        tk.h.flash_error(tk._('Select at least one data source.'))
+        return _redirect_dashboard('data')
+    context = _context()
+    approved = 0
+    failed = 0
+    for source_id in ids:
+        try:
+            tk.get_action('csunesco_data_source_approve')(
+                dict(context), {'id': source_id})
+            approved += 1
+        except Exception:
+            failed += 1
+    if approved:
+        tk.h.flash_success(
+            tk._('Approved %(n)s data source(s); their datasets are live.')
+            % {'n': approved})
+    if failed:
+        tk.h.flash_error(
+            tk._('%(n)s data source(s) could not be approved (they remain '
+                 'pending).') % {'n': failed})
+    return _redirect_dashboard('data')
 
 
 def project_trusted_set(slug):

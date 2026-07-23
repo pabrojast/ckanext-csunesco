@@ -89,6 +89,7 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | POST | `/citizen-science/admin/content/<id>/approve` · `/reject` | Moderate a content item | sysadmin **or** the content's initiative admin |
 | POST | `/citizen-science/admin/data/<id>/approve` · `/reject` | Moderate a data source (approve creates the CKAN dataset) | sysadmin **or** the source's initiative admin (org override is sysadmin-only) |
 | POST | `/citizen-science/admin/content/bulk-approve` | Approve a checkbox selection of content rows (≤100, per-row auth) | sysadmin **or** initiative admin (per row) |
+| POST | `/citizen-science/admin/data/bulk-approve` | Approve a checkbox selection of data sources (≤20, per-row auth; suggested/default org) | sysadmin **or** initiative admin (per row) |
 | POST | `/citizen-science/project/<slug>/trusted` | Toggle the project's trusted flag | sysadmin |
 
 All POST forms carry CKAN's CSRF token (`h.csrf_input()`); mutating routes use
@@ -208,9 +209,11 @@ Four tabs:
   queue. Trust supersedes rejection for news/events: editing a rejected item
   in a trusted project republishes it without review (same power as creating
   a new one). `csunesco_project_trusted_set` is the API lever.
-- **Bulk approve** in the content tab: checkbox selection + "Approve
-  selected" (capped at 100 per request); each row re-checks authorization
-  individually, failures never abort the batch.
+- **Bulk approve** in the content tab (≤100 per request) and in the data tab
+  (≤20 — each approval creates a dataset): checkbox selection + "Approve
+  selected"; every row re-checks authorization individually and failures
+  never abort the batch. Bulk data approvals use each row's suggested org
+  (or the configured default); unresolvable rows stay pending.
 - Join decisions now record their reviewer (`cs_project_member.reviewed_by`
   / `reviewed_at`, auto-healed columns).
 
@@ -218,8 +221,6 @@ Four tabs:
 
 - Email notification / daily digest to sysadmins when items land in the
   review queue (SMTP is already configured on the portal).
-- Bulk approve in the data tab (each approval creates a dataset, so it needs
-  per-row org resolution + partial-failure UX).
 - Auto-enqueue the data-source request when approving an app-originated
   project that already has published forms.
 

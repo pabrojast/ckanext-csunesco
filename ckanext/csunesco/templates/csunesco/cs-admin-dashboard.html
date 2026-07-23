@@ -248,11 +248,20 @@
         <h2 class="cs-visually-hidden">{{ _("Data to review") }}</h2>
         <p class="cs-hint">
           {{ _("Approving a data source publishes a live dataset on IHP-WINS fed by the CS Toolbox app.") }}
+          {{ _("Bulk approval uses each row's suggested organization (or the configured default); rows without a resolvable organization fail individually and stay pending.") }}
         </p>
         {% if data_requests %}
+          {# External bulk form (checkboxes reference it via form="...", same
+             pattern as the content tab -- nested forms are invalid HTML). #}
+          <form method="post" id="cs-bulk-data-form"
+                action="{{ h.url_for('csunesco.data_source_bulk_approve') }}"
+                data-confirm="{{ _('Approve every selected data source and publish their datasets?') }}">
+            {{ h.csrf_input() }}
+          </form>
           <table class="cs-admin-table">
             <thead>
               <tr>
+                <th scope="col">{{ _("Select") }}</th>
                 <th scope="col">{{ _("Title") }}</th>
                 <th scope="col">{{ _("Project") }}</th>
                 <th scope="col">{{ _("App form") }}</th>
@@ -267,6 +276,13 @@
                 {% set suggested = d.owner_org if d.owner_org in organizations else None %}
                 {% set preselected = suggested or default_owner_org %}
                 <tr>
+                  <td data-label="{{ _('Select') }}">
+                    {# Filas ya scoped server-side (sysadmin: todas; ADM: solo
+                       su iniciativa), así que toda fila visible es aprobable. #}
+                    <input type="checkbox" name="data_ids" value="{{ d.id }}"
+                           form="cs-bulk-data-form"
+                           aria-label="{{ _('Select for bulk approval') }}">
+                  </td>
                   <td data-label="{{ _('Title') }}">
                     <strong>{{ d.title }}</strong>
                     {% if d.description %}<br><span class="cs-muted">{{ d.description | striptags | truncate(120) }}</span>{% endif %}
@@ -324,6 +340,10 @@
               {% endfor %}
             </tbody>
           </table>
+          <button type="submit" form="cs-bulk-data-form"
+                  class="cs-btn cs-btn-primary cs-btn-sm">
+            {{ _("Approve selected") }}
+          </button>
         {% else %}
           <p class="cs-empty">{{ _("No data sources are awaiting review.") }}</p>
         {% endif %}
