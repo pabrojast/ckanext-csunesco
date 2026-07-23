@@ -592,8 +592,20 @@ def stats_increment(project_id, field, delta):
     ).scalar()
 
 
-def stats_set(project_id, observations=None, sites_monitored=None):
-    """Set ABSOLUTE values for the data-derived counters of one project.
+def count_active_members(project_id):
+    """Distinct ACTIVE members of one project (its per-project people count)."""
+    _ensure_mappers()
+    return (
+        Session.query(CsProjectMember.id)
+        .filter(CsProjectMember.project_id == project_id)
+        .filter(CsProjectMember.status == 'active')
+        .count()
+    )
+
+
+def stats_set(project_id, observations=None, sites_monitored=None,
+              citizen_scientists=None):
+    """Set ABSOLUTE values for the recomputed counters of one project.
 
     Unlike :func:`stats_increment` (event counters like joins), the
     observation counters are periodically recomputed from the connected data
@@ -608,6 +620,8 @@ def stats_set(project_id, observations=None, sites_monitored=None):
         updates['observations'] = int(observations)
     if sites_monitored is not None:
         updates['sites_monitored'] = int(sites_monitored)
+    if citizen_scientists is not None:
+        updates['citizen_scientists'] = int(citizen_scientists)
     if not updates:
         return
     sets = ', '.join('{0} = :{0}'.format(field) for field in updates)

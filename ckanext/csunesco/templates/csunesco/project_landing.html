@@ -29,20 +29,24 @@
 
   {% snippet "csunesco/snippets/at_a_glance.html", stats=stats %}
 
-  {# ---- Region map ----------------------------------------------------- #}
-  <section class="cs-section" aria-labelledby="cs-map-title">
-    <h2 id="cs-map-title" class="cs-section-title">{{ _("Project Region") }}</h2>
-    <div id="cs-map" class="cs-map"
-         {% if has_region %}data-geojson-url="{{ h.csunesco_project_url(project.slug) }}/geojson"{% endif %}
-         role="img" aria-label="{{ _('Map of the project region') }}">
-      <div class="cs-map-skeleton" aria-hidden="true"{% if not has_region %} hidden{% endif %}>
-        <span class="cs-map-skeleton-text">{{ _("Loading map…") }}</span>
+  {# ---- Region map (only when a region exists: an empty full-height box
+        pushes the real content below the fold; the Data section already
+        carries the observation maps). ------------------------------------ #}
+  {% if has_region %}
+    <section class="cs-section" aria-labelledby="cs-map-title">
+      <h2 id="cs-map-title" class="cs-section-title">{{ _("Project Region") }}</h2>
+      <div id="cs-map" class="cs-map"
+           data-geojson-url="{{ h.csunesco_project_url(project.slug) }}/geojson"
+           role="img" aria-label="{{ _('Map of the project region') }}">
+        <div class="cs-map-skeleton" aria-hidden="true">
+          <span class="cs-map-skeleton-text">{{ _("Loading map…") }}</span>
+        </div>
+        <p class="cs-map-fallback" hidden>
+          {{ _("No region defined for this project.") }}
+        </p>
       </div>
-      <p class="cs-map-fallback"{% if has_region %} hidden{% endif %}>
-        {{ _("No region defined for this project.") }}
-      </p>
-    </div>
-  </section>
+    </section>
+  {% endif %}
 
   {# ---- Description (pre-sanitized landing_content) -------------------- #}
   {% if project.landing_content %}

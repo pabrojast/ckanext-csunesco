@@ -266,10 +266,14 @@ def refresh_project_stats(project_id):
         fetched += 1
     if not fetched:
         return None
+    # The per-project people counter tracks ACTIVE members (the join counter
+    # drifts: project approval seeds the creator without incrementing it).
+    members = db.count_active_members(project_id)
     db.stats_set(project_id, observations=observations,
-                 sites_monitored=len(sites))
+                 sites_monitored=len(sites), citizen_scientists=members)
     model.Session.commit()
-    return {'observations': observations, 'sites_monitored': len(sites)}
+    return {'observations': observations, 'sites_monitored': len(sites),
+            'citizen_scientists': members}
 
 
 def _can_view_unapproved(context, data_source):
