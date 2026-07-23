@@ -29,6 +29,30 @@
 
   {% snippet "csunesco/snippets/at_a_glance.html", stats=stats %}
 
+  {# ---- Trusted toggle (sysadmin-only policy lever, P2): trusted projects
+        publish news/events without review. ------------------------------- #}
+  {% if h.check_access('csunesco_project_trusted_set', {'id': project.id}) %}
+    <section class="cs-section" aria-label="{{ _('Trust policy') }}">
+      <form method="post"
+            action="{{ h.url_for('csunesco.project_trusted_set', slug=project.slug) }}"
+            data-confirm="{{ _('Change the review policy for this project?') }}">
+        {{ h.csrf_input() }}
+        <input type="hidden" name="trusted"
+               value="{{ 'false' if project.trusted else 'true' }}">
+        <span class="cs-muted">
+          {% if project.trusted %}
+            {{ _("Trusted project: its news and events publish without review.") }}
+          {% else %}
+            {{ _("News and events of this project queue for review.") }}
+          {% endif %}
+        </span>
+        <button type="submit" class="cs-btn cs-btn-secondary cs-btn-sm">
+          {{ _("Remove trust") if project.trusted else _("Mark as trusted") }}
+        </button>
+      </form>
+    </section>
+  {% endif %}
+
   {# ---- Region map (only when a region exists: an empty full-height box
         pushes the real content below the fold; the Data section already
         carries the observation maps). ------------------------------------ #}

@@ -124,6 +124,18 @@ def content_reject(id):
     return views_admin.content_reject(id)
 
 
+def content_bulk_approve():
+    """POST: approve a checkbox selection of content rows (best-effort)."""
+    from ckanext.csunesco.logic import views_admin
+    return views_admin.content_bulk_approve()
+
+
+def project_trusted_set(slug):
+    """POST: toggle a project's trusted flag (sysadmin-only)."""
+    from ckanext.csunesco.logic import views_admin
+    return views_admin.project_trusted_set(slug)
+
+
 # ---------------------------------------------------------------------------
 # Increment 5, Part B -- public news/events + content editor.
 # ---------------------------------------------------------------------------
@@ -288,6 +300,12 @@ csunesco_bp.add_url_rule(
     methods=['POST'])
 csunesco_bp.add_url_rule(
     '/admin/content/<id>/reject', 'content_reject', content_reject,
+    methods=['POST'])
+csunesco_bp.add_url_rule(
+    '/admin/content/bulk-approve', 'content_bulk_approve',
+    content_bulk_approve, methods=['POST'])
+csunesco_bp.add_url_rule(
+    '/project/<slug>/trusted', 'project_trusted_set', project_trusted_set,
     methods=['POST'])
 csunesco_bp.add_url_rule(
     '/admin/data/<id>/approve', 'data_source_approve', data_source_approve,

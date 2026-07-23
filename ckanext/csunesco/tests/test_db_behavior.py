@@ -455,3 +455,49 @@ def test_aggregate_stats_zero_when_empty(session):
         'citizen_scientists': 0, 'observations': 0,
         'sites_monitored': 0, 'member_states': 0,
     }
+
+
+# ---------------------------------------------------------------------------
+# P2: join audit trail (reviewed_by/reviewed_at) + trusted flag
+# ---------------------------------------------------------------------------
+
+def test_set_member_status_persists_reviewer(session):
+    member = db.CsProjectMember()
+    member.project_id = 'p9'
+    member.user_id = 'u9'
+    session.add(member)
+    session.commit()
+
+    got = db.set_member_status('p9', 'u9', 'active', reviewed_by='reviewer-1')
+    session.commit()
+    assert got.status == 'active'
+    assert got.reviewed_by == 'reviewer-1'
+    assert got.reviewed_at is not None
+
+    row = db.member_dictize(db.project_member('p9', 'u9'))
+    assert row['reviewed_by'] == 'reviewer-1'
+    assert row['reviewed_at'] is not None
+
+    # Without a reviewer the previous audit values are preserved.
+    db.set_member_status('p9', 'u9', 'rejected')
+    session.commit()
+    kept = db.project_member('p9', 'u9')
+    assert kept.status == 'rejected'
+    assert kept.reviewed_by == 'reviewer-1'
+
+
+def test_project_trusted_default_false_and_dictized(session):
+    project = db.CsProject()
+    project.slug = 'trusty'
+    project.title = 'Trusty'
+    project.status = 'approved'
+    session.add(project)
+    session.commit()
+
+    got = session.query(db.CsProject).filter_by(slug='trusty').one()
+    assert bool(got.trusted) is False           # column default
+    assert db.project_dictize(got)['trusted'] is False
+
+    got.trusted = True
+    session.commit()
+    assert db.project_dictize(got)['trusted'] is True

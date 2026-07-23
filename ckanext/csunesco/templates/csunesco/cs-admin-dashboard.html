@@ -156,10 +156,22 @@
     <div class="cs-tabpanel" id="cs-tab-content" role="tabpanel"
          aria-labelledby="cs-tabbtn-content" data-tabpanel="content">
       <h2 class="cs-visually-hidden">{{ _("Content to review") }}</h2>
+      {% set can_bulk = is_sysadmin or admin_initiatives %}
       {% if content_requests %}
+        {% if can_bulk %}
+          {# External bulk form: row checkboxes reference it via form="..."
+             (the per-row approve/reject forms live inside the table, so the
+             bulk form cannot wrap it -- nested forms are invalid HTML). #}
+          <form method="post" id="cs-bulk-content-form"
+                action="{{ h.url_for('csunesco.content_bulk_approve') }}"
+                data-confirm="{{ _('Approve every selected content item?') }}">
+            {{ h.csrf_input() }}
+          </form>
+        {% endif %}
         <table class="cs-admin-table">
           <thead>
             <tr>
+              {% if can_bulk %}<th scope="col">{{ _("Select") }}</th>{% endif %}
               <th scope="col">{{ _("Title") }}</th>
               <th scope="col">{{ _("Type") }}</th>
               <th scope="col">{{ _("Project") }}</th>
@@ -169,6 +181,15 @@
           <tbody>
             {% for c in content_requests %}
               <tr>
+                {% if can_bulk %}
+                  <td data-label="{{ _('Select') }}">
+                    {% if is_sysadmin or (c.initiative_group and c.initiative_group in admin_initiatives) %}
+                      <input type="checkbox" name="content_ids" value="{{ c.id }}"
+                             form="cs-bulk-content-form"
+                             aria-label="{{ _('Select for bulk approval') }}">
+                    {% endif %}
+                  </td>
+                {% endif %}
                 <td data-label="{{ _('Title') }}">
                   <strong>{{ c.title }}</strong>
                   {% if c.excerpt %}<br><span class="cs-muted">{{ c.excerpt | truncate(120) }}</span>{% endif %}
@@ -209,6 +230,12 @@
             {% endfor %}
           </tbody>
         </table>
+        {% if can_bulk %}
+          <button type="submit" form="cs-bulk-content-form"
+                  class="cs-btn cs-btn-primary cs-btn-sm">
+            {{ _("Approve selected") }}
+          </button>
+        {% endif %}
       {% else %}
         <p class="cs-empty">{{ _("No content is awaiting review.") }}</p>
       {% endif %}

@@ -193,6 +193,25 @@ def csunesco_project_reject(context, data_dict):
     return db.project_dictize(project)
 
 
+def csunesco_project_trusted_set(context, data_dict):
+    """Toggle a project's ``trusted`` flag (sysadmin-only policy lever).
+
+    Trusted projects publish news/events without review; publications, maps
+    and data sources keep queueing regardless.
+    """
+    tk.check_access('csunesco_project_trusted_set', context, data_dict)
+    data_dict = data_dict or {}
+    project = db.get_project(data_dict.get('id') or data_dict.get('project_id'))
+    if project is None:
+        raise tk.ObjectNotFound(tk._('Project not found'))
+    if 'trusted' not in data_dict:
+        raise tk.ValidationError({'trusted': [tk._('Missing value')]})
+    project.trusted = tk.asbool(data_dict.get('trusted'))
+    project.modified = _utcnow()
+    model.Session.commit()
+    return db.project_dictize(project)
+
+
 @tk.side_effect_free
 def csunesco_project_list(context, data_dict):
     """List projects with server-side filtering + paging.
@@ -336,6 +355,7 @@ def get_actions():
         'csunesco_project_request_create': csunesco_project_request_create,
         'csunesco_project_approve': csunesco_project_approve,
         'csunesco_project_reject': csunesco_project_reject,
+        'csunesco_project_trusted_set': csunesco_project_trusted_set,
         'csunesco_project_list': csunesco_project_list,
         'csunesco_project_show': csunesco_project_show,
         'csunesco_project_stats_show': csunesco_project_stats_show,

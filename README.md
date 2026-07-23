@@ -88,9 +88,13 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | POST | `/citizen-science/admin/join/<project_id>/<user_id>/approve` · `/reject` | Moderate a join request | sysadmin, initiative admin **or** project admin |
 | POST | `/citizen-science/admin/content/<id>/approve` · `/reject` | Moderate a content item | sysadmin **or** the content's initiative admin |
 | POST | `/citizen-science/admin/data/<id>/approve` · `/reject` | Moderate a data source (approve creates the CKAN dataset) | sysadmin **or** the source's initiative admin (org override is sysadmin-only) |
+| POST | `/citizen-science/admin/content/bulk-approve` | Approve a checkbox selection of content rows (≤100, per-row auth) | sysadmin **or** initiative admin (per row) |
+| POST | `/citizen-science/project/<slug>/trusted` | Toggle the project's trusted flag | sysadmin |
 
 All POST forms carry CKAN's CSRF token (`h.csrf_input()`); mutating routes use
-POST-redirect-GET.
+POST-redirect-GET. **Note**: CKAN only *validates* extension tokens when
+`ckan.csrf_protection.ignore_extensions = false` — set it on the portal so the
+moderation POSTs (approve/reject/trusted/bulk) are actually CSRF-checked.
 
 ### API actions (`/api/3/action/<name>`)
 
@@ -111,7 +115,8 @@ enumerate accounts.
 | `csunesco_project_approve`, `csunesco_project_reject` | sysadmin **or** the project's initiative admin |
 | `csunesco_content_approve`, `csunesco_content_reject` | sysadmin **or** the content's initiative admin |
 | `csunesco_data_source_approve`, `csunesco_data_source_reject` | sysadmin **or** the source's initiative admin (approve creates/refreshes the CKAN dataset; `owner_org` override is sysadmin-only) |
-| `csunesco_join_approve`, `csunesco_join_reject` | sysadmin, initiative admin **or** project admin |
+| `csunesco_join_approve`, `csunesco_join_reject` | sysadmin, initiative admin **or** project admin (decision + reviewer audited) |
+| `csunesco_project_trusted_set` | sysadmin — toggles unreviewed news/events for one project |
 | `csunesco_register_citizen_scientist` | **sysadmin token only** — server-to-server (ofform); idempotent |
 
 The full ofform endpoint→action mapping and identity model live in
@@ -195,12 +200,26 @@ Four tabs:
    reverts the form to private in the app, the proxy starts returning 502 for
    that source.
 
+### Trusted projects & bulk review (P2)
+
+- **Trusted flag** (sysadmin-only, toggled from the project landing page):
+  a trusted project's **news/events publish without review** — on both the
+  portal and the app surface. Publications, maps and data sources always
+  queue. Trust supersedes rejection for news/events: editing a rejected item
+  in a trusted project republishes it without review (same power as creating
+  a new one). `csunesco_project_trusted_set` is the API lever.
+- **Bulk approve** in the content tab: checkbox selection + "Approve
+  selected" (capped at 100 per request); each row re-checks authorization
+  individually, failures never abort the batch.
+- Join decisions now record their reviewer (`cs_project_member.reviewed_by`
+  / `reviewed_at`, auto-healed columns).
+
 ### Next stages (agreed, not yet built)
 
 - Email notification / daily digest to sysadmins when items land in the
   review queue (SMTP is already configured on the portal).
-- Bulk approve (checkbox selection) in the content and data tabs.
-- Per-project `trusted` flag auto-approving news/events only (policy call).
+- Bulk approve in the data tab (each approval creates a dataset, so it needs
+  per-row org resolution + partial-failure UX).
 - Auto-enqueue the data-source request when approving an app-originated
   project that already has published forms.
 

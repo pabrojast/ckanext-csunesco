@@ -201,6 +201,66 @@ def content_reject(id):
                    'content', tk._('Content rejected.'))
 
 
+# Tope defensivo de filas por request de bulk-approve (el panel pagina de a 20).
+BULK_APPROVE_MAX = 100
+
+
+def content_bulk_approve():
+    """Approve a batch of content rows (checkbox selection, P2).
+
+    Best-effort per row: each id goes through ``csunesco_content_approve`` (its
+    auth re-checks sysadmin/initiative-admin per row), failures never abort the
+    rest, and the flash summarizes approved/failed counts.
+    """
+    if not tk.g.user:
+        return _not_authorized_response()
+    ids = [i for i in request.form.getlist('content_ids') if i][:BULK_APPROVE_MAX]
+    if not ids:
+        tk.h.flash_error(tk._('Select at least one content item.'))
+        return _redirect_dashboard('content')
+    context = _context()
+    approved = 0
+    failed = 0
+    for content_id in ids:
+        try:
+            tk.get_action('csunesco_content_approve')(
+                dict(context), {'id': content_id})
+            approved += 1
+        except Exception:
+            failed += 1
+    if approved:
+        tk.h.flash_success(
+            tk._('Approved %(n)s content item(s).') % {'n': approved})
+    if failed:
+        tk.h.flash_error(
+            tk._('%(n)s item(s) could not be approved.') % {'n': failed})
+    return _redirect_dashboard('content')
+
+
+def project_trusted_set(slug):
+    """Toggle a project's trusted flag from its landing page (sysadmin-only)."""
+    value = (request.form.get('trusted') or '').strip().lower() in (
+        'true', '1', 'on', 'yes')
+    context = _context()
+    try:
+        tk.get_action('csunesco_project_trusted_set')(
+            context, {'id': slug, 'trusted': value})
+    except tk.NotAuthorized:
+        return _not_authorized_response()
+    except tk.ObjectNotFound:
+        return tk.abort(404, tk._('Not found'))
+    except Exception:
+        log.warning('csunesco: trusted toggle failed')
+        tk.h.flash_error(tk._(GENERIC_ERROR))
+        return redirect(tk.h.url_for('csunesco.project_landing', slug=slug))
+    tk.h.flash_success(
+        tk._('Project marked as trusted: its news and events now publish '
+             'without review.') if value
+        else tk._('Project trust removed: news and events queue for review '
+                  'again.'))
+    return redirect(tk.h.url_for('csunesco.project_landing', slug=slug))
+
+
 def data_source_approve(id):
     data_dict = {'id': id}
     owner_org = (request.form.get('owner_org') or '').strip()

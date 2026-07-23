@@ -646,3 +646,24 @@ def test_resolve_owner_org_priority(monkeypatch):
     assert resolve(project_with_org, _BareSource) == 'project-org'
     # App suggestion still beats the project org (it is more specific).
     assert resolve(project_with_org, _DataSource) == 'app-org'
+
+
+# ---------------------------------------------------------------------------
+# P2: content_initial_status (trusted projects publish news/events unreviewed)
+# ---------------------------------------------------------------------------
+
+def test_content_initial_status_matrix():
+    from ckanext.csunesco.logic.action.content import content_initial_status
+
+    # Sysadmin portal-authored publishes; app-pushed queues even for sysadmin.
+    assert content_initial_status(True, 'ckan', 'cs-news', False) == 'approved'
+    assert content_initial_status(True, 'app', 'cs-news', False) == 'pending'
+    # Non-trusted project: everything from non-sysadmins queues.
+    assert content_initial_status(False, 'ckan', 'cs-news', False) == 'pending'
+    assert content_initial_status(False, 'app', 'cs-event', False) == 'pending'
+    # Trusted project: news/events skip review on BOTH surfaces...
+    assert content_initial_status(False, 'ckan', 'cs-news', True) == 'approved'
+    assert content_initial_status(False, 'app', 'cs-event', True) == 'approved'
+    # ...but publications/maps ALWAYS queue (external links/embeds).
+    assert content_initial_status(False, 'ckan', 'cs-publication', True) == 'pending'
+    assert content_initial_status(False, 'app', 'cs-map', True) == 'pending'

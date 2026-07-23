@@ -166,6 +166,16 @@ def csunesco_join_reject(context, data_dict):
                         'admin can reject join requests')}
 
 
+def csunesco_project_trusted_set(context, data_dict):
+    # Policy lever: trusted projects publish news/events without review.
+    # Deliberately SYSADMIN-only (not the initiative admin): it disables a
+    # review step portal-wide for that project.
+    if _is_sysadmin(context):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only sysadmins can change the trusted flag')}
+
+
 def csunesco_project_request_create(context, data_dict):
     # Any authenticated user may request a project; anonymous is denied.
     if context.get('user'):
@@ -365,6 +375,7 @@ def get_auth_functions():
         'csunesco_project_reject': csunesco_project_reject,
         'csunesco_join_approve': csunesco_join_approve,
         'csunesco_join_reject': csunesco_join_reject,
+        'csunesco_project_trusted_set': csunesco_project_trusted_set,
         'csunesco_project_request_create': csunesco_project_request_create,
         'csunesco_join_request_create': csunesco_join_request_create,
         'csunesco_project_list': csunesco_project_list,

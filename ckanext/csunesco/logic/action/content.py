@@ -128,6 +128,23 @@ def _validated_content(context, data_dict, content_type):
     return data
 
 
+def content_initial_status(is_sysadmin, source, content_type, trusted):
+    """Moderation status a content row lands in (pure helper, unit-tested).
+
+    * Sysadmin PORTAL-authored content publishes immediately (app-pushed rides
+      the service token but is really member-authored, so it queues).
+    * In a TRUSTED project, news/events skip review regardless of surface —
+      the create/update is already gated to PM/ADM/sysadmin. Publications and
+      maps ALWAYS queue (they carry external links/embeds).
+    * Everything else queues as ``pending``.
+    """
+    if is_sysadmin and source != 'app':
+        return 'approved'
+    if trusted and content_type in ('cs-news', 'cs-event'):
+        return 'approved'
+    return 'pending'
+
+
 def _resolve_source(data_dict):
     """Normalize + validate the ``source`` flag (defaults to ``ckan``)."""
     source = (data_dict.get('source') or 'ckan').strip().lower()
@@ -195,11 +212,13 @@ def csunesco_content_create(context, data_dict):
     content.featured = bool(data.get('featured')) if is_sysadmin else False
     content.created_by = current_user_id(context)
     content.slug = db.unique_content_slug(data['title'])
-    # Sysadmin-authored content is published straight away; everyone else queues.
-    # App-pushed content queues too: the app's service token is a sysadmin, but
-    # the real author is a project member, so it must go through review.
-    content.status = ('approved' if is_sysadmin and source != 'app'
-                      else 'pending')
+    # Sysadmin portal-authored content publishes straight away; a TRUSTED
+    # project's news/events skip review too (P2 policy toggle). Everything
+    # else queues — including all app-pushed content in non-trusted projects
+    # (the service token is a sysadmin, but the real author is a member).
+    content.status = content_initial_status(
+        is_sysadmin, source, data['content_type'],
+        bool(getattr(project, 'trusted', False)))
     extras = {'excerpt': _excerpt(body)}
     extras.update({k: v for k, v in _type_extras(data).items() if v})
     if source == 'app':
@@ -249,9 +268,13 @@ def csunesco_content_update(context, data_dict):
     if is_sysadmin:
         content.featured = bool(data.get('featured'))
     # Slug is permanent (URL stability) -- deliberately not regenerated.
-    # A non-sysadmin edit must go back through review.
+    # A non-sysadmin edit goes back through review, EXCEPT news/events of a
+    # trusted project (same policy as creation).
     if not is_sysadmin:
-        content.status = 'pending'
+        parent = db.get_project(content.project_id)
+        content.status = content_initial_status(
+            False, 'ckan', data['content_type'],
+            bool(getattr(parent, 'trusted', False)))
     content.extras = json.dumps(_merge_extras(
         content, excerpt=_excerpt(body), **_type_extras(data)))
     content.modified = _utcnow()

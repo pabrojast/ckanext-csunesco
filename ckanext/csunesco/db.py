@@ -63,6 +63,9 @@ cs_project_table = Table(
     Column('landing_content', types.Text),
     Column('organization_id', types.UnicodeText, index=True),
     Column('status', types.UnicodeText, index=True, default=u'pending'),
+    # Trusted projects publish their news/events WITHOUT review (policy toggle,
+    # sysadmin-only; publications/maps/data always queue).
+    Column('trusted', types.Boolean, default=False),
     Column('created_by', types.UnicodeText, index=True),
     Column('reviewed_by', types.UnicodeText),
     Column('reviewed_at', types.DateTime),
@@ -80,6 +83,9 @@ cs_project_member_table = Table(
     Column('role', types.UnicodeText, default=u'scientist'),
     Column('status', types.UnicodeText, index=True, default=u'pending'),
     Column('source', types.UnicodeText, default=u'ckan'),
+    # Who decided the join (approve/reject) and when — audit trail.
+    Column('reviewed_by', types.UnicodeText),
+    Column('reviewed_at', types.DateTime),
     Column('created', types.DateTime, default=_utcnow),
     UniqueConstraint('project_id', 'user_id',
                      name='uq_cs_project_member_project_user'),
@@ -251,6 +257,9 @@ _AUTO_HEAL_COLUMNS = [
     ('cs_project', 'reviewed_at', 'TIMESTAMP'),
     ('cs_project', 'rejection_reason', 'TEXT'),
     ('cs_project', 'extras', "TEXT DEFAULT '{}'"),
+    ('cs_project', 'trusted', 'BOOLEAN DEFAULT FALSE'),
+    ('cs_project_member', 'reviewed_by', 'TEXT'),
+    ('cs_project_member', 'reviewed_at', 'TIMESTAMP'),
     ('cs_content', 'featured', 'BOOLEAN DEFAULT FALSE'),
     ('cs_content', 'extras', "TEXT DEFAULT '{}'"),
     ('cs_content', 'slug', 'TEXT'),
@@ -514,14 +523,16 @@ def project_member(project_id, user_id):
 def set_member_status(project_id, user_id, status, reviewed_by=None):
     """Set a membership's status in place (no commit). Returns the member/None.
 
-    ``reviewed_by`` is accepted for symmetry with the project review flow; the
-    ``cs_project_member`` table has no reviewer column yet, so the value is not
-    persisted here (reserved for a future additive column).
+    ``reviewed_by`` (when given) is persisted together with the decision
+    timestamp — the join audit trail (P2).
     """
     member = project_member(project_id, user_id)
     if member is None:
         return None
     member.status = status
+    if reviewed_by:
+        member.reviewed_by = reviewed_by
+        member.reviewed_at = _utcnow()
     return member
 
 
@@ -716,6 +727,7 @@ def project_dictize(project):
         'landing_content': project.landing_content,
         'organization_id': project.organization_id,
         'status': project.status,
+        'trusted': bool(getattr(project, 'trusted', False)),
         'created_by': project.created_by,
         'reviewed_by': project.reviewed_by,
         'reviewed_at': (project.reviewed_at.isoformat()
@@ -743,6 +755,8 @@ def member_dictize(member):
         'role': member.role,
         'status': member.status,
         'source': member.source,
+        'reviewed_by': getattr(member, 'reviewed_by', None),
+        'reviewed_at': _iso(getattr(member, 'reviewed_at', None)),
         'created': member.created.isoformat() if member.created else None,
     }
 
