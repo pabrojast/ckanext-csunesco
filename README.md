@@ -53,7 +53,12 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 - **public** — anonymous allowed. Read views only ever expose *approved* rows to
   non-privileged callers; the action layer does the filtering.
 - **authenticated** — any logged-in CKAN user.
-- **project admin** — an active `admin` member of the *target* project.
+- **project admin** (PM) — an active `admin` member of the *target* project.
+- **initiative admin** (ADM) — an active `admin`-capacity member of the target
+  project's initiative group (`be-resilient`, `islandwatch`, `riverwatch`,
+  `c4water`). Sysadmins grant it from the group's standard *Members* page. An
+  ADM can moderate the projects, content and data sources of *their* initiative
+  and do everything a project admin can within it.
 - **sysadmin** — a CKAN sysadmin (the IHP admin).
 
 ### HTTP routes
@@ -75,14 +80,14 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | GET·POST | `/citizen-science/verify/resend` | Request a fresh verification link | public (generic response) |
 | GET·POST | `/citizen-science/project/new` | Propose a project (request) | authenticated |
 | POST | `/citizen-science/project/<slug>/join` | Request to join a project | authenticated |
-| GET·POST | `/citizen-science/project/<slug>/content/new` | Add news/event to a project | sysadmin **or** that project's admin |
-| GET·POST | `/citizen-science/content/<id>/edit` | Edit an existing content item | sysadmin **or** project admin |
-| GET·POST | `/citizen-science/project/<slug>/data/connect` | Connect a CS Toolbox form's data (request, lands pending) | sysadmin **or** that project's admin |
-| GET | `/citizen-science/admin` | Approval panel (pending projects/joins/content/data) | sysadmin **or** any project admin |
-| POST | `/citizen-science/admin/project/<id>/approve` · `/reject` | Moderate a project request | sysadmin |
-| POST | `/citizen-science/admin/join/<project_id>/<user_id>/approve` · `/reject` | Moderate a join request | sysadmin **or** project admin |
-| POST | `/citizen-science/admin/content/<id>/approve` · `/reject` | Moderate a content item | sysadmin |
-| POST | `/citizen-science/admin/data/<id>/approve` · `/reject` | Moderate a data source (approve creates the CKAN dataset) | sysadmin |
+| GET·POST | `/citizen-science/project/<slug>/content/new` | Add news/event to a project | sysadmin, initiative admin **or** that project's admin |
+| GET·POST | `/citizen-science/content/<id>/edit` | Edit an existing content item | sysadmin, initiative admin **or** project admin |
+| GET·POST | `/citizen-science/project/<slug>/data/connect` | Connect a CS Toolbox form's data (request, lands pending) | sysadmin, initiative admin **or** that project's admin |
+| GET | `/citizen-science/admin` | Approval panel (pending projects/joins/content/data) | sysadmin, any initiative admin **or** any project admin |
+| POST | `/citizen-science/admin/project/<id>/approve` · `/reject` | Moderate a project request | sysadmin **or** the project's initiative admin |
+| POST | `/citizen-science/admin/join/<project_id>/<user_id>/approve` · `/reject` | Moderate a join request | sysadmin, initiative admin **or** project admin |
+| POST | `/citizen-science/admin/content/<id>/approve` · `/reject` | Moderate a content item | sysadmin **or** the content's initiative admin |
+| POST | `/citizen-science/admin/data/<id>/approve` · `/reject` | Moderate a data source (approve creates the CKAN dataset) | sysadmin **or** the source's initiative admin (org override is sysadmin-only) |
 
 All POST forms carry CKAN's CSRF token (`h.csrf_input()`); mutating routes use
 POST-redirect-GET.
@@ -99,14 +104,14 @@ enumerate accounts.
 | `csunesco_content_list`, `csunesco_content_show` | public (read; approved only for non-sysadmins) |
 | `csunesco_project_request_create` | authenticated |
 | `csunesco_join_request_create` | authenticated |
-| `csunesco_content_create`, `csunesco_content_update` | sysadmin **or** project admin (an explicit `source: 'app'` forces `pending` even for sysadmins) |
+| `csunesco_content_create`, `csunesco_content_update` | sysadmin, initiative admin **or** project admin (an explicit `source: 'app'` forces `pending` even for sysadmins) |
 | `csunesco_data_source_list`, `csunesco_data_source_show` | public (read; approved only for non-privileged callers) |
-| `csunesco_data_source_create` | sysadmin **or** project admin — **always** creates `pending`; idempotent per `(project, form)` |
-| `csunesco_admin_pending_list` | sysadmin **or** any project admin |
-| `csunesco_project_approve`, `csunesco_project_reject` | sysadmin |
-| `csunesco_content_approve`, `csunesco_content_reject` | sysadmin |
-| `csunesco_data_source_approve`, `csunesco_data_source_reject` | sysadmin (approve creates/refreshes the CKAN dataset) |
-| `csunesco_join_approve`, `csunesco_join_reject` | sysadmin **or** project admin |
+| `csunesco_data_source_create` | sysadmin, initiative admin **or** project admin — **always** creates `pending`; idempotent per `(project, form)` |
+| `csunesco_admin_pending_list` | sysadmin, any initiative admin **or** any project admin |
+| `csunesco_project_approve`, `csunesco_project_reject` | sysadmin **or** the project's initiative admin |
+| `csunesco_content_approve`, `csunesco_content_reject` | sysadmin **or** the content's initiative admin |
+| `csunesco_data_source_approve`, `csunesco_data_source_reject` | sysadmin **or** the source's initiative admin (approve creates/refreshes the CKAN dataset; `owner_org` override is sysadmin-only) |
+| `csunesco_join_approve`, `csunesco_join_reject` | sysadmin, initiative admin **or** project admin |
 | `csunesco_register_citizen_scientist` | **sysadmin token only** — server-to-server (ofform); idempotent |
 
 The full ofform endpoint→action mapping and identity model live in
@@ -163,22 +168,27 @@ Terria embeds additionally require the Terria host to allow framing (no
 Everything users publish flows through **one** approval panel at
 `/citizen-science/admin`, and the navbar shows a **Review n** badge whenever
 something is pending (the badge and the tab counters share one query, so they
-never disagree). Four tabs:
+never disagree). Review can be **delegated per initiative**: grant a user
+`admin` capacity on an initiative group (its *Members* page) and they become
+that initiative's ADM — their panel/badge scope covers only their initiatives.
+Four tabs:
 
-1. **Project requests** (sysadmin) — approve turns the requester into the
-   project's admin and seeds its counters.
-2. **Join requests** (sysadmin or project admin).
+1. **Project requests** (sysadmin or initiative admin) — approve turns the
+   requester into the project's admin and seeds its counters.
+2. **Join requests** (sysadmin, initiative admin or project admin).
 3. **Content to review** — news, events, publications and maps; portal-authored
    sysadmin content publishes directly, everything else (including *all*
    app-authored content) waits here.
-4. **Data to review** (sysadmin) — each row shows a live probe of the form's
+4. **Data to review** (sysadmin or initiative admin) — each row shows a live probe of the form's
    public data (reachable? observations, geolocated count, date range) and an
    "Open in the app" link (`ofform_app_url`), so nothing is approved blind.
    Approving creates/refreshes a live CKAN
    dataset fed by the CS Toolbox app (CSV + GeoJSON proxy resources). The
    approve form includes an **organization picker** preselected with the
    app-suggested org (when it exists on the portal) or the configured
-   default — the reviewer can change it before approving. If
+   default — the reviewer can change it before approving (the picker is
+   sysadmin-only; an initiative admin's approval always uses the
+   suggested/default org). If
    dataset creation fails (e.g. missing `dataset_owner_org` or portal-schema
    fields), the row **stays pending** and can be retried after fixing config.
    Data truncates at ofform's 20 000-row export cap. If a form owner later

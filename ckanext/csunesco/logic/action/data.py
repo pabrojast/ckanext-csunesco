@@ -7,8 +7,9 @@ contract is stricter than content: EVERY new source starts ``pending`` -- even
 when created by a sysadmin or pushed by the app's service token -- because
 approval is what creates a real CKAN dataset on the portal.
 
-On approval (sysadmin only) ``package_sync.ensure_dataset`` creates/refreshes
-the CKAN package whose resources point at this plugin's live proxy routes
+On approval (sysadmin or the project's initiative admin)
+``package_sync.ensure_dataset`` creates/refreshes the CKAN package whose
+resources point at this plugin's live proxy routes
 (``/citizen-science/data/<id>.csv`` / ``.geojson``). If package creation fails
 the row STAYS pending so the reviewer can retry after fixing configuration.
 """
@@ -104,8 +105,9 @@ def csunesco_data_source_create(context, data_dict):
         raise tk.ValidationError({'source': [tk._(
             'Source must be one of: %s') % ', '.join(sorted(DATA_SOURCES))]})
     # Suggested CKAN organization for the dataset (the app keeps its orgs
-    # synchronized with the portal). NOT validated here -- the sysadmin sees
-    # and may change it at approval time, where it is resolved and checked.
+    # synchronized with the portal). NOT validated here -- it is requester
+    # data, honored ONLY on a sysadmin approval (who sees and may change it);
+    # non-sysadmin approvals ignore it (see csunesco_data_source_approve).
     owner_org = (data_dict.get('owner_org') or '').strip() or None
 
     now = _utcnow()
@@ -155,13 +157,15 @@ def csunesco_data_source_create(context, data_dict):
 
 
 def csunesco_data_source_approve(context, data_dict):
-    """Approve a pending data source (sysadmin): creates the CKAN dataset.
+    """Approve a pending data source (sysadmin or initiative admin): creates
+    the CKAN dataset.
 
     Optional ``owner_org`` overrides which organization owns the dataset
     (default: the app-suggested org when it exists on the portal, else the
-    configured fallback). The dataset is created BEFORE the status flips; if
-    creation fails the row stays pending and a generic error is raised
-    (details go to the log only).
+    configured fallback). The org override is a SYSADMIN-only lever — an
+    initiative admin's approval always uses the suggested/default resolution.
+    The dataset is created BEFORE the status flips; if creation fails the row
+    stays pending and a generic error is raised (details go to the log only).
     """
     tk.check_access('csunesco_data_source_approve', context, data_dict)
     data_dict = data_dict or {}
@@ -175,11 +179,26 @@ def csunesco_data_source_approve(context, data_dict):
     project = db.get_project(data_source.project_id)
     if project is None:
         raise tk.ValidationError({'project_id': [tk._('Project not found')]})
+    is_sysadmin = auth._is_sysadmin(context)
     override_org = (data_dict.get('owner_org') or '').strip() or None
+    if override_org and not is_sysadmin:
+        override_org = None
+
+    # An initiative admin passed the csunesco auth above but holds no CKAN org
+    # rights, so the dataset side effect runs with an elevated context: the
+    # moderated approval itself IS the authorization for package creation.
+    # BOTH org levers stay sysadmin-only: the explicit override above AND the
+    # requester-planted suggestion (honor_suggestion) — otherwise an ADM could
+    # publish into an arbitrary org by seeding extras.owner_org and
+    # self-approving. Non-sysadmin approvals land on the project/default org.
+    sync_context = dict(context)
+    if not is_sysadmin:
+        sync_context['ignore_auth'] = True
 
     try:
         sync = package_sync.ensure_dataset(
-            context, project, data_source, override_org=override_org)
+            sync_context, project, data_source, override_org=override_org,
+            honor_suggestion=is_sysadmin)
     except tk.ValidationError:
         raise
     except Exception:

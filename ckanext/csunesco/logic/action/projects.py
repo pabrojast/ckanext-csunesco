@@ -82,7 +82,8 @@ def _stats_dict(project_id):
 
 
 def _can_view_unapproved(context, project):
-    """Creator / active member / sysadmin may view a not-yet-approved project."""
+    """Creator / active member / initiative-admin / sysadmin may view a
+    not-yet-approved project."""
     if auth._is_sysadmin(context):
         return True
     user_id = current_user_id(context)
@@ -91,7 +92,9 @@ def _can_view_unapproved(context, project):
     if project.created_by == user_id:
         return True
     member = db.project_member(project.id, user_id)
-    return member is not None and member.status == 'active'
+    if member is not None and member.status == 'active':
+        return True
+    return auth._is_project_initiative_admin(context, project.id)
 
 
 def csunesco_project_request_create(context, data_dict):
@@ -283,6 +286,21 @@ def csunesco_project_show(context, data_dict):
     if not data_dict.get('include_geojson'):
         result.pop('region_geojson', None)
     result['stats'] = _stats_dict(project.id)
+    # Usernames of the project's admins (PM) + its initiative admins (ADM). The
+    # CS Toolbox app mirrors these as programme owners when the project syncs.
+    # Usernames only (public CKAN identifiers) -- never emails.
+    admin_ids = set(db.project_admin_user_ids(project.id))
+    admin_ids.update(db.initiative_admin_user_ids(project.initiative_group))
+    admins = []
+    if admin_ids:
+        users = (
+            model.Session.query(model.User)
+            .filter(model.User.id.in_(admin_ids))
+            .filter(model.User.state == 'active')
+            .all()
+        )
+        admins = sorted(u.name for u in users)
+    result['admins'] = admins
     return result
 
 

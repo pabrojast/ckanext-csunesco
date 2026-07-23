@@ -73,9 +73,9 @@ fi
 # 3. Behavioral pytest files (real CKAN code, plugin DB helpers + pure logic). #
 #    -p no:ckan keeps the CKAN pytest plugin from demanding a configured site. #
 # --------------------------------------------------------------------------- #
-echo "-- behavioral pytest (test_db_behavior.py + test_pure_logic.py)"
+echo "-- behavioral pytest (test_db_behavior.py + test_pure_logic.py + test_initiative_admin.py)"
 if ! docker run --rm "${IMAGE}" bash -lc \
-  'cd /plugin && python -m pytest ckanext/csunesco/tests/test_db_behavior.py ckanext/csunesco/tests/test_pure_logic.py -q -p no:ckan'
+  'cd /plugin && python -m pytest ckanext/csunesco/tests/test_db_behavior.py ckanext/csunesco/tests/test_pure_logic.py ckanext/csunesco/tests/test_initiative_admin.py -q -p no:ckan'
 then
   echo "FAIL: behavioral pytest failed"
   exit 1

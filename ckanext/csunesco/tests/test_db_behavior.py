@@ -40,7 +40,11 @@ def session():
     """
     engine = sa.create_engine('sqlite://')
     db.ensure_mappers()
-    db.metadata.create_all(bind=engine, tables=db._ALL_TABLES)
+    # pending_counts resolves the initiative-admin (ADM) role from CKAN's own
+    # group/member tables (shared metadata), so they must exist here too.
+    from ckan.model.group import group_table, member_table
+    db.metadata.create_all(
+        bind=engine, tables=list(db._ALL_TABLES) + [group_table, member_table])
     db.Session.remove()
     db.Session.configure(bind=engine)
     try:

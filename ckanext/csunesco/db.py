@@ -895,6 +895,109 @@ def admin_project_ids(user_id):
     return [pid for (pid,) in rows]
 
 
+def project_admin_user_ids(project_id):
+    """User ids of the project's ACTIVE ``admin`` members (PM)."""
+    _ensure_mappers()
+    if not project_id:
+        return []
+    rows = (
+        Session.query(CsProjectMember.user_id)
+        .filter(CsProjectMember.project_id == project_id)
+        .filter(CsProjectMember.role == 'admin')
+        .filter(CsProjectMember.status == 'active')
+        .all()
+    )
+    return [uid for (uid,) in rows]
+
+
+def initiative_admin_user_ids(initiative_group):
+    """User ids holding ADM (active ``admin`` capacity) on ``initiative_group``."""
+    if not initiative_group:
+        return []
+    import ckan.model as model
+    rows = (
+        model.Session.query(model.Member.table_id)
+        .join(model.Group, model.Group.id == model.Member.group_id)
+        .filter(model.Group.name == initiative_group)
+        .filter(model.Group.state == 'active')
+        .filter(model.Member.table_name == 'user')
+        .filter(model.Member.capacity == 'admin')
+        .filter(model.Member.state == 'active')
+        .all()
+    )
+    return [uid for (uid,) in rows]
+
+
+def admin_initiative_groups(user_id):
+    """Names of the CS-initiative groups where ``user_id`` is an ACTIVE
+    ``admin``-capacity member — the "initiative admin" (ADM) role.
+
+    ADMs are managed by sysadmins through CKAN's standard group-members page
+    (capacity ``admin`` on ``be-resilient`` / ``islandwatch`` / ...); this reads
+    CKAN's own ``member`` table, restricted to the seeded initiative groups.
+    """
+    if not user_id:
+        return []
+    import ckan.model as model
+    from ckanext.csunesco.constants import CS_INITIATIVES
+    names = [i['name'] for i in CS_INITIATIVES]
+    rows = (
+        model.Session.query(model.Group.name)
+        .join(model.Member, model.Member.group_id == model.Group.id)
+        .filter(model.Group.name.in_(names))
+        .filter(model.Group.state == 'active')
+        .filter(model.Member.table_name == 'user')
+        .filter(model.Member.table_id == user_id)
+        .filter(model.Member.capacity == 'admin')
+        .filter(model.Member.state == 'active')
+        .all()
+    )
+    return [name for (name,) in rows]
+
+
+def initiative_project_ids(initiative_groups):
+    """Ids of every project whose ``initiative_group`` is in the list."""
+    _ensure_mappers()
+    if not initiative_groups:
+        return []
+    rows = (
+        Session.query(CsProject.id)
+        .filter(CsProject.initiative_group.in_(initiative_groups))
+        .all()
+    )
+    return [pid for (pid,) in rows]
+
+
+def pending_projects(initiative_groups, limit=20, offset=0):
+    """Pending project requests scoped to initiatives. ``(total, [dict, ...])``.
+
+    The initiative-admin counterpart of the sysadmin's ``csunesco_project_list``
+    path in the approval panel: same row shape (``region_geojson`` stripped),
+    newest first. An empty scope always returns zero rows.
+    """
+    _ensure_mappers()
+    if not initiative_groups:
+        return 0, []
+    query = (
+        Session.query(CsProject)
+        .filter(CsProject.status == 'pending')
+        .filter(CsProject.initiative_group.in_(initiative_groups))
+    )
+    total = query.count()
+    rows = (
+        query.order_by(CsProject.created.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    results = []
+    for project in rows:
+        item = project_dictize(project)
+        item.pop('region_geojson', None)
+        results.append(item)
+    return total, results
+
+
 def pending_joins(project_ids=None, limit=20, offset=0):
     """Pending join-requests in scope. Returns ``(total, [dict, ...])``.
 
@@ -974,12 +1077,16 @@ def pending_content(project_ids=None, limit=20, offset=0):
     return total, results
 
 
-def _count_pending_projects():
-    return (
+def _count_pending_projects(initiative_groups=None):
+    query = (
         Session.query(CsProject.id)
         .filter(CsProject.status == 'pending')
-        .count()
     )
+    if initiative_groups is not None:
+        if not initiative_groups:
+            return 0
+        query = query.filter(CsProject.initiative_group.in_(initiative_groups))
+    return query.count()
 
 
 def _count_pending_joins(project_ids=None):
@@ -1079,12 +1186,13 @@ def list_data_sources(project_id=None, status=None, limit=50, offset=0):
     return total, rows
 
 
-def pending_data_sources(limit=20, offset=0):
-    """Pending data sources (sysadmin scope only). ``(total, [dict, ...])``.
+def pending_data_sources(limit=20, offset=0, initiative_groups=None):
+    """Pending data sources in scope. ``(total, [dict, ...])``.
 
-    Approval is sysadmin-only (like project requests), so unlike joins/content
-    there is no project-admin scoping. Rows are decorated with their project
-    title/slug for the review tab.
+    ``initiative_groups=None`` means "every pending source" (sysadmin scope); a
+    list restricts to sources whose project belongs to those initiatives
+    (initiative-admin scope) and an EMPTY list always returns zero. Rows are
+    decorated with their project title/slug for the review tab.
     """
     _ensure_mappers()
     query = (
@@ -1092,6 +1200,10 @@ def pending_data_sources(limit=20, offset=0):
         .outerjoin(CsProject, CsProject.id == CsDataSource.project_id)
         .filter(CsDataSource.status == 'pending')
     )
+    if initiative_groups is not None:
+        if not initiative_groups:
+            return 0, []
+        query = query.filter(CsProject.initiative_group.in_(initiative_groups))
     total = query.count()
     rows = (
         query.order_by(CsDataSource.created.desc())
@@ -1108,12 +1220,19 @@ def pending_data_sources(limit=20, offset=0):
     return total, results
 
 
-def _count_pending_data_sources():
-    return (
+def _count_pending_data_sources(initiative_groups=None):
+    query = (
         Session.query(CsDataSource.id)
         .filter(CsDataSource.status == 'pending')
-        .count()
     )
+    if initiative_groups is not None:
+        if not initiative_groups:
+            return 0
+        query = (
+            query.join(CsProject, CsProject.id == CsDataSource.project_id)
+            .filter(CsProject.initiative_group.in_(initiative_groups))
+        )
+    return query.count()
 
 
 def _resolve_user(context):
@@ -1135,11 +1254,12 @@ def _resolve_user(context):
 def pending_counts(context):
     """At-a-glance pending counts for the acting user (role-aware, cheap).
 
-    Sysadmins see every pending project / join / content; a project-admin sees
-    only pending joins + content for THEIR projects (and never project requests);
-    everyone else sees zeros. All three counts are COUNT(*) queries -- this is the
-    single source used by both the admin panel and the header-badge helper so the
-    numbers are always identical.
+    Sysadmins see every pending project / join / content / data source. An
+    initiative admin (ADM) sees the pending projects, content, joins and data
+    sources of THEIR initiatives; a project-admin sees pending joins + content
+    for THEIR projects. Everyone else sees zeros. Every count is a COUNT(*)
+    query -- this is the single source used by both the admin panel and the
+    header-badge helper so the numbers are always identical.
     """
     _ensure_mappers()
     user_obj = _resolve_user(context)
@@ -1152,16 +1272,21 @@ def pending_counts(context):
         projects = _count_pending_projects()
         joins = _count_pending_joins(None)
         content = _count_pending_content(None)
-        # Data-source approval is sysadmin-only, so only sysadmins ever see it.
         data_sources = _count_pending_data_sources()
     else:
         project_ids = admin_project_ids(user_obj.id)
-        if not project_ids:
+        initiative_groups = admin_initiative_groups(user_obj.id)
+        if not project_ids and not initiative_groups:
             return dict(zero)
-        projects = 0
-        joins = _count_pending_joins(project_ids)
-        content = _count_pending_content(project_ids)
-        data_sources = 0
+        # Joins/content scope = own admin projects U the initiatives' projects.
+        scope_ids = sorted(
+            set(project_ids) | set(initiative_project_ids(initiative_groups)))
+        projects = (_count_pending_projects(initiative_groups)
+                    if initiative_groups else 0)
+        joins = _count_pending_joins(scope_ids)
+        content = _count_pending_content(scope_ids)
+        data_sources = (_count_pending_data_sources(initiative_groups)
+                        if initiative_groups else 0)
 
     return {
         'project_requests': projects,

@@ -44,6 +44,19 @@ def _is_sysadmin():
     return bool(user_obj and getattr(user_obj, 'sysadmin', False))
 
 
+def _admin_initiatives():
+    """Initiative-group names the acting user ADMs ([] if none; fail-soft)."""
+    user_obj = getattr(tk.g, 'userobj', None)
+    if not user_obj or getattr(user_obj, 'is_anonymous', False):
+        return []
+    try:
+        from ckanext.csunesco import db
+        return db.admin_initiative_groups(user_obj.id)
+    except Exception:
+        log.warning('csunesco: initiative-admin lookup failed')
+        return []
+
+
 def _not_authorized_response():
     if not tk.g.user:
         return tk.redirect_to('user.login')
@@ -81,15 +94,27 @@ def admin_dashboard():
                        'content_requests': 0, 'data_requests': 0, 'total': 0},
         }
 
+    is_sysadmin = _is_sysadmin()
+    # Initiative admins (ADM) review projects + data sources of their
+    # initiatives, so those tabs open for them too (rows already scoped by the
+    # action). The group list also gates the per-row content buttons: a user
+    # who is BOTH an ADM and a plain PM elsewhere must not see approve buttons
+    # on the other initiative's content (auth would 403 the POST anyway).
+    admin_initiatives = _admin_initiatives()
+    can_review_initiative = is_sysadmin or bool(admin_initiatives)
+
     # Organization picker for the data tab (sysadmin only, fail-soft): the
     # approve form preselects the app-suggested org when it exists on the
     # portal, else the configured default -- and the reviewer can change it.
+    # Initiative admins get no picker: their approvals always use the
+    # suggested/default org resolution (the override is a sysadmin lever).
     organizations = []
-    if _is_sysadmin() and data.get('data_requests'):
-        try:
-            organizations = tk.get_action('organization_list')(context, {})
-        except Exception:
-            log.warning('csunesco: organization list unavailable')
+    if data.get('data_requests'):
+        if is_sysadmin:
+            try:
+                organizations = tk.get_action('organization_list')(context, {})
+            except Exception:
+                log.warning('csunesco: organization list unavailable')
         # Review context per pending source: is the form live/public, how many
         # observations, date range -- plus an "open in the app" link. Probes
         # are short-timeout + TTL-cached; any failure degrades to a warning
@@ -103,7 +128,10 @@ def admin_dashboard():
             log.warning('csunesco: data-source probes unavailable')
 
     return tk.render('csunesco/cs-admin-dashboard.html', extra_vars={
-        'is_sysadmin': _is_sysadmin(),
+        'is_sysadmin': is_sysadmin,
+        'can_review_projects': can_review_initiative,
+        'can_review_data': can_review_initiative,
+        'admin_initiatives': admin_initiatives,
         'project_requests': data.get('project_requests', []),
         'join_requests': data.get('join_requests', []),
         'content_requests': data.get('content_requests', []),

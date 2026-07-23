@@ -3,8 +3,8 @@
 {#
   CS admin approval panel (increment 5, part A).
 
-  Four tabs -- Project requests (sysadmin only), Join requests, Content to
-  review, Data to review (sysadmin only).
+  Four tabs -- Project requests (sysadmin / initiative admin), Join requests,
+  Content to review, Data to review (sysadmin / initiative admin).
   Progressive enhancement: WITHOUT JS every panel is visible (accessible
   fallback); WITH JS only the active tab shows and `aria-current`/`aria-selected`
   track it. The active tab is restored from the URL fragment after a PRG so a
@@ -13,7 +13,8 @@
   All `{{ ... }}` output is autoescaped -- no `| safe` on user data. Every action
   is a POST form with a CSRF token + a confirm prompt.
 
-  Vars: is_sysadmin (bool), project_requests, join_requests, content_requests
+  Vars: is_sysadmin, can_review_projects, can_review_data (bools),
+        project_requests, join_requests, content_requests, data_requests
         (lists), counts (dict).
 #}
 
@@ -29,7 +30,7 @@
 
   <section class="cs-admin" aria-labelledby="cs-admin-title">
     <div class="cs-tabs" role="tablist" aria-label="{{ _('Pending items') }}">
-      {% if is_sysadmin %}
+      {% if can_review_projects %}
         <button type="button" class="cs-tab" role="tab" id="cs-tabbtn-projects"
                 data-tab="projects" aria-controls="cs-tab-projects" aria-selected="false">
           {{ _("Project requests") }}
@@ -46,7 +47,7 @@
         {{ _("Content to review") }}
         <span class="cs-tab-count">{{ counts.get('content_requests', 0) }}</span>
       </button>
-      {% if is_sysadmin %}
+      {% if can_review_data %}
         <button type="button" class="cs-tab" role="tab" id="cs-tabbtn-data"
                 data-tab="data" aria-controls="cs-tab-data" aria-selected="false">
           {{ _("Data to review") }}
@@ -55,8 +56,8 @@
       {% endif %}
     </div>
 
-    {# ---- Project requests (sysadmin only) ---------------------------- #}
-    {% if is_sysadmin %}
+    {# ---- Project requests (sysadmin / initiative admin) --------------- #}
+    {% if can_review_projects %}
       <div class="cs-tabpanel" id="cs-tab-projects" role="tabpanel"
            aria-labelledby="cs-tabbtn-projects" data-tabpanel="projects">
         <h2 class="cs-visually-hidden">{{ _("Project requests") }}</h2>
@@ -177,7 +178,7 @@
                 </td>
                 <td data-label="{{ _('Project') }}">{{ c.project_title or c.project_id }}</td>
                 <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
-                  {% if is_sysadmin %}
+                  {% if is_sysadmin or (c.initiative_group and c.initiative_group in admin_initiatives) %}
                     <form method="post"
                           action="{{ h.url_for('csunesco.content_approve', id=c.id) }}"
                           data-confirm="{{ _('Approve this content?') }}">
@@ -213,8 +214,8 @@
       {% endif %}
     </div>
 
-    {# ---- Data to review (sysadmin only) ------------------------------- #}
-    {% if is_sysadmin %}
+    {# ---- Data to review (sysadmin / initiative admin) ----------------- #}
+    {% if can_review_data %}
       <div class="cs-tabpanel" id="cs-tab-data" role="tabpanel"
            aria-labelledby="cs-tabbtn-data" data-tabpanel="data">
         <h2 class="cs-visually-hidden">{{ _("Data to review") }}</h2>
@@ -242,7 +243,7 @@
                   <td data-label="{{ _('Title') }}">
                     <strong>{{ d.title }}</strong>
                     {% if d.description %}<br><span class="cs-muted">{{ d.description | striptags | truncate(120) }}</span>{% endif %}
-                    {% if d.owner_org and not suggested %}
+                    {% if organizations and d.owner_org and not suggested %}
                       <br><span class="cs-muted">{{ _("App organization not on this portal:") }} {{ d.owner_org }}</span>
                     {% endif %}
                     {% if d.probe %}

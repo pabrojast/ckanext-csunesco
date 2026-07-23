@@ -5,9 +5,12 @@
 user, scoped by role:
 
   * a SYSADMIN sees pending project requests + ALL pending join requests + ALL
-    pending content;
+    pending content + ALL pending data sources;
+  * an INITIATIVE ADMIN (ADM) sees the pending projects, joins, content and
+    data sources of THEIR initiatives (plus the joins/content of any project
+    they also project-admin);
   * a PROJECT-ADMIN sees only pending joins + pending content for THEIR projects
-    (project_requests is always ``[]`` for them).
+    (project_requests/data_requests are always ``[]`` for them).
 
 The three lists are paginated independently and the ``counts`` block reuses the
 SAME per-request cached ``pending_counts`` that feeds the header badge, so the
@@ -62,15 +65,25 @@ def _get_pending_counts(context):
 
 
 def _admin_scope(context):
-    """Return ``(is_sysadmin, project_ids)`` for the acting user.
+    """Return ``(is_sysadmin, project_ids, initiative_groups)`` for the user.
 
-    ``project_ids`` is ``None`` for a sysadmin (unrestricted) or the list of the
-    project-admin's project ids (possibly empty) otherwise.
+    ``project_ids`` is ``None`` for a sysadmin (unrestricted); otherwise the
+    union of the user's project-admin ids and every project of the initiatives
+    they ADM (possibly empty). ``initiative_groups`` is the list of initiative
+    names the user ADMs ([] for sysadmins and plain project admins).
     """
     if auth._is_sysadmin(context):
-        return True, None
+        return True, None, []
     user_id = current_user_id(context)
-    return False, (db.admin_project_ids(user_id) if user_id else [])
+    if not user_id:
+        return False, [], []
+    project_ids = db.admin_project_ids(user_id)
+    initiative_groups = db.admin_initiative_groups(user_id)
+    if initiative_groups:
+        project_ids = sorted(
+            set(project_ids)
+            | set(db.initiative_project_ids(initiative_groups)))
+    return False, project_ids, initiative_groups
 
 
 def _pending_project_requests(context, limit, offset):
@@ -103,7 +116,7 @@ def csunesco_admin_pending_list(context, data_dict):
                           default=DEFAULT_LIST_LIMIT, maximum=MAX_LIST_LIMIT)
     offset = _positive_int(data_dict.get('offset'), default=0)
 
-    is_sysadmin, project_ids = _admin_scope(context)
+    is_sysadmin, project_ids, initiative_groups = _admin_scope(context)
 
     if is_sysadmin:
         _proj_count, project_requests = _pending_project_requests(
@@ -112,12 +125,18 @@ def csunesco_admin_pending_list(context, data_dict):
             context, None, limit, offset)
         _content_count, content_requests = _pending_content(
             context, None, limit, offset)
-        # Data-source approval is sysadmin-only (it creates portal datasets).
         _data_count, data_requests = db.pending_data_sources(limit, offset)
     else:
-        # Project-admins never see project requests nor data-source requests.
-        project_requests = []
-        data_requests = []
+        # Initiative admins review the projects + data sources of THEIR
+        # initiatives; plain project-admins never see either list.
+        if initiative_groups:
+            _proj_count, project_requests = db.pending_projects(
+                initiative_groups, limit, offset)
+            _data_count, data_requests = db.pending_data_sources(
+                limit, offset, initiative_groups=initiative_groups)
+        else:
+            project_requests = []
+            data_requests = []
         scope = project_ids or []
         _join_count, join_requests = _pending_join_requests(
             context, scope, limit, offset)

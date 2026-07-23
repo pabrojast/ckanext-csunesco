@@ -60,7 +60,8 @@ def _dataset_defaults():
     return parsed if isinstance(parsed, dict) else {}
 
 
-def resolve_owner_org(project, data_source, override_org=None):
+def resolve_owner_org(project, data_source, override_org=None,
+                      honor_suggestion=True):
     """Which organization owns the dataset, in priority order.
 
     1. ``override_org`` — the sysadmin's explicit choice at approval time.
@@ -69,15 +70,22 @@ def resolve_owner_org(project, data_source, override_org=None):
     3. The project's own organization (``cs_project.organization_id``,
        reserved for a future project→org mapping).
     4. The configured default (``ckanext.csunesco.dataset_owner_org``).
+
+    ``honor_suggestion=False`` skips step 2: the suggestion is requester-
+    controlled data, so it only counts when the approver is a sysadmin who can
+    SEE and change it in the approval form. A non-sysadmin approval (initiative
+    admin) must never place a dataset in an arbitrary org via a planted
+    suggestion — package creation runs with ``ignore_auth``.
     """
     if override_org:
         return override_org
-    from ckanext.csunesco import db
-    extras = db._load_json(data_source.extras, {})
-    suggested = (extras.get('owner_org') or '').strip() \
-        if isinstance(extras, dict) else ''
-    if suggested:
-        return suggested
+    if honor_suggestion:
+        from ckanext.csunesco import db
+        extras = db._load_json(data_source.extras, {})
+        suggested = (extras.get('owner_org') or '').strip() \
+            if isinstance(extras, dict) else ''
+        if suggested:
+            return suggested
     org = getattr(project, 'organization_id', None)
     if org:
         return org
@@ -121,7 +129,8 @@ def _resource_dicts(data_source):
     ]
 
 
-def ensure_dataset(context, project, data_source, override_org=None):
+def ensure_dataset(context, project, data_source, override_org=None,
+                   honor_suggestion=True):
     """Create or refresh the CKAN package for ``data_source``.
 
     ``override_org`` is the sysadmin's approval-time choice; otherwise the
@@ -129,12 +138,15 @@ def ensure_dataset(context, project, data_source, override_org=None):
     default (see ``resolve_owner_org``). A suggested org that does NOT exist
     on the portal falls back to the default instead of failing — the reviewer
     saw (and could change) the selection in the approval form.
+    ``honor_suggestion=False`` (non-sysadmin approvals) drops the suggestion
+    from the resolution entirely.
 
     Returns ``{'package_id': ..., 'resource_ids': [...], 'owner_org': ...}``.
     Raises whatever the core actions raise -- the caller decides how to surface
     failure (the approve action leaves the row pending and reports it).
     """
-    owner_org = resolve_owner_org(project, data_source, override_org)
+    owner_org = resolve_owner_org(
+        project, data_source, override_org, honor_suggestion=honor_suggestion)
     if owner_org and not _org_exists(context, owner_org):
         if override_org:
             # An EXPLICIT choice that does not resolve is an input error.
