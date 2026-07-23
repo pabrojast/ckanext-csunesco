@@ -158,6 +158,10 @@ def ensure_dataset(context, project, data_source, override_org=None):
         'notes': data_source.description or '',
         'owner_org': owner_org,
     })
+    # Portal schemas (schemingdcat) require a per-dataset identifier; the
+    # package name is unique by construction. dataset_defaults may still
+    # override it explicitly, and never clobbers one already set.
+    package_dict.setdefault('identifier', package_dict['name'])
 
     resource_ids = []
     if data_source.ckan_package_id:
