@@ -1937,3 +1937,185 @@
     transform: none;
   }
 }
+
+/* ------------------------------------------------------------------------ */
+/* "Ask the data" block                                                      */
+/* ------------------------------------------------------------------------ */
+/* The card leads with the computed result and puts the prose under it, so the
+   figure is what the eye lands on. Answer bubbles are deliberately plainer
+   than a chat product's: this is a data panel that accepts questions, not a
+   conversation, and styling it like a messenger oversells what it is. */
+
+.cs-chat-intro {
+  margin: 0 0 0.75rem;
+  color: #46586a;
+}
+
+.cs-chat-card {
+  padding: var(--space-unit);
+  min-width: 0;
+  background: #fff;
+  border: 1px solid #e2e8ef;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.cs-chat-log {
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.cs-chat-turn {
+  margin-bottom: 0.9rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.cs-chat-turn:last-child { border-bottom: 0; }
+
+.cs-chat-who {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7b8b9a;
+}
+
+.cs-chat-turn-user .cs-chat-who { color: var(--unesco-blue-dark); }
+
+.cs-chat-text {
+  margin: 0 0 0.4rem;
+  /* Model output is inserted with textContent, so a reply that happens to
+     contain newlines must still read as the model wrote it. */
+  white-space: pre-wrap;
+}
+
+.cs-chat-turn.is-pending .cs-chat-text { color: #7b8b9a; font-style: italic; }
+
+/* The restated question: what the panel understood, in the reader's terms. */
+.cs-chat-query {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.cs-chat-chart { height: 260px; margin-bottom: 0.5rem; }
+
+.cs-chat-table {
+  width: 100%;
+  margin-bottom: 0.5rem;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.cs-chat-table th,
+.cs-chat-table td {
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.cs-chat-table td { text-align: right; font-variant-numeric: tabular-nums; }
+
+.cs-chat-table thead th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #7b8b9a;
+}
+
+.cs-chat-row-overall th,
+.cs-chat-row-overall td { font-weight: 700; background: #f7fafd; }
+
+/* Where the figure came from. Small, but never hidden: it is the difference
+   between an answer and a claim. */
+.cs-chat-basis {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #5a6b7b;
+}
+
+.cs-chat-hint { margin: 0.3rem 0 0; font-size: 0.88rem; color: #46586a; }
+
+.cs-chat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.6rem 0;
+}
+
+.cs-chat-chip {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+  color: var(--unesco-blue-dark);
+  background: var(--unesco-blue-pale);
+  border: 1px solid #cfe4f6;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.cs-chat-chip:hover,
+.cs-chat-chip:focus { background: #d3e9fa; }
+
+.cs-chat-clear {
+  float: right;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.78rem;
+  color: #5a6b7b;
+  background: transparent;
+  border: 1px solid #dde5ec;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+/* Hidden until the script takes over: an input box that silently does nothing
+   is worse than no input box. The <noscript> note carries the CSV link. */
+.cs-chat-form { display: none; }
+
+.cs-chat.is-ready .cs-chat-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-top: 0.6rem;
+}
+
+.cs-chat-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+  border: 1px solid #cfd8e3;
+  border-radius: var(--radius);
+  resize: vertical;
+}
+
+.cs-chat-input:focus {
+  outline: 2px solid var(--unesco-blue-light);
+  outline-offset: 1px;
+}
+
+.cs-chat-send { flex: 0 0 auto; }
+.cs-chat-send[disabled] { opacity: 0.6; cursor: default; }
+
+.cs-chat-signin { margin: 0; color: #46586a; }
+
+.cs-chat-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0.75rem 0 0;
+  padding-top: 0.6rem;
+  border-top: 1px solid #eef2f6;
+  font-size: 0.8rem;
+}
+
+.cs-chat-disclaimer { flex: 1 1 20rem; color: #5a6b7b; }
+
+@media (max-width: 640px) {
+  .cs-chat.is-ready .cs-chat-form { flex-direction: column; align-items: stretch; }
+  .cs-chat-send { width: 100%; }
+}

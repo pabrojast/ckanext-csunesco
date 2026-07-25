@@ -410,6 +410,12 @@ def csunesco_data_source_fields(context, data_dict):
         'first_date': first.isoformat() if first else None,
         'last_date': last.isoformat() if last else None,
         'site_field': site_field,
+        # The site column is excluded from `categorical` (its cardinality is
+        # well past the facet ceiling), so its human label would otherwise have
+        # nowhere to come from and every caller would fall back to the raw
+        # column name.
+        'site_label': (aggregate.field_label(schema, site_field)
+                       if site_field else None),
         'numeric': aggregate.numeric_fields_with_data(schema, rows),
         'categorical': aggregate.categorical_field_options(
             schema, rows, site_field),

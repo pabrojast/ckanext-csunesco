@@ -45,6 +45,14 @@ cs-charts-js:
   contents:
     - js/cs-charts.js
 
+# The "ask the data" block. Loaded after cs-charts-js (it reuses that bundle's
+# chart painter, published on window) and only on pages that carry the block.
+cs-data-chat-js:
+  filters: rjsmin
+  output: js/cs-data-chat.js
+  contents:
+    - js/cs-data-chat.js
+
 # The project-page editor: rich-text toolbar, reorder, chart field picker.
 # Preloads csunesco-js so it can reuse its shared helpers.
 cs-page-editor-js:

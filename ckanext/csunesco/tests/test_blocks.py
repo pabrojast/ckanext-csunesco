@@ -735,3 +735,42 @@ def test_a_pasted_dataset_url_is_accepted():
                              'https://data.dev-wins.com/en/dataset/cs-data-x-3\n'
                              'plain-name'})
     assert out['ids'] == ['river-ph-2024', 'cs-data-x-3', 'plain-name']
+
+
+# --------------------------------------------------------------------------- #
+# normalize: the "ask the data" block                                         #
+# --------------------------------------------------------------------------- #
+
+def test_data_chat_keeps_valid_values():
+    out = b.normalize_block({
+        'type': 'data_chat', 'data_source_id': 'abc-123',
+        'intro': 'Ask about our readings.', 'height': 420})
+    assert out['data_source_id'] == 'abc-123'
+    assert out['intro'] == 'Ask about our readings.'
+    assert out['height'] == 420
+
+
+def test_data_chat_clamps_and_strips_what_it_cannot_use():
+    out = b.normalize_block({
+        'type': 'data_chat', 'data_source_id': 'a b/c',
+        'intro': '<script>alert(1)</script> hello', 'height': 9999})
+    assert out['data_source_id'] == ''
+    assert '<' not in out['intro'] and 'hello' in out['intro']
+    assert out['height'] == 600
+    assert b.normalize_block({'type': 'data_chat',
+                              'height': 'tall'})['height'] == 360
+
+
+def test_data_chat_is_capped_to_one_per_page():
+    """Two question boxes on one page is a mistake, not a layout."""
+    blocks = b.normalize_blocks([{'type': 'data_chat'}, {'type': 'data_chat'}])
+    assert len([x for x in blocks if x['type'] == 'data_chat']) == 1
+
+
+def test_data_chat_does_not_force_a_page_into_review():
+    """It embeds nothing from an origin we do not control, so it must not
+    knock a trusted project out of its auto-publish path."""
+    assert 'data_chat' not in b.blocks_requiring_review(
+        [{'type': 'data_chat'}])
+    assert b.page_initial_status(False, True, [{'type': 'data_chat'}]) \
+        == 'approved'

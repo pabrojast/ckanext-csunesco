@@ -1,0 +1,139 @@
+{#
+  Block: ask this project's observations a question in plain language.
+
+  The answer a reader sees is always a COMPUTED result -- the server runs the
+  aggregation that draws the chart blocks and only then lets the model write
+  the surrounding sentence. So the panel leads with the figure and its basis
+  ("calculated from N of M observations between A and B"), and the prose is the
+  annotation. That ordering is the point of the feature, not decoration.
+
+  Asking costs a metered provider call, so it is for signed-in visitors only;
+  everyone else gets the same block with an invitation to sign in, and the CSV
+  link either way. Without JavaScript the panel is just that link -- never an
+  input that silently does nothing.
+
+  Vars: block, ctx.
+#}
+{% set source = ctx.approved_sources.get(block.data_source_id) %}
+{% if not source and ctx.preview %}
+  {# Preview only: the visitor correctly sees nothing, but the manager needs
+     to know why their block vanished. #}
+  <section class="cs-section cs-block" id="block-{{ block.id }}">
+    <p class="cs-empty">
+      {{ _("This block has no approved data selected, so visitors see nothing here.") }}
+    </p>
+  </section>
+{% endif %}
+{% if source %}
+  {% set can_ask = h.check_access('csunesco_data_chat', {'id': source.id}) %}
+  {% set csv_url = h.url_for('csunesco.data_source_csv', id=source.id) %}
+  <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}"
+           id="block-{{ block.id }}" aria-labelledby="title-{{ block.id }}">
+    {% snippet "csunesco/blocks/_heading.html", block=block %}
+    {% if block.intro %}
+      <p class="cs-chat-intro">{{ block.intro }}</p>
+    {% endif %}
+
+    <div class="cs-chat-card">
+      {% if can_ask %}
+        {#
+          Every user-facing string is rendered here, through _(), and handed to
+          the script as one JSON blob. The rest of this extension uses
+          data-label-* attributes, but this panel needs about twenty strings
+          (statuses, refusal reasons, the basis sentence, the starter chips) and
+          twenty attributes on one div is worse than one readable object. The
+          rule it is protecting is the same: no user-facing text in the .js.
+
+          Placeholders below are {braces}, NOT %(name)s, and the script fills
+          them. Newstyle gettext always applies `% variables` to whatever _()
+          returns, so a %(name)s placeholder with no kwargs raises KeyError at
+          render time and a bare % raises ValueError. Braces pass through.
+        #}
+        {% set strings = {
+          'send': _("Ask"),
+          'thinking': _("Looking at your data…"),
+          'clear': _("Clear"),
+          'cleared': _("Conversation cleared."),
+          'csv': _("Download the data (CSV)"),
+          'you': _("You"),
+          'answer': _("Answer"),
+          'error': _("The answer could not be loaded. Please try again."),
+          'basis': _("Calculated from {used} of {total} observations, {first} to {last}."),
+          'basis_short': _("Calculated from {used} observations."),
+          'truncated': _("Only the most recent observations were included."),
+          'omitted': _("and {count} more not shown"),
+          'group_header': _("Group"),
+          'value_header': _("Value"),
+          'count_header': _("Observations"),
+          'overall': _("Overall"),
+          'status_unconfigured': _("Asking questions is not switched on for this portal yet."),
+          'status_no_data': _("There are no measurements to ask about yet."),
+          'status_empty': _("No observations match that question."),
+          'status_quota': _("You have reached today's limit of questions. Please come back tomorrow."),
+          'status_unavailable': _("The data could not be reached right now. Please try again in a moment."),
+          'status_unauthenticated': _("Please sign in again to ask a question."),
+          'status_bad_request': _("That question could not be read. Try rewording it."),
+          'reason_not_in_data': _("That is not something these observations record."),
+          'reason_not_about_data': _("I can only answer questions about this project's observations."),
+          'reason_needs_a_field': _("Tell me which measurement you mean."),
+          'reason_unclear': _("I did not understand that question well enough to answer it."),
+          'try_instead': _("You could ask:"),
+          'suggest_average': _("What is the average {field}?"),
+          'suggest_by_site': _("What is the average {field} at each {site}?"),
+          'suggest_trend': _("How has {field} changed over time?"),
+          'suggest_count_over_time': _("How many observations were made each month?"),
+          'suggest_breakdown': _("How often was each {field} recorded?")
+        } %}
+        <div class="cs-chat"
+             data-chat-url="{{ h.url_for('csunesco.data_source_chat', id=source.id) }}"
+             data-fields-url="{{ h.url_for('csunesco.data_source_fields', id=source.id) }}"
+             data-csv-url="{{ csv_url }}"
+             data-store-key="cs-chat:{{ source.id }}:{{ block.id }}"
+             data-language="{{ h.lang() }}"
+             data-height="{{ block.height }}">
+          <div class="cs-chat-log" id="log-{{ block.id }}" role="log"
+               aria-live="polite" aria-label="{{ _('Answers') }}"
+               style="min-height: {{ block.height }}px;"></div>
+          <div class="cs-chat-chips" hidden></div>
+          {#
+            No action/method: this form is never submitted the classic way. It
+            is hidden until the script adds `is-ready` to the container, so a
+            reader without JavaScript sees the <noscript> note and the CSV link
+            instead of an input box that does nothing.
+          #}
+          <form class="cs-chat-form">
+            {{ h.csrf_input() }}
+            <label class="cs-visually-hidden" for="q-{{ block.id }}">
+              {{ _("Your question about this data") }}
+            </label>
+            <textarea id="q-{{ block.id }}" class="cs-chat-input" name="question"
+                      rows="2" maxlength="600"
+                      placeholder="{{ _('e.g. What is the average pH at each site?') }}"></textarea>
+            <button type="submit" class="cs-btn cs-btn-primary cs-chat-send">
+              {{ _("Ask") }}
+            </button>
+          </form>
+          <script type="application/json" class="cs-chat-strings">{{ strings | tojson }}</script>
+        </div>
+      {% else %}
+        <p class="cs-chat-signin">
+          {{ _("Sign in to ask questions about this data in your own words.") }}
+          <a class="cs-link" href="{{ h.url_for('user.login') }}">{{ _("Sign in") }}</a>
+        </p>
+      {% endif %}
+
+      <p class="cs-chat-foot">
+        <span class="cs-chat-disclaimer">
+          {{ _("Answers are written by an AI, but every figure is calculated from this project's own observations — the AI never makes the numbers up. Check them before making decisions.") }}
+        </span>
+        <a class="cs-link" href="{{ csv_url }}">{{ _("Download the data (CSV)") }}</a>
+      </p>
+
+      <noscript>
+        <p class="cs-empty">
+          {{ _("Asking questions needs JavaScript. You can download the data instead.") }}
+        </p>
+      </noscript>
+    </div>
+  </section>
+{% endif %}

@@ -33,7 +33,7 @@ log = logging.getLogger(__name__)
 # fetching them for its other modes too costs one cheap query and keeps the
 # dependency rule a single set rather than a per-mode special case.
 _DATA_BLOCKS = frozenset(
-    ('builtin_data', 'chart', 'observation_map', 'datasets_list'))
+    ('builtin_data', 'chart', 'observation_map', 'datasets_list', 'data_chat'))
 
 # Block types that need the project's content rows.
 _CONTENT_BLOCKS = frozenset(('builtin_news_events', 'content_list'))
@@ -61,7 +61,12 @@ def build_context(context, project, blocks, has_region=False,
         'news_events': [],
         # Asset gating: a page with no chart must not pay for a 208 KB
         # Chart.js bundle, and one with no gallery must not load the lightbox.
-        'has_charts': 'chart' in types,
+        # The chat draws its answers with the same painter as a chart block, so
+        # it pulls in Chart.js too -- one flag, or a page whose only data block
+        # is the chat would load the chat script and then have nothing to draw
+        # with.
+        'has_charts': bool(types & {'chart', 'data_chat'}),
+        'has_chat': 'data_chat' in types,
         'has_lightbox': any(block.get('type') == 'image'
                             and block.get('lightbox')
                             for block in blocks or []),

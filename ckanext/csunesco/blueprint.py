@@ -234,6 +234,12 @@ def data_source_fields(id):
     return views_data.data_source_fields(id)
 
 
+def data_source_chat(id):
+    """Answer one question about an APPROVED data source (authenticated JSON)."""
+    from ckanext.csunesco.logic import views_data
+    return views_data.data_source_chat(id)
+
+
 def project_page_edit(slug):
     """Project-page editor (GET the form / POST one block operation)."""
     from ckanext.csunesco.logic import views_page
@@ -410,6 +416,10 @@ csunesco_bp.add_url_rule(
 csunesco_bp.add_url_rule(
     '/data/<id>/fields', 'data_source_fields', data_source_fields,
     methods=['GET'])
+# The data chat. POST-only and authenticated: unlike the two feeds above it
+# spends a metered provider call, so it is neither cacheable nor anonymous.
+csunesco_bp.add_url_rule(
+    '/data/<id>/chat', 'data_source_chat', data_source_chat, methods=['POST'])
 
 # Project-page builder (managers): one editor endpoint for every operation.
 csunesco_bp.add_url_rule(

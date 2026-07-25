@@ -408,3 +408,71 @@ def test_categorical_options_keep_the_narrower_facet_ceiling():
     schema = {'fields': [{'name': 'kind', 'type': 'short_text'}]}
     rows = [_row('2025-01-01', kind='v%d' % i) for i in range(45)]
     assert ag.categorical_field_options(schema, rows) == []
+
+
+# --------------------------------------------------------------------------- #
+# Scalar aggregation (the shape most plain-language questions have)           #
+# --------------------------------------------------------------------------- #
+
+def test_aggregate_scalar_computes_an_overall_figure():
+    rows = [_row('2025-01-01', ph=7.0), _row('2025-01-02', ph=8.0),
+            _row('2025-01-03', ph=None), _row('2025-01-04', ph='9')]
+    out = ag.aggregate_scalar(rows, 'ph', agg='mean')
+    assert out['overall'] == 8.0
+    assert out['used_rows'] == 3
+    assert out['groups'] == []
+    assert out['omitted_groups'] == 0
+    assert sorted(out['values']) == [7.0, 8.0, 9.0]
+
+
+def test_aggregate_scalar_honours_every_aggregation():
+    rows = [_row('2025-01-01', ph=2.0), _row('2025-01-02', ph=6.0)]
+    assert ag.aggregate_scalar(rows, 'ph', agg='min')['overall'] == 2.0
+    assert ag.aggregate_scalar(rows, 'ph', agg='max')['overall'] == 6.0
+    assert ag.aggregate_scalar(rows, 'ph', agg='sum')['overall'] == 8.0
+    assert ag.aggregate_scalar(rows, 'ph', agg='count')['overall'] == 2.0
+    # An unknown aggregation falls back rather than raising.
+    assert ag.aggregate_scalar(rows, 'ph', agg='median')['overall'] == 4.0
+
+
+def test_aggregate_scalar_groups_are_ordered_and_capped():
+    rows = []
+    for index in range(12):
+        # Site 0 gets 12 readings, site 11 gets 1 -- so the order is knowable.
+        rows += [_row('2025-01-01', ph=float(index), site='S%02d' % index)
+                 for _ in range(12 - index)]
+    out = ag.aggregate_scalar(rows, 'ph', agg='mean', group_by='site')
+    assert [g['name'] for g in out['groups']][:2] == ['S00', 'S01']
+    assert len(out['groups']) == ag.MAX_SERIES
+    # The tail is REPORTED, not silently dropped: the caller has to be able to
+    # say "and 4 more sites".
+    assert out['omitted_groups'] == 4
+    assert out['groups'][0]['count'] == 12
+
+
+def test_aggregate_scalar_counts_ungrouped_rows_in_the_overall_only():
+    """A reading with no site belongs to no site -- calling it "" would invent
+    a monitoring site that does not exist."""
+    rows = [_row('2025-01-01', ph=4.0, site='A'),
+            _row('2025-01-02', ph=8.0)]
+    out = ag.aggregate_scalar(rows, 'ph', agg='mean', group_by='site')
+    assert out['overall'] == 6.0
+    assert out['used_rows'] == 2
+    assert out['groups'] == [{'name': 'A', 'value': 4.0, 'count': 1}]
+
+
+def test_aggregate_scalar_on_the_real_fixture_matches_a_hand_count():
+    data = _fixture()
+    values = [ag.to_number((r.get('answers') or {}).get('ph'))
+              for r in data['rows']]
+    values = [v for v in values if v is not None]
+    out = ag.aggregate_scalar(data['rows'], 'ph', agg='mean')
+    assert out['used_rows'] == len(values)
+    assert abs(out['overall'] - sum(values) / len(values)) < 1e-9
+
+
+def test_aggregate_scalar_returns_none_when_nothing_matches():
+    out = ag.aggregate_scalar([_row('2025-01-01', ph='n/a')], 'ph')
+    assert out['overall'] is None
+    assert out['used_rows'] == 0
+    assert ag.aggregate_scalar(None, 'ph')['overall'] is None

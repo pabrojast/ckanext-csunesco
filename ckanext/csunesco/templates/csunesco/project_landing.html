@@ -105,6 +105,11 @@
     {% asset 'csunesco/chartjs' %}
     {% asset 'csunesco/cs-charts-js' %}
   {% endif %}
+  {# After cs-charts-js: the chat reuses its painter, which that bundle
+     publishes on window. #}
+  {% if ctx.has_chat %}
+    {% asset 'csunesco/cs-data-chat-js' %}
+  {% endif %}
   {% if ctx.has_lightbox %}
     {% asset 'csunesco/cs-page-view-js' %}
   {% endif %}

@@ -586,6 +586,73 @@ def aggregate_categories(rows, field, top_n=MAX_CATEGORIES, other_label='Other')
             'used_rows': used}
 
 
+def aggregate_scalar(rows, field, agg='mean', group_by=None,
+                     max_groups=MAX_SERIES):
+    """One number for ``field`` over ``rows`` -- no time axis.
+
+    :func:`aggregate_numeric` answers "how did pH move over time"; this answers
+    "what IS the pH", which is the shape most plain-language questions actually
+    have ("what is the average conductivity at each site?"). Optionally splits
+    by ``group_by``, ordered by sample count and capped like the series cap, so
+    a form with 40 sites reports its 8 busiest plus how many it left out --
+    ``omitted_groups`` exists so the caller can say so instead of quietly
+    truncating.
+
+    Returns ``{'overall', 'groups', 'used_rows', 'omitted_groups', 'values'}``;
+    ``values`` are the raw numbers, for :func:`robust_range`.
+    """
+    if agg not in AGGREGATIONS:
+        agg = 'mean'
+    overall = {'sum': 0.0, 'count': 0, 'min': None, 'max': None}
+    per_group = {}
+    raw_values = []
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        answers = row.get('answers') or {}
+        value = to_number(answers.get(field))
+        if value is None:
+            continue
+        for bucket in (overall, _group_bucket(per_group, answers, group_by)):
+            if bucket is None:
+                continue
+            bucket['sum'] += value
+            bucket['count'] += 1
+            bucket['min'] = value if bucket['min'] is None \
+                else min(bucket['min'], value)
+            bucket['max'] = value if bucket['max'] is None \
+                else max(bucket['max'], value)
+        raw_values.append(value)
+
+    ordered = sorted(per_group.items(),
+                     key=lambda item: (-item[1]['count'], item[0]))
+    groups = [{'name': name, 'value': _reduce(bucket, agg),
+               'count': bucket['count']}
+              for name, bucket in ordered[:max_groups]]
+
+    return {'overall': _reduce(overall, agg),
+            'groups': groups,
+            'omitted_groups': max(0, len(ordered) - len(groups)),
+            'used_rows': overall['count'],
+            'values': raw_values}
+
+
+def _group_bucket(per_group, answers, group_by):
+    """The accumulator for this row's group, or ``None`` when not grouping.
+
+    A row whose group value is missing is counted in ``overall`` but belongs to
+    no group -- lumping it under an empty-string name would invent a site.
+    """
+    if not group_by:
+        return None
+    name = category_value(answers.get(group_by))
+    if name is None:
+        return None
+    return per_group.setdefault(
+        name, {'sum': 0.0, 'count': 0, 'min': None, 'max': None})
+
+
 def round_series(series, digits=4):
     """Round every point in place-ish (returns a new list) to shrink the payload.
 

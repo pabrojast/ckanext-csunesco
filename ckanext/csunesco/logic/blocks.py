@@ -300,6 +300,26 @@ def _n_chart(raw, report=None):
     }
 
 
+MAX_CHAT_INTRO = 300
+
+
+def _n_data_chat(raw, report=None):
+    """The "ask the data" panel.
+
+    Almost nothing is stored: the questions are the reader's and the answers
+    are computed per request, so the only authored state is which data to point
+    at and an optional line of framing above the box.
+    """
+    return {
+        # Re-checked against THIS project's approved sources at render time,
+        # exactly as the chart block does -- a stored id proves nothing.
+        'data_source_id': _kept(report, 'data_source_id', _ref,
+                                raw.get('data_source_id'), 'bad_ref'),
+        'intro': _plain(raw.get('intro'), MAX_CHAT_INTRO),
+        'height': _int(raw.get('height'), 360, 240, 600),
+    }
+
+
 STAT_SOURCES = ('manual', 'observations', 'sites_monitored',
                 'citizen_scientists', 'member_states')
 
@@ -504,6 +524,12 @@ _TYPES = [
               u'A chart of the observations your volunteers collected in the '
               u'app. Nothing shows until you pick which data to chart.',
               max_instances=6),
+    BlockType('data_chat', u'Ask the data', u'\U0001F4AC', _n_data_chat,
+              u'A box where visitors ask questions about your observations in '
+              u'plain language - "what is the average pH per site?" - and get '
+              u'a chart back. Every figure is calculated from your data, never '
+              u'written by the AI. Visitors need to be signed in to ask.',
+              max_instances=1),
     BlockType('stats', u'Your own counters', u'\U0001F522', _n_stats,
               u'Up to four big numbers you choose - typed in, or kept up to '
               u'date automatically from your data.', max_instances=3),

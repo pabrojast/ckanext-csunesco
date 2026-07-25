@@ -388,6 +388,21 @@ def csunesco_data_source_series(context, data_dict):
     return {'success': True}
 
 
+def csunesco_data_chat(context, data_dict):
+    """Ask a question about an approved data source's observations.
+
+    Deliberately NOT anonymous, unlike the ``_fields``/``_series`` reads it is
+    built on. Those serve cached aggregates of data anyone can already download;
+    this one spends a metered call to a paid provider on every request, so it
+    needs an account to attribute the spend to and a daily quota to cap it. The
+    data itself stays public -- the *asking* is what is gated.
+    """
+    if context.get('user'):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('You must be logged in to ask about the data')}
+
+
 @tk.auth_allow_anonymous_access
 def csunesco_project_page_show(context, data_dict):
     # Public read. The action returns only the PUBLISHED blocks unless the
@@ -481,6 +496,7 @@ def get_auth_functions():
         'csunesco_data_source_show': csunesco_data_source_show,
         'csunesco_data_source_fields': csunesco_data_source_fields,
         'csunesco_data_source_series': csunesco_data_source_series,
+        'csunesco_data_chat': csunesco_data_chat,
         'csunesco_project_page_show': csunesco_project_page_show,
         'csunesco_project_page_update': csunesco_project_page_update,
         'csunesco_project_page_approve': csunesco_project_page_approve,

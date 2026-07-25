@@ -1,0 +1,34 @@
+{#
+  Editor: the "ask the data" panel.
+
+  There is almost nothing to configure, and that is deliberate. The questions
+  come from the reader and the answers are computed per request, so the only
+  authored state is which data the panel points at, an optional line of framing
+  and how tall the box is.
+
+  Vars: block, index, project.
+#}
+{% snippet "csunesco/blocks/edit/_data_source_select.html", block=block,
+           index=index, project=project, field_id='b%s-chat-source' % index %}
+
+<div class="cs-field">
+  <label for="b{{ index }}-chat-intro">{{ _("Line above the box (optional)") }}</label>
+  <input type="text" id="b{{ index }}-chat-intro" name="blocks[{{ index }}][intro]"
+         value="{{ block.intro }}" maxlength="300"
+         placeholder="{{ _('e.g. Ask anything about the readings our volunteers collected.') }}"
+         aria-describedby="b{{ index }}-chat-intro-hint">
+  {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='intro' %}
+  <p class="cs-hint" id="b{{ index }}-chat-intro-hint">
+    {{ _("Shown above the question box, to tell visitors what they can ask about.") }}
+  </p>
+</div>
+
+<div class="cs-field">
+  <label for="b{{ index }}-chat-height">{{ _("Height (pixels)") }}</label>
+  <input type="number" id="b{{ index }}-chat-height" name="blocks[{{ index }}][height]"
+         value="{{ block.height }}" min="240" max="600" step="20">
+</div>
+
+<p class="cs-hint">
+  {{ _("Visitors need to be signed in to ask a question, and each person can ask a limited number per day. Every figure in an answer is calculated from your project's own observations — the same calculation the chart blocks use — so answers and charts always agree.") }}
+</p>

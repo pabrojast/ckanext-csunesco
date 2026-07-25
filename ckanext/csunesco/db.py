@@ -208,6 +208,20 @@ cs_citizen_scientist_table = Table(
     Column('created', types.DateTime, default=_utcnow),
 )
 
+cs_chat_usage_table = Table(
+    'cs_chat_usage', metadata,
+    Column('id', types.UnicodeText, primary_key=True, default=make_uuid),
+    Column('user_id', types.UnicodeText, index=True),
+    # The UTC calendar day as 'YYYY-MM-DD'. A string, not a Date: the quota
+    # question is "how many today", and a sortable text key compares the same
+    # way on Postgres and on the SQLite the behavioural tests run against.
+    Column('day', types.UnicodeText, index=True),
+    Column('calls', types.Integer, default=0),
+    Column('modified', types.DateTime, default=_utcnow),
+    # One row per user per day is what makes the counter a counter.
+    UniqueConstraint('user_id', 'day', name='uq_cs_chat_usage_user_day'),
+)
+
 
 # All tables this plugin owns; ``ensure_tables`` only ever touches these so we
 # never accidentally reach for core CKAN tables.
@@ -219,6 +233,7 @@ _ALL_TABLES = [
     cs_citizen_scientist_table,
     cs_data_source_table,
     cs_project_page_table,
+    cs_chat_usage_table,
 ]
 
 
@@ -254,6 +269,10 @@ class CsProjectPage(DomainObject):
     pass
 
 
+class CsChatUsage(DomainObject):
+    pass
+
+
 _mapped = False
 
 
@@ -269,6 +288,7 @@ def _ensure_mappers():
     mapper(CsCitizenScientist, cs_citizen_scientist_table)
     mapper(CsDataSource, cs_data_source_table)
     mapper(CsProjectPage, cs_project_page_table)
+    mapper(CsChatUsage, cs_chat_usage_table)
     _mapped = True
 
 
@@ -1526,3 +1546,65 @@ def pending_counts(context):
         'page_requests': pages,
         'total': projects + joins + content + data_sources + pages,
     }
+
+
+# ---------------------------------------------------------------------------
+# Data-chat usage (per-user daily quota)
+# ---------------------------------------------------------------------------
+#
+# One row per user per UTC day. This is a COST fence, not a security control:
+# the chat action is already restricted to authenticated users, and this stops
+# one account from spending the portal's whole provider budget in an afternoon.
+# Rows are tiny and self-expiring in the sense that only today's is ever read.
+
+def chat_usage_count(user_id, day):
+    """Calls ``user_id`` has already made on ``day``; ``0`` when none."""
+    if not user_id or not day:
+        return 0
+    _ensure_mappers()
+    row = (Session.query(CsChatUsage)
+           .filter(CsChatUsage.user_id == user_id)
+           .filter(CsChatUsage.day == day)
+           .first())
+    return int(row.calls or 0) if row is not None else 0
+
+
+def bump_chat_usage(user_id, day):
+    """Count one call and return the new total (NO commit -- the action owns it).
+
+    Same SAVEPOINT discipline as :func:`get_or_create_project_page`: two
+    requests from the same user on the same day can race the insert, and the
+    loser must roll back only its nested transaction, then re-read and
+    increment the winner's row.
+    """
+    if not user_id or not day:
+        return 0
+    _ensure_mappers()
+    row = (Session.query(CsChatUsage)
+           .filter(CsChatUsage.user_id == user_id)
+           .filter(CsChatUsage.day == day)
+           .first())
+    if row is None:
+        row = CsChatUsage()
+        row.user_id = user_id
+        row.day = day
+        row.calls = 1
+        row.modified = _utcnow()
+        savepoint = Session.begin_nested()
+        try:
+            Session.add(row)
+            Session.flush()
+            savepoint.commit()
+            return 1
+        except IntegrityError:
+            savepoint.rollback()
+            row = (Session.query(CsChatUsage)
+                   .filter(CsChatUsage.user_id == user_id)
+                   .filter(CsChatUsage.day == day)
+                   .first())
+            if row is None:
+                return 0
+    row.calls = int(row.calls or 0) + 1
+    row.modified = _utcnow()
+    Session.add(row)
+    return int(row.calls)

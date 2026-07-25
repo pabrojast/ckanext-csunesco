@@ -52,6 +52,13 @@ workflow — see [`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
   an observation map (Leaflet), download links and — when
   `ckanext.data_stories.enabled` is on — a "Create a data story" entry point
   so users can combine their datasets in Data Stories / Terria.
+- **Ask the data** — a page-builder block where a signed-in visitor asks about
+  a project's observations in plain language ("what is the average pH at each
+  site?") and gets a chart or a table back. The model **never produces a
+  number**: it picks one call from a closed, validated vocabulary of four
+  tools, the server runs it through the same `logic/aggregate.py` that draws
+  the chart blocks, and only then does the model write the sentence around the
+  result. See [Ask the data](#ask-the-data).
 
 ## Endpoints & permissions
 
@@ -84,6 +91,7 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | GET | `/citizen-science/publications` · `/publications/<slug>` | Publications index / detail | public (approved) |
 | GET | `/citizen-science/maps` · `/maps/<slug>` | Maps index / detail (Terria embed) | public (approved) |
 | GET | `/citizen-science/data/<id>.csv` · `.geojson` | Live data proxy for an **approved** data source (fetches ofform's public endpoints, TTL-cached) | public |
+| POST | `/citizen-science/data/<id>/chat` | One plain-language question about an **approved** data source (JSON in/out, never cached, per-user daily quota) | authenticated |
 | GET·POST | `/citizen-science/register-citizen` | Citizen Scientist self-registration (account created **pending** until email is verified) | public — gated by `ckan.auth.create_user_via_web`; reuses core `user_create` auth |
 | GET | `/citizen-science/verify/<token>` | Activate a pending account via its emailed link | public (single-use token) |
 | GET·POST | `/citizen-science/verify/resend` | Request a fresh verification link | public (generic response) |
@@ -182,6 +190,11 @@ config reload). Features gated on an option **fail closed** when it is unset.
 | `ckanext.csunesco.ofform_app_url` | *(unset — links hidden)* | The CS Toolbox **frontend** base (e.g. `https://ofform.aquedra.com`). Used only to render "Open in the app" links in the review panel. |
 | `ckanext.csunesco.dataset_owner_org` | *(unset)* | **Fallback** organization for datasets created on data-source approval. The actual owner is resolved in priority order: the sysadmin's choice in the approval form → the org suggested by the app (`owner_org` in the request; ofform keeps its orgs synchronized with the portal via `ckan_slug`) → `cs_project.organization_id` → this option. A suggestion that does not exist on the portal falls back to this default. |
 | `ckanext.csunesco.dataset_defaults` | `{}` | Optional JSON object merged into `package_create` — use it to satisfy portal-schema (e.g. schemingdcat) required fields, licences, etc. |
+| `ckanext.csunesco.llm_api_key` | *(unset — the data chat is disabled)* | API key for the chat-completions provider that powers the **Ask the data** block. Unset ⇒ the block renders with a "not switched on" notice; nothing else on the page changes. This is the extension's only outbound credential. |
+| `ckanext.csunesco.llm_base_url` | `https://api.deepseek.com` | Base URL of an **OpenAI-compatible** `/chat/completions` endpoint (the portal already runs one for `ckanext-terriassistant`). |
+| `ckanext.csunesco.llm_model` | `deepseek-chat` | Model id to send. It must support tool / function calling — the whole design rests on it. |
+| `ckanext.csunesco.llm_daily_quota` | `40` | Questions one signed-in user may ask per UTC day, across every project. `0` disables the cap. |
+| `ckanext.csunesco.llm_timeout` | `45` | Seconds to wait for the provider, per call. One answer makes at most two calls. |
 | `ckanext.data_stories.enabled` | — | Not ours (ckanext-pages), but when true the project landing shows a "Create a data story" entry point. |
 
 Terria embeds additionally require the Terria host to allow framing (no
@@ -294,10 +307,66 @@ a default template plus a custom one.
 - Join decisions now record their reviewer (`cs_project_member.reviewed_by`
   / `reviewed_at`, auto-healed columns).
 
+### Ask the data
+
+The *"Knowledge generation"* step of the Citizen Science workflow
+(`docs/OFFORM_INTEGRATION.md` §6): a reader who can see the observation map but
+cannot open a spreadsheet still gets to ask "in which months did conductivity
+rise at Río Claro?".
+
+It is a page-builder block (`data_chat`, one per page). A signed-in visitor
+types a question; the answer arrives as a **computed result plus a sentence
+about it**, in that order on screen.
+
+**The model never produces a number.** That is the whole design, and it is what
+the standard failure of these interfaces looks like when you skip it — fluent
+prose with an invented figure inside. Instead:
+
+1. The columns the model may refer to come from `csunesco_data_source_fields`,
+   the same introspection the chart editor's field picker uses.
+2. The model answers with **one call** from a closed vocabulary of four tools
+   (`series`, `stat`, `top_categories`, `cannot_answer`), validated against
+   those columns. An invented column name is rejected with a message naming the
+   real ones and retried **once**; a second failure becomes a refusal.
+3. The server runs the call through `logic/aggregate.py` — the code that draws
+   the chart blocks. So an answer and a chart asking the same thing agree by
+   construction.
+4. Only then does the model write prose, with the computed result in front of
+   it and **no tools available**, so it cannot go and compute something else.
+
+A refusal or an empty result short-circuits before step 4: there is nothing to
+narrate, and paying a provider to dress up "no data" is how these panels end up
+sounding confident about nothing.
+
+What the reader sees with every answer: the question restated in their own
+terms ("Electrical conductivity (µS/cm) · Site"), the chart or table, and the
+line that makes it checkable — *"Calculated from 412 of 1605 observations,
+2024-03-02 to 2026-06-11"* — plus a CSV link. Starter chips name fields that
+actually hold data, so a suggested question is never one the panel then refuses.
+
+**Cost and access.** Asking requires a CKAN account (the data itself stays
+public — the *asking* is what is gated) and is capped per user per day
+(`llm_daily_quota`). Answers are never cached. Without `llm_api_key` the block
+renders a "not switched on" notice and the rest of the page is unaffected.
+
+**What leaves the portal.** Only the question, the conversation so far, the
+**column profile** (names, labels, units, row counts, date span) and the
+**already-aggregated result**. Raw observation rows are never sent to the
+provider. Note this differs from the CS Toolbox's own `/ai/dashboard-chat`,
+which does send a 120-row sample.
+
+Related module map: `logic/chat.py` (pure — tools, validation, prompt, card),
+`logic/llm.py` (the one outbound call), `logic/action/chat.py` (the loop),
+`assets/js/cs-data-chat.js` (the panel).
+
 ### Next stages (agreed, not yet built)
 
 - Email notification / daily digest to sysadmins when items land in the
   review queue (SMTP is already configured on the portal).
+- **Ask the data**: stream the answer in two phases (chart first at ~3 s, prose
+  after) if the current single round trip tests as too slow, and let the CS
+  Toolbox move its own chat onto this tool contract so there is one
+  implementation.
 - Auto-enqueue the data-source request when approving an app-originated
   project that already has published forms.
 - Image **uploads** for the gallery block (today its URLs are https links, the

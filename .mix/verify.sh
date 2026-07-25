@@ -375,7 +375,13 @@ PURE = {
         'numeric_fields_with_data', 'categorical_field_options', 'value_counts',
         'parse_iso_day', 'choose_bucket', 'bucket_key', 'bucket_labels',
         'filter_rows_by_date', 'aggregate_numeric', 'aggregate_counts',
-        'aggregate_categories', 'round_series', 'preset_start'),
+        'aggregate_categories', 'aggregate_scalar', 'round_series',
+        'preset_start'),
+    'ckanext/csunesco/logic/chat.py': (
+        'parse_unit', 'build_profile', 'numeric_names', 'groupable_names',
+        'has_data', 'validate_tool_call', 'build_messages', 'clamp_question',
+        'clamp_history',
+        'suggestions_from_profile', 'answer_card', 'result_is_empty'),
 }
 
 for path, required in PURE.items():
@@ -474,7 +480,15 @@ for path, needle in (
 # a Markup object whose __mod__ never sees the mapping, so it raises KeyError
 # at render time -- invisible until that exact template runs. The repo has been
 # bitten by this before (commit 43fa6d3); keep it from coming back.
+#
+# The same trap has a second face: newstyle gettext applies `% variables` to
+# what _() returns ALWAYS, even with no variables at all. So a % INSIDE the
+# literal is a runtime error on its own -- _("%(n)s items") raises KeyError and
+# _("100% done") raises ValueError, both only when that template renders. A
+# literal percent has to be written %%, and a placeholder either gets kwargs on
+# the same call or is written {braces} and substituted downstream.
 bad = []
+percent = []
 for root, _dirs, files in os.walk('ckanext/csunesco/templates'):
     for name in files:
         if not name.endswith('.html'):
@@ -483,9 +497,20 @@ for root, _dirs, files in os.walk('ckanext/csunesco/templates'):
         for number, line in enumerate(open(path), 1):
             if re.search(r'_\(".*?"\)\s*%', line):
                 bad.append('%s:%d' % (path, number))
+            for literal in re.findall(r'_\((".*?")\s*(\)|,)', line):
+                text, closer = literal
+                if '%' not in text.replace('%%', ''):
+                    continue
+                # A `,` means kwargs follow, which is the supported form.
+                if closer == ',':
+                    continue
+                percent.append('%s:%d' % (path, number))
 if bad:
     sys.exit('FAIL: newstyle gettext needs _("...", var=x), not a later %%: %s'
              % ', '.join(bad))
+if percent:
+    sys.exit('FAIL: a %% inside _("...") with no kwargs raises at render time; '
+             'escape it as %%%% or use {braces}: %s' % ', '.join(percent))
 
 # The op carriers must stay on SEPARATE names. Sharing one made the server's
 # answer depend on DOM order -- and it was wrong: a hidden `op` before the
@@ -502,14 +527,90 @@ print('   OK: %d block types, all with templates; page queue wired everywhere'
       % len(keys))
 PYEOF
 
+# (d8c) Every template must PARSE. CKAN's own tags are stubbed so this needs
+# nothing but jinja2 -- and it catches the class of error the other checks
+# cannot see, e.g. a {# comment #} inside a {% set %} expression, which is a
+# 500 on a public page rather than a failing import.
+if "${PY}" -c "import jinja2" >/dev/null 2>&1; then
+  echo "-- jinja parse (every template, CKAN tags stubbed)"
+  "${PY}" - <<'PYEOF'
+import os
+import sys
+
+import jinja2
+from jinja2 import nodes
+from jinja2.ext import Extension
+
+
+class _StubTag(Extension):
+    """Parse-and-discard stand-in for a CKAN custom tag."""
+
+    tags = set()
+
+    def parse(self, parser):
+        token = next(parser.stream)
+        while parser.stream.current.type != 'block_end':
+            next(parser.stream)
+        return nodes.Output([nodes.Const('')]).set_lineno(token.lineno)
+
+
+class _Snippet(_StubTag):
+    tags = {'snippet'}
+
+
+class _Asset(_StubTag):
+    tags = {'asset'}
+
+
+class _CkanExtends(_StubTag):
+    tags = {'ckan_extends'}
+
+
+class _Url(_StubTag):
+    tags = {'url'}
+
+
+ROOT = 'ckanext/csunesco/templates'
+env = jinja2.Environment(
+    loader=jinja2.FileSystemLoader(ROOT),
+    extensions=[_Snippet, _Asset, _CkanExtends, _Url, 'jinja2.ext.i18n'],
+    autoescape=True)
+env.install_null_translations(newstyle=True)
+# Provided by Flask at runtime, not by bare jinja2.
+env.filters['tojson'] = lambda value, **kwargs: '{}'
+
+failures = []
+count = 0
+for directory, _subdirs, files in os.walk(ROOT):
+    for name in files:
+        if not name.endswith('.html'):
+            continue
+        path = os.path.join(directory, name)
+        count += 1
+        with open(path, 'r') as handle:
+            source = handle.read()
+        try:
+            env.parse(source, filename=os.path.relpath(path, ROOT))
+        except jinja2.TemplateSyntaxError as error:
+            failures.append('%s:%s %s' % (path, error.lineno, error.message))
+
+if failures:
+    sys.exit('FAIL: template syntax errors:\n  ' + '\n  '.join(failures))
+print('   OK: %d templates parse' % count)
+PYEOF
+else
+  echo "-- jinja2 not installed: skipping the template parse check"
+fi
+
 # (d9) Run the CKAN-free unit tests here when pytest is available. These are
 # the only tests that do NOT need the container, so running them in the fast
 # loop is free signal.
 if "${PY}" -c "import pytest" >/dev/null 2>&1; then
-  echo "-- pytest (CKAN-free: test_blocks.py + test_aggregate.py)"
+  echo "-- pytest (CKAN-free: test_blocks.py + test_aggregate.py + test_chat.py)"
   "${PY}" -m pytest -q -p no:cacheprovider \
     ckanext/csunesco/tests/test_blocks.py \
-    ckanext/csunesco/tests/test_aggregate.py
+    ckanext/csunesco/tests/test_aggregate.py \
+    ckanext/csunesco/tests/test_chat.py
 else
   echo "-- pytest not installed: skipping the CKAN-free unit tests"
 fi
@@ -550,8 +651,16 @@ REQUIRED_FILES=(
   "ckanext/csunesco/assets/vendor/chart.umd.min.js"
   "ckanext/csunesco/assets/vendor/LICENSE-chartjs.txt"
   "ckanext/csunesco/logic/aggregate.py"
+  "ckanext/csunesco/logic/chat.py"
+  "ckanext/csunesco/logic/llm.py"
+  "ckanext/csunesco/logic/action/chat.py"
+  "ckanext/csunesco/templates/csunesco/blocks/data_chat.html"
+  "ckanext/csunesco/templates/csunesco/blocks/edit/data_chat.html"
+  "ckanext/csunesco/assets/js/cs-data-chat.js"
   "ckanext/csunesco/tests/test_blocks.py"
   "ckanext/csunesco/tests/test_aggregate.py"
+  "ckanext/csunesco/tests/test_chat.py"
+  "ckanext/csunesco/tests/test_data_chat.py"
   "ckanext/csunesco/tests/fixtures/ofform_form3.json"
   "ckanext/csunesco/templates/csunesco/citizen-science.html"
   "ckanext/csunesco/templates/csunesco/register_citizen.html"

@@ -86,6 +86,31 @@ ckan.recaptcha.publickey  = <site-key>
 ckan.recaptcha.privatekey = <secret-key>
 ```
 
+## 6. Optional: the "Ask the data" block
+
+The `data_chat` block lets signed-in visitors ask questions about a project's
+observations in plain language. It needs an **OpenAI-compatible**
+`/chat/completions` endpoint whose model supports tool / function calling —
+the same provider the portal already uses for `ckanext-terriassistant`.
+
+```ini
+ckanext.csunesco.llm_api_key      = <provider key>
+ckanext.csunesco.llm_base_url     = https://api.deepseek.com
+ckanext.csunesco.llm_model        = deepseek-chat
+ckanext.csunesco.llm_daily_quota  = 40
+ckanext.csunesco.llm_timeout      = 45
+```
+
+Only `llm_api_key` has no default. **Leave it unset and the feature is simply
+off**: the block renders a "not switched on" notice and nothing else on the
+page changes. This is the extension's only outbound credential — keep it out of
+version control and treat it like any other secret in the ini.
+
+Only the question, the column profile and the **already-aggregated** result are
+sent to the provider; raw observation rows never leave the portal. The per-user
+daily cap (`llm_daily_quota`, `0` disables it) is a cost fence — the action is
+already restricted to authenticated users.
+
 ## Verify
 
 Two complementary options, both in this repo:

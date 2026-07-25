@@ -230,6 +230,27 @@
     return parts.join(", ");
   }
 
+  /**
+   * Draw ``payload`` into ``container``.
+   *
+   * Returns false when the payload holds no drawable point, so the caller can
+   * show its own empty state rather than an axis with nothing on it.
+   */
+  function paint(container, payload) {
+    if (!hasData(payload)) { return false; }
+    clearMessage(container);
+    var canvas = document.createElement("canvas");
+    canvas.setAttribute("role", "img");
+    // Describe the CHART, not just its y axis. For mode=count there is no
+    // field_label at all, which left the label as a single space -- i.e.
+    // an unnamed image.
+    canvas.setAttribute("aria-label", describe(container, payload));
+    container.insertBefore(canvas, container.firstChild);
+    new window.Chart(canvas, buildConfig(container, payload));
+    container.classList.add("is-rendered");
+    return true;
+  }
+
   function render(container, done) {
     var url = seriesUrl(container);
     container.setAttribute("aria-busy", "true");
@@ -241,20 +262,9 @@
         return response.json();
       })
       .then(function (payload) {
-        if (!hasData(payload)) {
+        if (!paint(container, payload)) {
           message(container, container.getAttribute("data-label-empty") || "");
-          return;
         }
-        clearMessage(container);
-        var canvas = document.createElement("canvas");
-        canvas.setAttribute("role", "img");
-        // Describe the CHART, not just its y axis. For mode=count there is no
-        // field_label at all, which left the label as a single space -- i.e.
-        // an unnamed image.
-        canvas.setAttribute("aria-label", describe(container, payload));
-        container.insertBefore(canvas, container.firstChild);
-        new window.Chart(canvas, buildConfig(container, payload));
-        container.classList.add("is-rendered");
       })
       .catch(function () {
         // The CSV link is already in the container, so the reader still has a
@@ -312,6 +322,12 @@
       observer.observe(container);
     });
   }
+
+  // The data-chat block draws the same kind of chart, from an answer it is
+  // already holding rather than from a URL. Exposing the painter keeps the
+  // palette, the gap handling and the aria-label sentence in ONE place instead
+  // of growing a second charting implementation that slowly diverges.
+  window.csunescoCharts = { paint: paint };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

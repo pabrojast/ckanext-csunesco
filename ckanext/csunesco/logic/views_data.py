@@ -147,6 +147,52 @@ def data_source_fields(id):
     return _json_action('csunesco_data_source_fields', {'id': id})
 
 
+# Never cached: an answer is per-user, per-question, and charged to a quota.
+_NO_STORE = 'no-store'
+
+
+def _chat_json(payload, status=200):
+    response = Response(json.dumps(payload), status=status,
+                        mimetype='application/json')
+    response.headers['Cache-Control'] = _NO_STORE
+    return response
+
+
+def data_source_chat(id):
+    """Answer one plain-language question about an approved data source.
+
+    XHR-only, so every outcome is JSON: a browser fetch cannot follow the login
+    redirect the other views hand to anonymous visitors, and a redirect body
+    parsed as JSON is the kind of failure that looks like a bug in the chat.
+    """
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return _chat_json({'status': 'bad_request'}, status=400)
+
+    data_dict = {
+        'id': id,
+        'question': body.get('question'),
+        'history': body.get('history'),
+        'language': body.get('language'),
+    }
+    try:
+        result = tk.get_action('csunesco_data_chat')(_context(), data_dict)
+    except tk.NotAuthorized:
+        return _chat_json({'status': 'unauthenticated'}, status=403)
+    except tk.ObjectNotFound:
+        return _chat_json({'status': 'not_found'}, status=404)
+    except tk.ValidationError as error:
+        return _chat_json({'status': 'bad_request',
+                           'errors': error.error_dict}, status=400)
+    except Exception:
+        # The action already degrades to an 'unavailable' envelope for the
+        # failures it can foresee; anything reaching here is ours, so it is
+        # logged and answered generically rather than surfaced.
+        log.warning('csunesco: data chat failed')
+        return _chat_json({'status': 'unavailable'}, status=502)
+    return _chat_json(result)
+
+
 # ---------------------------------------------------------------------------
 # Connect flow (project managers)
 # ---------------------------------------------------------------------------

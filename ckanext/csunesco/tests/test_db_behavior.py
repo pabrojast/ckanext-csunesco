@@ -623,3 +623,46 @@ def test_pending_counts_key_set_never_drifts(session):
     assert db.pending_counts(contexts['sysadmin'])['page_requests'] == 1
     # A user with no role sees zeros, not somebody else's queue.
     assert db.pending_counts(contexts['plain_user'])['page_requests'] == 0
+
+
+# ---------------------------------------------------------------------------
+# Data-chat quota counter
+# ---------------------------------------------------------------------------
+
+def test_chat_usage_starts_at_zero_and_counts_up(session):
+    assert db.chat_usage_count('user-1', '2026-07-25') == 0
+    assert db.bump_chat_usage('user-1', '2026-07-25') == 1
+    assert db.bump_chat_usage('user-1', '2026-07-25') == 2
+    session.commit()
+    assert db.chat_usage_count('user-1', '2026-07-25') == 2
+
+
+def test_chat_usage_is_per_user_and_per_day(session):
+    db.bump_chat_usage('user-1', '2026-07-25')
+    db.bump_chat_usage('user-1', '2026-07-25')
+    db.bump_chat_usage('user-2', '2026-07-25')
+    db.bump_chat_usage('user-1', '2026-07-26')
+    session.commit()
+    assert db.chat_usage_count('user-1', '2026-07-25') == 2
+    assert db.chat_usage_count('user-2', '2026-07-25') == 1
+    # Yesterday's spend must not follow the user into today.
+    assert db.chat_usage_count('user-1', '2026-07-26') == 1
+
+
+def test_chat_usage_keeps_one_row_per_user_day(session):
+    for _ in range(5):
+        db.bump_chat_usage('user-1', '2026-07-25')
+    session.commit()
+    rows = (session.query(db.CsChatUsage)
+            .filter_by(user_id='user-1', day='2026-07-25').all())
+    assert len(rows) == 1
+    assert rows[0].calls == 5
+
+
+def test_chat_usage_ignores_a_missing_user_or_day(session):
+    """A caller with no user id must not silently share one anonymous bucket."""
+    assert db.bump_chat_usage(None, '2026-07-25') == 0
+    assert db.bump_chat_usage('user-1', None) == 0
+    assert db.chat_usage_count(None, '2026-07-25') == 0
+    session.commit()
+    assert session.query(db.CsChatUsage).count() == 0
