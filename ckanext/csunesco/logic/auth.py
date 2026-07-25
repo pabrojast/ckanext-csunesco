@@ -427,6 +427,19 @@ def csunesco_project_page_update(context, data_dict):
     return {'success': False, 'msg': tk._('You must be logged in')}
 
 
+def csunesco_project_page_submit(context, data_dict):
+    """Publicar la página exige lo mismo que editarla.
+
+    La acción ya llama a ``check_access('csunesco_project_page_update')`` y
+    vuelve a comprobar contra el proyecto resuelto, así que esto no abre ni
+    cierra ningún permiso. Existe porque era la ÚNICA acción registrada sin
+    entrada propia en el registro de auth: cualquier ``check_access`` o
+    ``h.check_access`` que algún día la nombre por su nombre real reventaría
+    con ``ValueError: Authorization function not found`` — un 500, no un 403.
+    """
+    return csunesco_project_page_update(context, data_dict)
+
+
 def _is_page_initiative_admin(context, project_id):
     """ADM of the project whose page this is."""
     return _is_project_initiative_admin(context, project_id)
@@ -499,6 +512,7 @@ def get_auth_functions():
         'csunesco_data_chat': csunesco_data_chat,
         'csunesco_project_page_show': csunesco_project_page_show,
         'csunesco_project_page_update': csunesco_project_page_update,
+        'csunesco_project_page_submit': csunesco_project_page_submit,
         'csunesco_project_page_approve': csunesco_project_page_approve,
         'csunesco_project_page_reject': csunesco_project_page_reject,
         'csunesco_register_citizen_scientist':

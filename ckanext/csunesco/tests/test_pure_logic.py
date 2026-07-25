@@ -588,6 +588,120 @@ def test_ofform_fetch_fails_closed_without_base_url(monkeypatch):
         ofform._fetch('/public/forms/1/export.csv')
 
 
+# ---------------------------------------------------------------------------
+# ofform client: la caché tiene que proteger de verdad a los workers
+# ---------------------------------------------------------------------------
+
+def test_ofform_cache_enforces_its_entry_cap():
+    """Purgar sólo lo EXPIRADO no bastaba: con más formularios calientes que el
+    tope, nada estaba expirado y la caché crecía sin límite -- ~1,6 MB por
+    payload parseado, justo la memoria de worker que este tope protege."""
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    ofform.cache_clear()
+    try:
+        for i in range(ofform.MAX_CACHE_ENTRIES * 3):
+            ofform._cache_set(('dashboard', i), {'rows': [], 'n': i})
+        assert len(ofform._cache) == ofform.MAX_CACHE_ENTRIES
+        # Se conservan las más recientes (TTL uniforme -> orden de inserción).
+        newest = ('dashboard', ofform.MAX_CACHE_ENTRIES * 3 - 1)
+        assert newest in ofform._cache
+        assert ('dashboard', 0) not in ofform._cache
+    finally:
+        ofform.cache_clear()
+
+
+def test_ofform_remembers_a_failure_so_the_next_caller_fails_fast(monkeypatch):
+    """Sin caché negativa, un upstream caído convertía CADA bloque de gráfico,
+    mapa y enlace CSV en una espera nueva de REQUEST_TIMEOUT, en cada visita."""
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    ofform.cache_clear()
+    calls = []
+
+    def _boom(path, timeout=ofform.REQUEST_TIMEOUT):
+        calls.append(path)
+        raise ofform.OfformError('network error')
+
+    monkeypatch.setattr(ofform, '_fetch', _boom)
+    try:
+        for _ in range(5):
+            with pytest.raises(ofform.OfformError):
+                ofform.fetch_dashboard_data(7)
+        assert len(calls) == 1, 'solo el primer intento debe salir a la red'
+
+        # El CSV tiene su propia clave: se comprueba que tambien recuerda.
+        del calls[:]
+        for _ in range(3):
+            with pytest.raises(ofform.OfformError):
+                ofform.fetch_csv(7)
+        assert len(calls) == 1
+    finally:
+        ofform.cache_clear()
+
+
+def test_ofform_failure_is_forgotten_when_it_expires(monkeypatch):
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    ofform.cache_clear()
+    monkeypatch.setattr(ofform, 'FAILURE_CACHE_TTL', -1)  # ya vencida
+    calls = []
+
+    def _boom(path, timeout=ofform.REQUEST_TIMEOUT):
+        calls.append(path)
+        raise ofform.OfformError('network error')
+
+    monkeypatch.setattr(ofform, '_fetch', _boom)
+    try:
+        for _ in range(3):
+            with pytest.raises(ofform.OfformError):
+                ofform.fetch_dashboard_data(7)
+        assert len(calls) == 3, 'una cache negativa vencida no debe bloquear'
+    finally:
+        ofform.cache_clear()
+
+
+def test_the_review_probe_never_blacklists_a_merely_slow_upstream(monkeypatch):
+    """El probe del panel usa un timeout mas corto; si falla por lentitud, los
+    proxys (que si tienen tiempo) deben poder intentarlo igualmente."""
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    ofform.cache_clear()
+    calls = []
+
+    def _boom(path, timeout=ofform.REQUEST_TIMEOUT):
+        calls.append(timeout)
+        raise ofform.OfformError('network error')
+
+    monkeypatch.setattr(ofform, '_fetch', _boom)
+    try:
+        with pytest.raises(ofform.OfformError):
+            ofform.fetch_dashboard_data(7, timeout=ofform.PROBE_TIMEOUT)
+        with pytest.raises(ofform.OfformError):
+            ofform.fetch_dashboard_data(7)
+        assert calls == [ofform.PROBE_TIMEOUT, ofform.REQUEST_TIMEOUT]
+    finally:
+        ofform.cache_clear()
+
+
+def test_a_recovered_upstream_is_served_again(monkeypatch):
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    ofform.cache_clear()
+    state = {'fail': True}
+
+    def _flaky(path, timeout=ofform.REQUEST_TIMEOUT):
+        if state['fail']:
+            raise ofform.OfformError('network error')
+        return b'{"rows": [], "total": 0}'
+
+    monkeypatch.setattr(ofform, '_fetch', _flaky)
+    try:
+        with pytest.raises(ofform.OfformError):
+            ofform.fetch_dashboard_data(7)
+        # Vencida la marca (aqui se simula vaciando), el upstream vuelve.
+        state['fail'] = False
+        ofform.cache_clear()
+        assert ofform.fetch_dashboard_data(7) == {'rows': [], 'total': 0}
+    finally:
+        ofform.cache_clear()
+
+
 def test_is_sysadmin_tolerates_flask_login_anonymous_user():
     # On portals with flask-login-style auth plugins (IHP-WINS), anonymous API
     # calls carry an AnonymousUser (no .sysadmin/.id) in auth_user_obj; the
@@ -667,3 +781,31 @@ def test_content_initial_status_matrix():
     # ...but publications/maps ALWAYS queue (external links/embeds).
     assert content_initial_status(False, 'ckan', 'cs-publication', True) == 'pending'
     assert content_initial_status(False, 'app', 'cs-map', True) == 'pending'
+
+
+# ---------------------------------------------------------------------------
+# Registro: toda acción necesita su función de auth
+# ---------------------------------------------------------------------------
+
+def test_every_registered_action_has_an_auth_function():
+    """Una acción sin entrada en el registro de auth es una mina.
+
+    CKAN no comprueba el permiso por su cuenta —lo hace la propia acción—, así
+    que la falta no abre un agujero por sí sola. Pero el día que alguien llame
+    a ``check_access``/``h.check_access`` con ese nombre, CKAN lanza
+    ``ValueError: Authorization function not found``: un 500, no un 403. Es
+    justo el modo de fallo que no se ve en una review.
+    """
+    actions = pytest.importorskip('ckanext.csunesco.logic.actions')
+    auth = pytest.importorskip('ckanext.csunesco.logic.auth')
+    missing = sorted(set(actions.get_actions()) - set(auth.get_auth_functions()))
+    assert not missing, 'acciones sin función de auth: %s' % missing
+
+
+def test_no_orphan_auth_functions():
+    """Y al revés: una auth sin acción suele ser un typo en el nombre, que
+    dejaría la acción real cubierta por el default en vez de por esta regla."""
+    actions = pytest.importorskip('ckanext.csunesco.logic.actions')
+    auth = pytest.importorskip('ckanext.csunesco.logic.auth')
+    orphans = sorted(set(auth.get_auth_functions()) - set(actions.get_actions()))
+    assert not orphans, 'auth sin acción (¿typo?): %s' % orphans

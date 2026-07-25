@@ -46,9 +46,25 @@ MAX_PROXY_BYTES = 20_000_000
 # than the proxy alone did, so the ceiling has to be a size the workers can
 # actually afford.
 MAX_CACHE_ENTRIES = 32
+# How long a FAILURE is remembered. Without this, an upstream that is down (or
+# a form that was archived/unpublished after its dataset was created) turns
+# every chart block, map and CSV link into a fresh REQUEST_TIMEOUT stall, on
+# every single page view: a landing page fans out to one request per block, and
+# each one holds a CKAN worker for 15 s. Short enough that recovery is quick,
+# long enough that a dead upstream stops costing worker time.
+FAILURE_CACHE_TTL = 30
 
 _cache = {}
 _cache_lock = threading.Lock()
+
+
+class _Failure(object):
+    """Marker stored in the cache so a known-bad fetch fails fast."""
+
+    __slots__ = ('reason',)
+
+    def __init__(self, reason):
+        self.reason = reason
 
 
 class OfformError(Exception):
@@ -92,13 +108,35 @@ def _cache_get(key):
         return value
 
 
-def _cache_set(key, value):
+def _cache_set(key, value, ttl=None):
     with _cache_lock:
-        _cache[key] = (time.time() + cache_ttl(), value)
-        if len(_cache) > MAX_CACHE_ENTRIES:
-            now = time.time()
-            for stale in [k for k, (exp, _v) in _cache.items() if exp < now]:
-                _cache.pop(stale, None)
+        _cache[key] = (time.time() + (cache_ttl() if ttl is None else ttl), value)
+        if len(_cache) <= MAX_CACHE_ENTRIES:
+            return
+        now = time.time()
+        for stale in [k for k, (exp, _v) in _cache.items() if exp < now]:
+            _cache.pop(stale, None)
+        # Dropping the EXPIRED entries is not enough on its own: with more hot
+        # forms than the cap, nothing is expired and the cache grew without
+        # bound -- ~1.6 MB per parsed payload, which is exactly the worker
+        # memory this cap exists to protect. Evict by nearest expiry (uniform
+        # TTL, so that is insertion order) until we are back at the ceiling.
+        while len(_cache) > MAX_CACHE_ENTRIES:
+            oldest = min(_cache, key=lambda k: _cache[k][0])
+            _cache.pop(oldest, None)
+
+
+def _cache_failure(key, reason):
+    """Remember a failed fetch briefly so the next caller fails fast."""
+    _cache_set(key, _Failure(reason), ttl=FAILURE_CACHE_TTL)
+
+
+def _cached_or_raise(key):
+    """Cache hit for ``key``: the value, or None. Raises on a cached failure."""
+    cached = _cache_get(key)
+    if isinstance(cached, _Failure):
+        raise OfformError(cached.reason)
+    return cached
 
 
 def cache_clear():
@@ -152,16 +190,26 @@ def fetch_dashboard_data(form_id, timeout=REQUEST_TIMEOUT):
     """The public dashboard-data JSON for a form (TTL-cached dict)."""
     form_id = _coerce_form_id(form_id)
     key = ('dashboard', form_id)
-    cached = _cache_get(key)
+    cached = _cached_or_raise(key)
     if cached is not None:
         return cached
-    raw = _fetch('/public/forms/%d/dashboard-data' % form_id, timeout=timeout)
+    # El probe del panel de revisión usa un timeout más corto: si falla por
+    # lentitud no debe marcar el upstream como caído para los proxys, que sí
+    # tienen tiempo de sobra. Sólo el camino normal alimenta la caché negativa.
+    remember_failure = timeout >= REQUEST_TIMEOUT
     try:
+        raw = _fetch('/public/forms/%d/dashboard-data' % form_id, timeout=timeout)
         data = json.loads(raw.decode('utf-8'))
+    except OfformError as error:
+        if remember_failure:
+            _cache_failure(key, str(error))
+        raise
     except (ValueError, UnicodeDecodeError):
         log.warning('csunesco: ofform dashboard-data was not valid JSON')
+        _cache_failure(key, 'invalid upstream response')
         raise OfformError('invalid upstream response')
     if not isinstance(data, dict):
+        _cache_failure(key, 'invalid upstream response')
         raise OfformError('invalid upstream response')
     _cache_set(key, data)
     return data
@@ -171,10 +219,14 @@ def fetch_csv(form_id):
     """The public CSV export for a form (TTL-cached text)."""
     form_id = _coerce_form_id(form_id)
     key = ('csv', form_id)
-    cached = _cache_get(key)
+    cached = _cached_or_raise(key)
     if cached is not None:
         return cached
-    raw = _fetch('/public/forms/%d/export.csv' % form_id)
+    try:
+        raw = _fetch('/public/forms/%d/export.csv' % form_id)
+    except OfformError as error:
+        _cache_failure(key, str(error))
+        raise
     text = raw.decode('utf-8', errors='replace')
     _cache_set(key, text)
     return text

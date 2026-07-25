@@ -666,3 +666,53 @@ def test_chat_usage_ignores_a_missing_user_or_day(session):
     assert db.chat_usage_count(None, '2026-07-25') == 0
     session.commit()
     assert session.query(db.CsChatUsage).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Auto-heal: el modelo y la lista de columnas curables no pueden divergir
+# ---------------------------------------------------------------------------
+
+def test_every_declared_column_is_creatable_on_an_existing_deployment():
+    """``create_all`` sólo crea tablas que faltan: nunca añade una columna a una
+    tabla que ya existe. Por eso una columna nueva DEBE estar también en
+    ``_AUTO_HEAL_COLUMNS`` — si no, el despliegue de producción arranca con la
+    tabla vieja y revienta al primer SELECT que la nombre.
+
+    Este test no exige que TODA columna esté en la lista (las del release
+    inicial no hacen falta): exige que la lista siga cubriendo lo que cubre, y
+    que no nombre columnas que ya no existen. Lo segundo es lo que se pudre en
+    silencio, porque un ALTER sobre una columna inexistente sólo deja un
+    log.error genérico.
+    """
+    declared = {table.name: {c.name for c in table.columns}
+                for table in db._ALL_TABLES}
+
+    unknown = []
+    for table_name, column_name, _type in db._AUTO_HEAL_COLUMNS:
+        if table_name not in declared:
+            unknown.append('%s (tabla desconocida)' % table_name)
+        elif column_name not in declared[table_name]:
+            unknown.append('%s.%s' % (table_name, column_name))
+    assert not unknown, (
+        'auto-heal nombra columnas que el modelo ya no declara: %s' % unknown)
+
+
+def test_auto_heal_covers_the_columns_added_after_each_table_shipped():
+    """Guarda de regresión con nombres explícitos.
+
+    Cada entrada aquí se añadió a una tabla YA desplegada, así que sin su fila
+    en ``_AUTO_HEAL_COLUMNS`` el portal en producción se queda sin ella. La
+    lista se escribe a mano a propósito: si alguien añade una columna nueva al
+    modelo y no la cura, este test no lo detecta — pero el día que alguien
+    BORRE una de estas curaciones, sí.
+    """
+    healed = {(t, c) for t, c, _ in db._AUTO_HEAL_COLUMNS}
+    for pair in [
+        ('cs_project', 'trusted'),
+        ('cs_project_member', 'reviewed_by'),
+        ('cs_content', 'slug'),
+        ('cs_content', 'extras'),
+        ('cs_project_stats', 'member_states'),
+        ('cs_citizen_scientist', 'email_verified'),
+    ]:
+        assert pair in healed, '%s dejó de auto-curarse' % (pair,)
