@@ -2119,3 +2119,39 @@
   .cs-chat.is-ready .cs-chat-form { flex-direction: column; align-items: stretch; }
   .cs-chat-send { width: 100%; }
 }
+
+/* "Your projects" band on the approval panel -------------------------------- */
+/* Not a review queue: it answers "where is my project?", which nothing else in
+   the UI could once a request had been approved. */
+
+.cs-mine-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cs-mine-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.cs-mine-item:last-child { border-bottom: 0; }
+
+.cs-mine-edit {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--unesco-blue-dark);
+}
+
+.cs-mine-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0.6rem 0 0;
+  font-size: 0.88rem;
+  color: #5a6b7b;
+}

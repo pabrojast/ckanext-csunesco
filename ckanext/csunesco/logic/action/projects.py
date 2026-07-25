@@ -350,8 +350,27 @@ def csunesco_aggregate_stats(context, data_dict):
     return db.aggregate_stats()
 
 
+@tk.side_effect_free
+def csunesco_my_projects(context, data_dict):
+    """The projects the acting user administers (PM role).
+
+    Exists because a project manager otherwise had no way back to their own
+    project: the public listing filters by initiative and free text only, and
+    approval sends no notification, so after a request was approved the manager
+    had to remember the title and search for it.
+
+    Deliberately the DIRECT admin relationship only, for every role including
+    sysadmins. "Every project on the portal" is not a personal list, and an
+    initiative admin's much larger scope is better served by their initiative
+    pages -- which is what the panel links alongside this.
+    """
+    tk.check_access('csunesco_my_projects', context, data_dict)
+    return {'projects': db.projects_administered(current_user_id(context))}
+
+
 def get_actions():
     return {
+        'csunesco_my_projects': csunesco_my_projects,
         'csunesco_project_request_create': csunesco_project_request_create,
         'csunesco_project_approve': csunesco_project_approve,
         'csunesco_project_reject': csunesco_project_reject,

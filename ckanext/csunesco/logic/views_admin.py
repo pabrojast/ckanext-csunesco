@@ -128,7 +128,19 @@ def admin_dashboard():
         except Exception:
             log.warning('csunesco: data-source probes unavailable')
 
+    # The panel doubles as the manager's home, so it also answers "where are my
+    # projects?" -- the one question the rest of the UI could not. Fail-soft:
+    # losing this band must never cost a reviewer their queues.
+    try:
+        my_projects = tk.get_action('csunesco_my_projects')(
+            context, {}).get('projects') or []
+    except Exception:
+        log.warning('csunesco: administered project list unavailable')
+        my_projects = []
+
     return tk.render('csunesco/cs-admin-dashboard.html', extra_vars={
+        'my_projects': my_projects,
+        'admin_initiatives': admin_initiatives,
         'is_sysadmin': is_sysadmin,
         'can_review_projects': can_review_initiative,
         'can_review_data': can_review_initiative,

@@ -716,3 +716,85 @@ def test_auto_heal_covers_the_columns_added_after_each_table_shipped():
         ('cs_citizen_scientist', 'email_verified'),
     ]:
         assert pair in healed, '%s dejó de auto-curarse' % (pair,)
+
+
+# ---------------------------------------------------------------------------
+# "Your projects" (the PM's way back to their own project)
+# ---------------------------------------------------------------------------
+
+def _project(session, slug, title, status='approved', initiative='riverwatch'):
+    project = db.CsProject()
+    project.slug = slug
+    project.title = title
+    project.status = status
+    project.initiative_group = initiative
+    session.add(project)
+    session.flush()
+    return project
+
+
+def _member(session, project_id, user_id, role='admin', status='active'):
+    member = db.CsProjectMember()
+    member.project_id = project_id
+    member.user_id = user_id
+    member.role = role
+    member.status = status
+    session.add(member)
+    session.flush()
+    return member
+
+
+def test_projects_administered_lists_only_active_admin_memberships(session):
+    mine = _project(session, 'mine', 'Mine')
+    as_scientist = _project(session, 'sci', 'As scientist')
+    not_yet = _project(session, 'pend', 'Membership pending')
+    someone_else = _project(session, 'other', 'Someone else')
+    _member(session, mine.id, 'u1')
+    _member(session, as_scientist.id, 'u1', role='scientist')
+    _member(session, not_yet.id, 'u1', status='pending')
+    _member(session, someone_else.id, 'u2')
+    session.commit()
+
+    got = db.projects_administered('u1')
+    assert [p['slug'] for p in got] == ['mine']
+    assert got[0]['title'] == 'Mine'
+    assert got[0]['status'] == 'approved'
+    assert got[0]['initiative_group'] == 'riverwatch'
+    assert set(got[0]) == {'id', 'slug', 'title', 'status', 'initiative_group'}
+
+
+def test_projects_administered_includes_pending_and_rejected(session):
+    """The queued request is exactly when a manager has no other way in."""
+    for slug, status in (('a', 'pending'), ('b', 'rejected'), ('c', 'approved')):
+        project = _project(session, slug, slug.upper(), status=status)
+        _member(session, project.id, 'u1')
+    session.commit()
+
+    got = db.projects_administered('u1')
+    assert {p['status'] for p in got} == {'pending', 'rejected', 'approved'}
+
+
+def test_projects_administered_is_ordered_by_title(session):
+    for slug, title in (('c', 'Charlie'), ('a', 'Alpha'), ('b', 'Bravo')):
+        project = _project(session, slug, title)
+        _member(session, project.id, 'u1')
+    session.commit()
+    assert [p['title'] for p in db.projects_administered('u1')] == \
+        ['Alpha', 'Bravo', 'Charlie']
+
+
+def test_projects_administered_is_empty_without_a_user(session):
+    project = _project(session, 'mine', 'Mine')
+    _member(session, project.id, 'u1')
+    session.commit()
+    assert db.projects_administered(None) == []
+    assert db.projects_administered('') == []
+    assert db.projects_administered('nobody') == []
+
+
+def test_projects_administered_honours_the_limit(session):
+    for index in range(5):
+        project = _project(session, 'p%d' % index, 'Project %d' % index)
+        _member(session, project.id, 'u1')
+    session.commit()
+    assert len(db.projects_administered('u1', limit=2)) == 2

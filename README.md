@@ -131,6 +131,8 @@ enumerate accounts.
 | `csunesco_content_list`, `csunesco_content_show` | public (read; approved only for non-sysadmins) |
 | `csunesco_project_request_create` | authenticated |
 | `csunesco_join_request_create` | authenticated |
+| `csunesco_my_projects` | authenticated (the projects **you** administer, whatever your role) |
+| `csunesco_data_chat` | authenticated — one plain-language question about an **approved** data source; per-user daily quota |
 | `csunesco_content_create`, `csunesco_content_update` | sysadmin, initiative admin **or** project admin (an explicit `source: 'app'` forces `pending` even for sysadmins) |
 | `csunesco_data_source_list`, `csunesco_data_source_show` | public (read; approved only for non-privileged callers) |
 | `csunesco_data_source_series`, `csunesco_data_source_fields` | public (read; **approved** sources only — aggregated server-side) |
@@ -203,11 +205,23 @@ Terria embeds additionally require the Terria host to allow framing (no
 ### Sysadmin review runbook
 
 Everything users publish flows through **one** approval panel at
-`/citizen-science/admin`, and the navbar shows a **Review n** badge whenever
-something is pending (the badge and the tab counters share one query, so they
-never disagree). Review can be **delegated per initiative**: grant a user
-`admin` capacity on an initiative group (its *Members* page) and they become
-that initiative's ADM — their panel/badge scope covers only their initiatives.
+`/citizen-science/admin`. The navbar shows a **Review** link to anyone who can
+review — gated on the panel's own auth, not on the queue being non-empty, so
+the panel never disappears once a reviewer clears their work — carrying an
+**n** badge when something is pending (the badge and the tab counters share one
+query, so they never disagree). Review can be **delegated per initiative**:
+grant a user `admin` capacity on an initiative group (its *Members* page) and
+they become that initiative's ADM — their panel/badge scope covers only their
+initiatives.
+
+Above the tabs the panel shows **Your projects**: the projects the acting user
+administers, *including* pending and rejected ones. It is the only page a
+manager can always reach, and it answers the one question the rest of the UI
+could not — the public listing filters by initiative and free text only, and
+approval sends no notification, so a manager otherwise had to remember their
+project's title and search for it. Initiative admins additionally get links to
+their initiative pages; sysadmins, to the full listing.
+
 Four tabs:
 
 1. **Project requests** (sysadmin or initiative admin) — approve turns the

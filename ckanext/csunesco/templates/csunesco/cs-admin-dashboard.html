@@ -13,7 +13,8 @@
   All `{{ ... }}` output is autoescaped -- no `| safe` on user data. Every action
   is a POST form with a CSRF token + a confirm prompt.
 
-  Vars: is_sysadmin, can_review_projects, can_review_data (bools),
+  Vars: my_projects (list), admin_initiatives (list of group names),
+        is_sysadmin, can_review_projects, can_review_data (bools),
         project_requests, join_requests, content_requests, data_requests
         (lists), counts (dict).
 #}
@@ -27,6 +28,70 @@
     <h1 id="cs-admin-title">{{ _("Approval panel") }}</h1>
     <p>{{ _("Review and decide on the items awaiting your approval.") }}</p>
   </section>
+
+  {#
+    "Your projects" -- not a review queue, so it sits ABOVE the tabs.
+
+    This panel is the only page a manager can always reach, which makes it the
+    right home for the one question the rest of the UI could not answer: the
+    public listing filters by initiative and free text only, and approval sends
+    no notification, so after a request was approved a manager had to remember
+    the title and search for it. Pending and rejected projects are listed too --
+    that is exactly when there is no other way in.
+  #}
+  {% if my_projects or admin_initiatives or is_sysadmin %}
+    <section class="cs-section" aria-labelledby="cs-mine-title">
+      <h2 id="cs-mine-title" class="cs-section-title">{{ _("Your projects") }}</h2>
+
+      {% if my_projects %}
+        <ul class="cs-mine-list">
+          {% for project in my_projects %}
+            <li class="cs-mine-item">
+              <a class="cs-link" href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
+                {{ project.title }}
+              </a>
+              {% if project.status != 'approved' %}
+                <span class="cs-status-badge cs-status-{{ project.status }}">
+                  {{ _("Awaiting review") if project.status == 'pending' else _("Rejected") }}
+                </span>
+              {% endif %}
+              {% if project.status == 'approved' %}
+                <a class="cs-mine-edit" href="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
+                  {{ _("Edit page") }}
+                </a>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% elif not is_sysadmin %}
+        <p class="cs-empty">
+          {{ _("You do not administer any project yet.") }}
+          <a class="cs-link" href="{{ h.url_for('csunesco.project_new') }}">{{ _("Propose one") }}</a>
+        </p>
+      {% endif %}
+
+      {% if admin_initiatives %}
+        {# An initiative admin's scope is far larger than a personal list, so it
+           is offered as links to the initiative pages, which already paginate. #}
+        <p class="cs-mine-scope">
+          {{ _("You review these initiatives:") }}
+          {% for initiative in h.csunesco_initiatives() %}
+            {% if initiative.name in admin_initiatives %}
+              <a class="cs-link" href="{{ h.url_for('csunesco.initiative_index', name=initiative.name) }}">{{ _(initiative.title) }}</a>
+            {% endif %}
+          {% endfor %}
+        </p>
+      {% endif %}
+
+      {% if is_sysadmin %}
+        <p class="cs-mine-scope">
+          <a class="cs-link" href="{{ h.url_for('csunesco.project_list') }}">
+            {{ _("Browse every project on the portal") }}
+          </a>
+        </p>
+      {% endif %}
+    </section>
+  {% endif %}
 
   <section class="cs-admin" aria-labelledby="cs-admin-title">
     <div class="cs-tabs" role="tablist" aria-label="{{ _('Pending items') }}">

@@ -388,6 +388,14 @@ def csunesco_data_source_series(context, data_dict):
     return {'success': True}
 
 
+def csunesco_my_projects(context, data_dict):
+    # Inherently per-user: it answers "which projects do *I* administer", so
+    # there is nothing an anonymous caller could be asking.
+    if context.get('user'):
+        return {'success': True}
+    return {'success': False, 'msg': tk._('You must be logged in')}
+
+
 def csunesco_data_chat(context, data_dict):
     """Ask a question about an approved data source's observations.
 
@@ -510,6 +518,7 @@ def get_auth_functions():
         'csunesco_data_source_fields': csunesco_data_source_fields,
         'csunesco_data_source_series': csunesco_data_source_series,
         'csunesco_data_chat': csunesco_data_chat,
+        'csunesco_my_projects': csunesco_my_projects,
         'csunesco_project_page_show': csunesco_project_page_show,
         'csunesco_project_page_update': csunesco_project_page_update,
         'csunesco_project_page_submit': csunesco_project_page_submit,

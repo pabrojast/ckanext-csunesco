@@ -972,6 +972,37 @@ def admin_project_ids(user_id):
     return [pid for (pid,) in rows]
 
 
+def projects_administered(user_id, limit=100):
+    """Projects where ``user_id`` is an ACTIVE ``admin`` member (the PM role).
+
+    Selects EXPLICIT columns rather than entities, for the same reason
+    :func:`pending_pages` does: ``cs_project`` carries ``region_geojson`` and
+    ``landing_content``, either of which can run to hundreds of kilobytes, and
+    a "your projects" list needs neither.
+
+    Includes pending and rejected projects on purpose -- a manager whose
+    request is still queued needs to see that it exists, which is exactly the
+    moment they have no other way to reach it.
+    """
+    _ensure_mappers()
+    if not user_id:
+        return []
+    rows = (
+        Session.query(CsProject.id, CsProject.slug, CsProject.title,
+                      CsProject.status, CsProject.initiative_group)
+        .join(CsProjectMember, CsProjectMember.project_id == CsProject.id)
+        .filter(CsProjectMember.user_id == user_id)
+        .filter(CsProjectMember.role == 'admin')
+        .filter(CsProjectMember.status == 'active')
+        .order_by(CsProject.title)
+        .limit(limit)
+        .all()
+    )
+    return [{'id': id_, 'slug': slug, 'title': title, 'status': status,
+             'initiative_group': group}
+            for id_, slug, title, status, group in rows]
+
+
 def project_admin_user_ids(project_id):
     """User ids of the project's ACTIVE ``admin`` members (PM)."""
     _ensure_mappers()
