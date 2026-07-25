@@ -29,6 +29,7 @@
            value="{{ block.field }}" list="b{{ index }}-chart-fieldlist"
            placeholder="{{ _('e.g. ph') }}" aria-describedby="b{{ index }}-chart-field-hint">
     <datalist id="b{{ index }}-chart-fieldlist"></datalist>
+    {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='field' %}
     <p class="cs-hint" id="b{{ index }}-chart-field-hint">
       {{ _("Not needed when showing how many observations over time.") }}
     </p>

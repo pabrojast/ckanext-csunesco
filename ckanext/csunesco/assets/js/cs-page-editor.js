@@ -11,9 +11,11 @@
  *      contenteditable posts nothing, so it can never be the source of truth.
  *   2. A field picker for chart blocks, populated from the chosen data source's
  *      own field list. Without it the field is still a plain text input.
- *   3. Confirmation before a destructive op, and a hidden `op` written before
- *      submit -- a `disabled` button contributes neither name nor value, so
- *      disable-on-submit would otherwise swallow the operation.
+ *   3. Confirmation before a destructive op, an unsaved-changes guard, and the
+ *      pressed op mirrored into `op_js` -- a `disabled` button contributes
+ *      neither name nor value, so disable-on-submit would otherwise swallow the
+ *      operation. `op_js` is a SEPARATE name from the buttons' `op` on purpose;
+ *      sharing one made the server's answer depend on DOM order.
  *
  * The server re-parses, re-validates and re-sanitizes everything regardless.
  */
@@ -182,22 +184,55 @@
   }
 
   /**
-   * Confirm destructive ops, and write the hidden `op` before submitting.
-   * A disabled button submits neither its name nor its value, so any
-   * disable-on-submit behaviour must not be the only carrier of the operation.
+   * Confirm destructive ops, and mirror the pressed op into `op_js`.
+   *
+   * A disabled button submits neither its name nor its value, so a future
+   * disable-on-submit needs a second carrier. It has its OWN name: sharing one
+   * name with the buttons made the server's answer depend on DOM order, and it
+   * silently turned every button into "save" for anyone without JavaScript.
    */
   function initOps(form) {
     var hidden = document.getElementById("cs-pb-op");
     var buttons = form.querySelectorAll('button[name="op"]');
     Array.prototype.forEach.call(buttons, function (button) {
       button.addEventListener("click", function (event) {
+        // aria-disabled keeps the control focusable and announced, so the
+        // reason for it being unavailable is reachable -- but it must not act.
+        if (button.getAttribute("aria-disabled") === "true") {
+          event.preventDefault();
+          return;
+        }
         var confirmMessage = button.getAttribute("data-confirm-op");
         if (confirmMessage && !window.confirm(confirmMessage)) {
           event.preventDefault();
+          // Never leave a stale op behind: it would ride along on a later
+          // submission that carries no button of its own.
+          if (hidden) { hidden.value = ""; }
           return;
         }
         if (hidden) { hidden.value = button.value; }
       });
+    });
+  }
+
+  /**
+   * Warn before leaving with unsaved edits.
+   *
+   * The editor is a long form; losing it to a stray click on the site nav is
+   * the most expensive mistake available here. Submitting the form is not
+   * "leaving" -- the flag is cleared first.
+   */
+  function initUnsavedGuard(form) {
+    var dirty = false;
+    form.addEventListener("input", function () { dirty = true; });
+    form.addEventListener("change", function () { dirty = true; });
+    form.addEventListener("submit", function () { dirty = false; });
+    window.addEventListener("beforeunload", function (event) {
+      if (!dirty) { return undefined; }
+      // Browsers show their own wording; returning a string is what arms it.
+      event.preventDefault();
+      event.returnValue = "";
+      return "";
     });
   }
 
@@ -207,6 +242,7 @@
     initRichText(form);
     initChartPickers(form);
     initOps(form);
+    initUnsavedGuard(form);
   }
 
   if (document.readyState === "loading") {

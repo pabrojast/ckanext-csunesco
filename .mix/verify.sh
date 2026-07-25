@@ -487,6 +487,17 @@ if bad:
     sys.exit('FAIL: newstyle gettext needs _("...", var=x), not a later %%: %s'
              % ', '.join(bad))
 
+# The op carriers must stay on SEPARATE names. Sharing one made the server's
+# answer depend on DOM order -- and it was wrong: a hidden `op` before the
+# buttons made MultiDict.get return "save", so with JavaScript disabled every
+# button in the editor became "Draft saved", publish included.
+editor = open('ckanext/csunesco/templates/csunesco/project_page_form.html').read()
+if re.search(r'<input[^>]*\bname="op"', editor):
+    sys.exit('FAIL: `op` must be carried ONLY by submit buttons; a hidden input '
+             'of the same name makes MultiDict.get return it instead')
+if editor.count('name="op_js"') != 1:
+    sys.exit('FAIL: expected exactly one op_js carrier in the editor')
+
 print('   OK: %d block types, all with templates; page queue wired everywhere'
       % len(keys))
 PYEOF

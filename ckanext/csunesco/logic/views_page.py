@@ -25,7 +25,7 @@ Two things this shape gets right that are easy to get wrong:
 """
 import logging
 
-from flask import request
+from flask import request, session
 
 import ckan.plugins.toolkit as tk
 import ckan.model as model
@@ -36,6 +36,9 @@ from ckanext.csunesco.logic import page_render
 log = logging.getLogger(__name__)
 
 GENERIC_ERROR = 'Something went wrong. Please try again.'
+
+# Session key the drop report rides on across the PRG redirect.
+_DROPS_KEY = 'csunesco_page_drops'
 
 
 def _context():
@@ -93,16 +96,58 @@ def _initial_blocks(page):
     return blocks_module.default_blocks()
 
 
-def _render_editor(project, page, blocks, errors=None, notice=None):
+def _render_editor(project, page, blocks, errors=None, notice=None,
+                   drops=None):
+    """Render the editor.
+
+    ``drops`` is what normalization threw away on the last save, indexed by
+    block id so each editor snippet can show it beside the field the author
+    actually typed into.
+    """
+    by_block = {}
+    for drop in drops or []:
+        by_block.setdefault(drop['block'], {}) \
+                .setdefault(drop['field'], []).append(drop)
+    attention = set(by_block)
+    attention.update(id for id in (errors or {}).get('block_ids') or [])
+    # What opens: anything that needs the author's attention, plus whatever the
+    # last operation acted on. The fragment never reaches the server, so the
+    # anchor also travels as ?open=<id>.
+    known = {block['id'] for block in blocks}
+    open_ids = set(attention)
+    open_ids.update(id for id in request.args.getlist('open')[:8] if id in known)
     return tk.render('csunesco/project_page_form.html', extra_vars={
         'project': project,
         'page': page or {},
         'blocks': blocks,
         'errors': errors or {},
         'notice': notice,
+        'drops_by_block': by_block,
+        'attention_ids': attention,
+        'open_ids': open_ids & known,
         'palette': tk.h.csunesco_block_palette(),
         'max_blocks': blocks_module.MAX_BLOCKS,
     })
+
+
+def _stash_drops(project_id, drops):
+    """Park a drop report across the PRG redirect.
+
+    The session, not the query string: this is a one-shot notice about the save
+    that just happened and must not come back on a reload. Same mechanism as
+    the flashes this view already uses.
+    """
+    if drops:
+        session[_DROPS_KEY] = {'project': project_id,
+                               'drops': drops[:blocks_module.MAX_DROPS]}
+
+
+def _take_drops(project_id):
+    """Pop the drop report for this project (never another's)."""
+    stash = session.pop(_DROPS_KEY, None)
+    if isinstance(stash, dict) and stash.get('project') == project_id:
+        return stash.get('drops') or []
+    return []
 
 
 def project_page_edit(slug):
@@ -119,14 +164,25 @@ def project_page_edit(slug):
     page = _load_page(project['id'])
 
     if request.method == 'GET':
-        return _render_editor(project, page, _initial_blocks(page))
+        return _render_editor(project, page, _initial_blocks(page),
+                              drops=_take_drops(project['id']))
 
     # --- POST ---------------------------------------------------------------
     # Parse the whole list back out of the form, then apply exactly one op.
-    blocks = blocks_module.blocks_from_form(request.form.items(multi=True))
+    # `op` is only ever the pressed button; `op_js` only ever what the script
+    # wrote. Two names, so nothing here depends on their order in the DOM.
+    raw_op = blocks_module.choose_op(request.form.get('op'),
+                                     request.form.get('op_js'))
+    report = blocks_module.DropReport()
+    blocks = blocks_module.blocks_from_form(request.form.items(multi=True),
+                                           report=report)
     blocks = blocks_module.ensure_builtins(blocks)
-    op_name, _argument = blocks_module.parse_op(request.form.get('op'))
-    blocks, anchor = blocks_module.apply_op(blocks, request.form.get('op'))
+    op_name, _argument = blocks_module.parse_op(raw_op)
+    blocks, anchor = blocks_module.apply_op(
+        blocks, raw_op, convert_html=project.get('landing_content'))
+    # A drop against a block the author just deleted is noise.
+    alive = {block['id'] for block in blocks}
+    drops = [drop for drop in report.drops if drop['block'] in alive]
 
     try:
         result = tk.get_action('csunesco_project_page_update')(
@@ -136,11 +192,12 @@ def project_page_edit(slug):
     except tk.ValidationError as error:
         # Re-render (no redirect) so the manager keeps their unsaved edits.
         return _render_editor(project, page, blocks,
-                              errors=error.error_dict or {})
+                              errors=error.error_dict or {}, drops=drops)
     except Exception:
         log.warning('csunesco: page draft could not be saved')
         return _render_editor(project, page, blocks,
-                              errors={'message': GENERIC_ERROR})
+                              errors={'message': GENERIC_ERROR},
+                              drops=drops)
 
     # "Save and publish" is save-then-submit, so the reviewer always sees the
     # version the manager was looking at when they pressed the button.
@@ -152,11 +209,13 @@ def project_page_edit(slug):
             return _not_authorized_response()
         except tk.ValidationError as error:
             return _render_editor(project, page, blocks,
-                                  errors=error.error_dict or {})
+                                  errors=error.error_dict or {},
+                                  drops=drops)
         except Exception:
             log.warning('csunesco: page could not be submitted')
             return _render_editor(project, page, blocks,
-                                  errors={'message': GENERIC_ERROR})
+                                  errors={'message': GENERIC_ERROR},
+                                  drops=drops)
         if outcome.get('published'):
             tk.h.flash_success(tk._('Your page is live.'))
         else:
@@ -165,15 +224,36 @@ def project_page_edit(slug):
                 'administrator approves it.'))
         return tk.redirect_to('csunesco.project_landing', slug=project['slug'])
 
+    # "Preview draft" saves first, so the preview always shows what the manager
+    # is looking at. As a plain link it discarded every unsaved edit AND showed
+    # the previously saved draft -- the one thing a manager does constantly was
+    # the one thing that lost their work.
+    _stash_drops(project['id'], drops)
+
+    if op_name == 'preview':
+        return tk.redirect_to('csunesco.project_page_preview',
+                              slug=project['slug'])
+
     if result.get('withdrawn'):
         tk.h.flash_notice(tk._(
             'Your changes took this page out of the review queue. Publish it '
             'again when you are ready.'))
-    elif op_name == 'save':
-        tk.h.flash_success(tk._('Draft saved.'))
+    else:
+        # Every operation says what it did. Silence after a full page reload
+        # reads as "nothing happened".
+        tk.h.flash_success({
+            'move_up': tk._('Section moved up.'),
+            'move_down': tk._('Section moved down.'),
+            'delete': tk._('Section deleted.'),
+            'add': tk._('Section added.'),
+            'convert': tk._(
+                'The old description is now an editable text block, and the '
+                'standard section was hidden so it is not shown twice.'),
+        }.get(op_name, tk._('Draft saved.')))
 
     return tk.redirect_to(
-        tk.url_for('csunesco.project_page_edit', slug=project['slug'])
+        tk.url_for('csunesco.project_page_edit', slug=project['slug'],
+                   **({'open': anchor} if anchor else {}))
         + ('#block-%s' % anchor if anchor else ''))
 
 
@@ -202,7 +282,10 @@ def project_page_preview(slug):
     project.pop('region_geojson', None)
 
     page = _load_page(project['id'])
-    blocks = page_render.visible_blocks(_initial_blocks(page))
+    # The preview shows HIDDEN blocks too, marked -- otherwise a manager
+    # cannot check what they switched off without switching it back on.
+    blocks = [block for block in _initial_blocks(page)
+              if block.get('type') in blocks_module.BLOCK_TYPES]
     ctx = page_render.build_context(
         _context(), project, blocks, has_region=has_region,
         can_manage=True, preview=True)

@@ -1,12 +1,17 @@
 {#
-  Shared: a block's optional section heading.
+  A block's section heading.
 
-  The title renders as <h2>, which is why the rich-text allowlist refuses
-  author-level <h2> -- otherwise the page's heading outline would depend on
-  what someone typed into a paragraph.
+  ALWAYS emits an <h2>, visually hidden when the author left the title empty.
+  Without one, a text block's own <h3> (or a news card's) followed the page
+  <h1> directly, skipping a level -- and the section had no accessible name.
 
   Vars: block.
 #}
+{% set spec = h.csunesco_block_type(block.type) %}
 {% if block.title %}
   <h2 class="cs-section-title" id="title-{{ block.id }}">{{ block.title }}</h2>
+{% else %}
+  <h2 class="cs-visually-hidden" id="title-{{ block.id }}">
+    {{ _(spec.label) if spec else block.type }}
+  </h2>
 {% endif %}

@@ -72,6 +72,9 @@
     if (!node) {
       node = document.createElement("p");
       node.className = "cs-chart-message";
+      // A live region: these messages arrive after the page has been read, so
+      // without it "loading", "no data" and "failed" are all silent.
+      node.setAttribute("role", "status");
       container.insertBefore(node, container.firstChild);
     }
     node.textContent = text;
@@ -209,8 +212,27 @@
     });
   }
 
+  /** A sentence a screen reader can use in place of the picture. */
+  function describe(container, payload) {
+    var parts = [];
+    var title = container.getAttribute("data-label-chart");
+    var type = container.getAttribute("data-type") || "line";
+    parts.push(type + " chart");
+    if (title) { parts.push(title); }
+    if (payload.field_label) { parts.push(payload.field_label); }
+    var series = (payload.series || []).length;
+    if (series > 1) { parts.push(series + " series"); }
+    var labels = (payload.labels || []).length;
+    if (labels) {
+      parts.push(labels + " points from " + payload.labels[0] +
+                 " to " + payload.labels[labels - 1]);
+    }
+    return parts.join(", ");
+  }
+
   function render(container, done) {
     var url = seriesUrl(container);
+    container.setAttribute("aria-busy", "true");
     message(container, container.getAttribute("data-label-loading") || "");
 
     fetch(url, { credentials: "same-origin" })
@@ -226,10 +248,10 @@
         clearMessage(container);
         var canvas = document.createElement("canvas");
         canvas.setAttribute("role", "img");
-        canvas.setAttribute(
-          "aria-label",
-          (payload.field_label || "") + " " +
-            (payload.bucket ? "(" + payload.bucket + ")" : ""));
+        // Describe the CHART, not just its y axis. For mode=count there is no
+        // field_label at all, which left the label as a single space -- i.e.
+        // an unnamed image.
+        canvas.setAttribute("aria-label", describe(container, payload));
         container.insertBefore(canvas, container.firstChild);
         new window.Chart(canvas, buildConfig(container, payload));
         container.classList.add("is-rendered");
@@ -239,7 +261,13 @@
         // way to the data.
         message(container, container.getAttribute("data-label-error") || "");
       })
-      .then(done, done);
+      .then(function () {
+        container.setAttribute("aria-busy", "false");
+        done();
+      }, function () {
+        container.setAttribute("aria-busy", "false");
+        done();
+      });
   }
 
   function pump() {

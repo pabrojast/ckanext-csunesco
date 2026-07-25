@@ -1,7 +1,7 @@
 {# Block: a highlighted note with an optional button. Vars: block, ctx. #}
-{% if block.html or block.cta_label %}
+{% if block.html %}
   <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}"
-           id="block-{{ block.id }}">
+           id="block-{{ block.id }}"{% if block.title %} aria-labelledby="title-{{ block.id }}"{% endif %}>
     <div class="cs-callout cs-callout-{{ block.tone }}">
       {% if block.title %}
         <h2 class="cs-callout-title" id="title-{{ block.id }}">{{ block.title }}</h2>

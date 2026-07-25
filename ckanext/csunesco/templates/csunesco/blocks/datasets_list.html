@@ -8,8 +8,14 @@
   Vars: block, ctx.
 #}
 {% set packages = h.csunesco_block_datasets(ctx, block) %}
-<section class="cs-section cs-block" id="block-{{ block.id }}"
-         {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+{#
+  An empty section with a heading and a fixed "nothing here" line reads as a
+  broken page. Show it only when there is something to show, or when the author
+  wrote their own empty text.
+#}
+{% if packages or block.empty_text %}
+<section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}" id="block-{{ block.id }}"
+         aria-labelledby="title-{{ block.id }}">
   {% snippet "csunesco/blocks/_heading.html", block=block %}
   <ul class="cs-dataset-list">
     {% for package in packages %}
@@ -25,7 +31,8 @@
         {% endif %}
       </li>
     {% else %}
-      <li class="cs-empty">{{ _("No datasets to show yet.") }}</li>
+      <li class="cs-empty">{{ block.empty_text }}</li>
     {% endfor %}
   </ul>
 </section>
+{% endif %}

@@ -523,3 +523,215 @@ def test_trust_is_not_a_blanket_bypass_for_external_embeds():
 def test_an_untrusted_project_always_queues():
     blocks = b.normalize_blocks([{'type': 'rich_text'}])
     assert b.page_initial_status(False, False, blocks) == 'pending'
+
+
+# --------------------------------------------------------------------------- #
+# The op carriers                                                             #
+# --------------------------------------------------------------------------- #
+
+class _Form(object):
+    """A Werkzeug-MultiDict stand-in: ``.get()`` returns the FIRST value."""
+
+    def __init__(self, pairs):
+        self.pairs = list(pairs)
+
+    def get(self, key, default=None):
+        for name, value in self.pairs:
+            if name == key:
+                return value
+        return default
+
+    def items(self, multi=True):
+        return list(self.pairs)
+
+
+def test_choose_op_prefers_the_pressed_button():
+    assert b.choose_op('add:callout', '') == 'add:callout'
+    assert b.choose_op('save', 'delete:2') == 'save'
+    # The disable-on-submit path: the button contributed nothing.
+    assert b.choose_op('', 'delete:2') == 'delete:2'
+    assert b.choose_op(None, None) == ''
+    assert b.parse_op(b.choose_op(None, None))[0] == 'save'
+
+
+def test_a_browser_post_applies_the_pressed_op_not_the_hidden_field():
+    """The regression that shipped: a hidden field sharing the buttons' name
+    made MultiDict.get return "save" for every button, so with JavaScript off
+    nothing moved, nothing was added and nothing ever published."""
+    form = _Form([
+        ('op_js', ''),                                   # hidden, DOM-first
+        ('blocks[0][type]', 'rich_text'), ('blocks[0][id]', 'aaaaaaaa'),
+        ('op', 'add:callout'),                           # the pressed button
+    ])
+    blocks = b.ensure_builtins(b.blocks_from_form(form.items(multi=True)))
+    raw_op = b.choose_op(form.get('op'), form.get('op_js'))
+    before = len(blocks)
+    blocks, anchor = b.apply_op(blocks, raw_op)
+    assert b.parse_op(raw_op)[0] == 'add'
+    assert len(blocks) == before + 1
+    assert anchor and any(block['id'] == anchor for block in blocks)
+
+
+def test_a_new_block_lands_above_the_standard_sections():
+    """Appending would drop every new section below "Join this project" and
+    cost one full page reload per position to move it up."""
+    blocks = b.default_blocks()
+    blocks, _anchor = b.apply_op(blocks, 'add:rich_text')
+    assert blocks[0]['type'] == 'rich_text'
+    # With no built-ins present it simply appends.
+    plain = b.normalize_blocks([{'type': 'callout'}])
+    plain, _ = b.apply_op(plain, 'add:rich_text')
+    assert [block['type'] for block in plain] == ['callout', 'rich_text']
+
+
+def test_preview_is_a_no_op_on_the_block_list():
+    blocks = b.default_blocks()
+    out, anchor = b.apply_op(blocks, 'preview')
+    assert [x['type'] for x in out] == [x['type'] for x in blocks]
+    assert anchor is None
+
+
+def test_convert_moves_the_legacy_description_into_a_text_block():
+    blocks = b.default_blocks()
+    index = [x['type'] for x in blocks].index('builtin_about')
+    out, anchor = b.apply_op(blocks, 'convert:%d' % index,
+                             convert_html='<p>Legacy text</p>')
+    types = [x['type'] for x in out]
+    assert types[index] == 'rich_text'
+    assert types[index + 1] == 'builtin_about'
+    # The original is hidden so the same prose is not published twice.
+    assert out[index + 1]['hidden'] is True
+    assert anchor == out[index]['id']
+
+
+def test_convert_ignores_blocks_that_are_not_the_legacy_about():
+    blocks = b.default_blocks()
+    out, _anchor = b.apply_op(blocks, 'convert:0', convert_html='<p>x</p>')
+    assert [x['type'] for x in out] == [x['type'] for x in blocks]
+
+
+def test_duplicate_block_ids_are_replaced():
+    """Ids round-trip through a visible hidden field, so a hand-edited POST can
+    repeat one -- which would collapse every aria-labelledby onto the first."""
+    out = b.normalize_blocks([{'type': 'rich_text', 'id': 'aaaaaaaa'},
+                              {'type': 'callout', 'id': 'aaaaaaaa'}])
+    assert len({block['id'] for block in out}) == 2
+    assert out[0]['id'] == 'aaaaaaaa'
+
+
+# --------------------------------------------------------------------------- #
+# The drop report                                                             #
+# --------------------------------------------------------------------------- #
+
+def _report_for(raw):
+    report = b.DropReport()
+    blocks = b.normalize_blocks(raw, report=report)
+    return blocks, report.drops
+
+
+def test_the_report_never_changes_what_is_stored():
+    """THE invariant. The report is a parallel record; if instrumenting the
+    normalizers ever altered their output, stored pages would silently change
+    and draft_hash would move underneath the reviewer."""
+    samples = [
+        b.default_blocks(),
+        [{'type': 'image', 'items': [{'url': 'http://insecure.test/a.jpg'}]}],
+        [{'type': 'chart', 'field': 'my field'}],
+        [{'type': 'datasets_list', 'ids': 'a b\nvalid-name'}],
+        [{'type': 'callout', 'cta_url': 'example.com'}],
+        [{'type': 'chart'}] * 11,
+        ['nope', 42, None, {'type': 'callout'}],
+    ]
+    for raw in samples:
+        with_report = b.normalize_blocks(raw, report=b.DropReport())
+        without = b.normalize_blocks(raw)
+        # Ids are random for blocks that arrive without one; compare everything
+        # else, which is what actually gets stored and hashed.
+        strip = lambda bl: [{k: v for k, v in x.items() if k != 'id'} for x in bl]
+        assert strip(with_report) == strip(without)
+
+
+def test_stored_json_never_gains_report_keys():
+    blocks, _drops = _report_for(
+        [{'type': 'image', 'items': [{'url': 'http://insecure.test/a.jpg'}]}])
+    payload = b.blocks_to_json(blocks)
+    assert '_dropped' not in payload and 'reason' not in payload
+
+
+def test_collecting_is_opt_in():
+    """The read path -- every render of stored JSON -- must not pay for a
+    feature only the editor uses."""
+    import inspect
+    for function in (b.normalize_blocks, b.normalize_block, b.blocks_from_form):
+        assert inspect.signature(function).parameters['report'].default is None
+    # And a normalize with no report still discards the same value.
+    assert b.normalize_block({'type': 'chart', 'field': 'bad name'})['field'] == ''
+
+
+def test_an_http_image_url_is_reported_against_its_block_and_slot():
+    blocks, drops = _report_for([{'type': 'image', 'items': [
+        {'url': 'https://ok.test/a.jpg'},
+        {'url': 'http://insecure.test/b.jpg'},
+    ]}])
+    assert len(drops) == 1
+    drop = drops[0]
+    assert drop['field'] == 'url' and drop['reason'] == 'not_https'
+    assert drop['item'] == 1
+    # The recorded id must be the one the template renders, or the editor
+    # cannot open or anchor the right block.
+    assert drop['block'] == blocks[0]['id']
+    assert 'insecure.test' in drop['value']
+
+
+def test_each_discard_reports_its_own_code():
+    _blocks, drops = _report_for([{'type': 'chart', 'field': 'my field'}])
+    assert [d['reason'] for d in drops] == ['bad_field_name']
+
+    _blocks, drops = _report_for([{'type': 'callout', 'cta_url': 'example.com'}])
+    assert [d['reason'] for d in drops] == ['bad_link']
+
+    _blocks, drops = _report_for([{'type': 'datasets_list',
+                                   'ids': 'good-name\nnot a name'}])
+    assert [(d['reason'], d['item']) for d in drops] == [('bad_ref', 1)]
+
+    _blocks, drops = _report_for([{'type': 'terria_map',
+                                   'url': 'http://insecure.test/terria'}])
+    assert [d['reason'] for d in drops] == ['not_https']
+
+
+def test_a_video_url_we_cannot_parse_is_not_reported():
+    """video.html already warns from STORED state, which re-warns on every
+    visit; a one-shot report would be strictly worse. Only a lost URL counts."""
+    _blocks, drops = _report_for(
+        [{'type': 'video', 'url': 'https://evil.test/x?v=abc'}])
+    assert drops == []
+    _blocks, drops = _report_for(
+        [{'type': 'video', 'url': 'http://www.youtube.com/watch?v=dQw4w9WgXcQ'}])
+    assert [d['reason'] for d in drops] == ['not_https']
+
+
+def test_too_many_blocks_is_reported():
+    _blocks, drops = _report_for([{'type': 'chart'}] * 11)
+    assert [d['reason'] for d in drops] == ['too_many'] * 5
+
+
+def test_the_report_is_capped_and_total():
+    report = b.DropReport()
+    b.normalize_blocks([{'type': 'datasets_list',
+                         'ids': '\n'.join('not a name %d' % i
+                                          for i in range(40))}],
+                       report=report)
+    assert len(report.drops) <= b.MAX_DROPS
+    # Garbage in, no exception out.
+    b.normalize_blocks('nope', report=b.DropReport())
+    b.normalize_blocks([None, 42], report=b.DropReport())
+
+
+def test_a_pasted_dataset_url_is_accepted():
+    """Pasting the link out of the address bar is the obvious thing to do and
+    used to vanish, leaving "No datasets to show yet"."""
+    out = b.normalize_block({'type': 'datasets_list', 'ids':
+                             'https://ihp-wins.unesco.org/dataset/river-ph-2024\n'
+                             'https://data.dev-wins.com/en/dataset/cs-data-x-3\n'
+                             'plain-name'})
+    assert out['ids'] == ['river-ph-2024', 'cs-data-x-3', 'plain-name']

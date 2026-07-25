@@ -1395,6 +1395,7 @@ def pending_pages(limit=20, offset=0, initiative_groups=None):
             CsProjectPage.submitted_by,
             CsProjectPage.submitted_at,
             CsProjectPage.modified,
+            CsProjectPage.extras,
             CsProject.title,
             CsProject.slug,
             CsProject.initiative_group,
@@ -1415,17 +1416,24 @@ def pending_pages(limit=20, offset=0, initiative_groups=None):
     )
     results = []
     for row in rows:
-        results.append({
+        item = {
             'project_id': row[0],
             'status': row[1],
             'draft_hash': row[2],
             'submitted_by': row[3],
             'submitted_at': _iso(row[4]),
             'modified': _iso(row[5]),
-            'project_title': row[6],
-            'project_slug': row[7],
-            'initiative_group': row[8],
-        })
+            'project_title': row[7],
+            'project_slug': row[8],
+            'initiative_group': row[9],
+        }
+        # Review context recorded at submit time (requires_review,
+        # submitted_by_name, first_publication) -- small, unlike the JSON.
+        extras = _load_json(row[6], {})
+        if isinstance(extras, dict):
+            for key, value in extras.items():
+                item.setdefault(key, value)
+        results.append(item)
     return total, results
 
 

@@ -22,7 +22,7 @@
 {% if embed or (block.provider == 'file' and block.url) %}
   <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}"
            id="block-{{ block.id }}"
-           {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+           aria-labelledby="title-{{ block.id }}">
     {% snippet "csunesco/blocks/_heading.html", block=block %}
     <div class="cs-video cs-video-{{ block.ratio | replace(':', '-') }}">
       {% if embed %}

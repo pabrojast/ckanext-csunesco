@@ -363,8 +363,15 @@
         reviewer was shown: the approve action refuses a stale one, so a page
         edited after this panel rendered cannot be published unseen.
       #}
+      {#
+        No `hidden` attribute: the JS sets it on init, and without JS every
+        panel must stay visible (the file's own contract at the top). This
+        panel shipped hard-coded `hidden`, so a reviewer with JavaScript off
+        could never reach the page queue at all.
+      #}
       <div class="cs-tabpanel" id="cs-tab-pages" role="tabpanel"
-           aria-labelledby="cs-tabbtn-pages" hidden>
+           data-tabpanel="pages" aria-labelledby="cs-tabbtn-pages">
+        <h2 class="cs-visually-hidden">{{ _("Pages to review") }}</h2>
         {% if page_requests %}
           <table class="cs-admin-table">
             <thead>
@@ -383,27 +390,56 @@
                       {{ row.project_title or row.project_slug }}
                     </a>
                   </td>
-                  <td data-label="{{ _('Initiative') }}">{{ row.initiative_group }}</td>
-                  <td data-label="{{ _('Submitted') }}">{{ (row.submitted_at or row.modified or '')[:16] | replace('T', ' ') }}</td>
+                  <td data-label="{{ _('Initiative') }}">
+                    {{ h.csunesco_member_state_title(row.initiative_group) }}
+                  </td>
+                  <td data-label="{{ _('Submitted') }}">
+                    {{ (row.submitted_at or row.modified or '')[:16] | replace('T', ' ') }}
+                    {% if row.submitted_by_name %}
+                      <span class="cs-muted">{{ _("by") }} {{ row.submitted_by_name }}</span>
+                    {% endif %}
+                    <br>
+                    {% if row.first_publication %}
+                      <span class="cs-status-badge cs-status-draft">{{ _("first publication") }}</span>
+                    {% else %}
+                      <span class="cs-status-badge cs-status-draft">{{ _("update") }}</span>
+                    {% endif %}
+                    {# What actually forced this into the queue, so the reviewer
+                       knows whether to expect embedded media or a typo fix. #}
+                    {% for kind in row.requires_review or [] %}
+                      {% set spec = h.csunesco_block_type(kind) %}
+                      <span class="cs-status-badge cs-status-pending">{{ _(spec.label) if spec else kind }}</span>
+                    {% endfor %}
+                  </td>
                   <td data-label="{{ _('Decision') }}">
+                    {# New tab: reviewing means reading the page, and coming
+                       back must not cost the reasons typed into other rows. #}
                     <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                       target="_blank" rel="noopener noreferrer"
                        href="{{ h.url_for('csunesco.project_page_preview', slug=row.project_slug) }}">
                       {{ _("Preview") }}
                     </a>
-                    <form method="post" class="cs-inline-form"
-                          action="{{ h.url_for('csunesco.page_approve', project_id=row.project_id) }}">
+                    <form method="post"
+                          action="{{ h.url_for('csunesco.page_approve', project_id=row.project_id) }}"
+                          data-confirm="{{ _('Publish this page for everyone?') }}">
                       {{ h.csrf_input() }}
                       <input type="hidden" name="draft_hash" value="{{ row.draft_hash }}">
                       <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">
                         {{ _("Publish") }}
                       </button>
                     </form>
-                    <form method="post" class="cs-inline-form"
-                          action="{{ h.url_for('csunesco.page_reject', project_id=row.project_id) }}">
+                    {# cs-reject-form / cs-reject-reason are the classes the
+                       other tabs use and the only ones that exist in the CSS. #}
+                    <form method="post" class="cs-reject-form"
+                          action="{{ h.url_for('csunesco.page_reject', project_id=row.project_id) }}"
+                          data-confirm="{{ _('Send this page back to its author?') }}">
                       {{ h.csrf_input() }}
-                      <input type="text" name="reason" class="cs-reason-input"
-                             placeholder="{{ _('Reason (optional)') }}"
-                             aria-label="{{ _('Reason for sending back') }}">
+                      <label class="cs-visually-hidden" for="reason-page-{{ row.project_id }}">
+                        {{ _("Reason for sending back") }}
+                      </label>
+                      <input type="text" id="reason-page-{{ row.project_id }}"
+                             name="reason" class="cs-reject-reason"
+                             placeholder="{{ _('Reason (optional)') }}">
                       <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">
                         {{ _("Send back") }}
                       </button>

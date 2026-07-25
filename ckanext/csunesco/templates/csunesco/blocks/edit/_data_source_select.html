@@ -20,6 +20,7 @@
         </option>
       {% endfor %}
     </select>
+    {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='data_source_id' %}
   {% else %}
     <p class="cs-hint">
       {{ _("This project has no approved data yet.") }}

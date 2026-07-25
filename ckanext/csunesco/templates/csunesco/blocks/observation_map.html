@@ -8,9 +8,18 @@
   Vars: block, ctx.
 #}
 {% set source = ctx.approved_sources.get(block.data_source_id) %}
+{% if not source and ctx.preview %}
+  {# Preview only: the visitor correctly sees nothing, but the
+     manager needs to know why their block vanished. #}
+  <section class="cs-section cs-block" id="block-{{ block.id }}">
+    <p class="cs-empty">
+      {{ _("This block has no approved data selected, so visitors see nothing here.") }}
+    </p>
+  </section>
+{% endif %}
 {% if source %}
-  <section class="cs-section cs-block" id="block-{{ block.id }}"
-           {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+  <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}" id="block-{{ block.id }}"
+           aria-labelledby="title-{{ block.id }}">
     {% snippet "csunesco/blocks/_heading.html", block=block %}
     <div class="cs-map cs-data-map" style="height: {{ block.height }}px;"
          data-observations-url="{{ h.url_for('csunesco.data_source_geojson', id=source.id) }}"

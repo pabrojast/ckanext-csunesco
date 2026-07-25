@@ -30,6 +30,7 @@
         <input type="url" id="b{{ index }}-i{{ slot }}-url"
                name="blocks[{{ index }}][items][{{ slot }}][url]"
                value="{{ item.url or '' }}" placeholder="https://…/photo.jpg">
+        {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='url', item=slot %}
       </span>
       <span>
         <label for="b{{ index }}-i{{ slot }}-alt">{{ _("Description for screen readers") }}</label>

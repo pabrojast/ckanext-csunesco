@@ -23,5 +23,6 @@
     <label for="b{{ index }}-cta-url">{{ _("Button link") }}</label>
     <input type="text" id="b{{ index }}-cta-url" name="blocks[{{ index }}][cta_url]"
            value="{{ block.cta_url }}" placeholder="https://… {{ _('or') }} /citizen-science/…">
+    {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='cta_url' %}
   </span>
 </div>

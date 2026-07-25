@@ -225,7 +225,10 @@ Four tabs:
    approving is refused rather than publishing a version nobody read. (Editing a
    pending page also withdraws it from the queue, so this is the narrow race,
    not the common path.) Rejecting sends it back with a reason and leaves the
-   currently published version untouched.
+   currently published version untouched — and that reason stays visible in the
+   editor until the page is published again, not just until the author's next
+   save. Each row shows who submitted it, whether it is a first publication or
+   an update, and which block types put it in the queue.
 
 ### Project pages (block builder)
 
@@ -244,7 +247,22 @@ a default template plus a custom one.
 - **The JS-free path is the primary path.** Add / move / delete / hide / save /
   publish are ordinary submit buttons carrying `op=…` to one endpoint; the
   enhanced editor (formatting toolbar, chart field picker) posts to the same
-  place. Nothing needs JavaScript to work.
+  place. Nothing needs JavaScript to work. The op is carried by the pressed
+  button alone — a script-written fallback uses a *different* name (`op_js`,
+  resolved by `blocks.choose_op`), because sharing one name makes the server's
+  answer depend on DOM order.
+- **Blocks are collapsed** (`<details>`/`<summary>`), with a jump list above
+  them: 17 blocks is already ~150 form controls and the cap is 60. Collapsed
+  fields still submit — the form is built from the DOM tree, not from what is
+  painted — which every operation relies on, since each re-parses the whole
+  list. The form is `novalidate` for the same reason: the browser cannot
+  validate a control it cannot show, and would otherwise refuse to submit at
+  all.
+- **Nothing the author typed disappears in silence.** `normalize_blocks` takes
+  an optional `DropReport`; whatever it discards (a non-https image URL, a
+  dataset reference with spaces, a chart field name that is not a column) is
+  reported back beside the field that produced it. The report never changes
+  what is stored.
 - **Charts are aggregated server-side.** `csunesco_data_source_series` buckets
   observations by an auto-chosen period, caps the series at 8 and rounds the
   values, turning a ~1.6 MB dashboard payload into ~3 KB of dense arrays. The
@@ -311,6 +329,11 @@ ckan -c /etc/ckan/default/ckan.ini csunesco init-db          # also self-heals o
 ckan -c /etc/ckan/default/ckan.ini csunesco seed-initiatives # the 4 initiative groups
 ckan -c /etc/ckan/default/ckan.ini csunesco stats-refresh    # observation counters (cron-able)
 ```
+
+**"Sampling points"** counts DISTINCT GPS locations rounded to ~11 m, not named
+sites: a form whose site column holds 26 names can easily have 450 coordinates.
+It is labelled that way so the counter cannot contradict a chart legend on the
+same page.
 
 **At-a-Glance counters.** Observations and monitored sites are recomputed
 from the connected (approved) app data sources: automatically on data-source

@@ -25,7 +25,7 @@
                 name="blocks[{{ index }}][items][{{ slot }}][source]">
           {% for value, label in [('manual', _('A number I type')),
                                   ('observations', _('Observations (live)')),
-                                  ('sites_monitored', _('Sites monitored (live)')),
+                                  ('sites_monitored', _('Sampling points (live)')),
                                   ('citizen_scientists', _('Citizen scientists (live)')),
                                   ('member_states', _('Member states (live)'))] %}
             <option value="{{ value }}"
@@ -37,7 +37,15 @@
         <label for="b{{ index }}-s{{ slot }}-value">{{ _("Typed number") }}</label>
         <input type="text" id="b{{ index }}-s{{ slot }}-value"
                name="blocks[{{ index }}][items][{{ slot }}][value]"
-               value="{{ item.value or '' }}">
+               value="{{ item.value or '' }}"
+               aria-describedby="b{{ index }}-s{{ slot }}-value-hint">
+        <span class="cs-hint" id="b{{ index }}-s{{ slot }}-value-hint">
+          {%- if (item.source or 'manual') != 'manual' -%}
+            {{ _("Ignored: this counter reads a live figure.") }}
+          {%- else -%}
+            {{ _("Used only when the number is one you type.") }}
+          {%- endif -%}
+        </span>
       </span>
     </fieldset>
   {% endfor %}

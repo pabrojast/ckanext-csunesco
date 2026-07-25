@@ -19,6 +19,7 @@ URL sits under an allowlisted base.
 """
 import datetime
 import hashlib
+import json
 
 import ckan.plugins.toolkit as tk
 
@@ -68,7 +69,8 @@ def _validate_policy(blocks):
     silently dropping what the manager typed.
     """
     errors = []
-    for index, block in enumerate(blocks or []):
+    bad_ids = []
+    for block in blocks or []:
         if block.get('type') != 'terria_map':
             continue
         url = block.get('url')
@@ -77,11 +79,30 @@ def _validate_policy(blocks):
         try:
             validators.csunesco_valid_terria_url(url)
         except Exception:
+            # Name the block, not its position: the editor shows no numbers,
+            # and the count includes hidden standard sections, so "Block 9" was
+            # not something a manager could resolve.
             errors.append(tk._(
-                'Block %(n)s: only links to the official IHP-WINS map viewer '
-                'are accepted.') % {'n': index + 1})
+                'The map link in "%(name)s" was not accepted: only links to '
+                'the official IHP-WINS map viewer can be embedded.')
+                % {'name': block.get('title') or tk._('Interactive map')})
+            bad_ids.append(block.get('id'))
     if errors:
-        raise tk.ValidationError({'blocks': errors})
+        # block_ids is machinery for opening the offending blocks, not a
+        # message; the template skips it when listing errors.
+        raise tk.ValidationError({'blocks': errors, 'block_ids': bad_ids})
+
+
+def _user_display_name(user_id):
+    """A readable name for the submitter, or ``''`` (never breaks a submit)."""
+    if not user_id:
+        return u''
+    try:
+        import ckan.model as model
+        user = model.User.get(user_id)
+        return user.display_name or user.name if user else u''
+    except Exception:
+        return u''
 
 
 def _can_view_draft(context, project_id):
@@ -208,6 +229,15 @@ def csunesco_project_page_submit(context, data_dict):
     user_id = current_user_id(context)
     page.submitted_by = user_id
     page.submitted_at = now
+    # Stashed here rather than recomputed in the review panel: describing a row
+    # would otherwise mean parsing every pending page's draft JSON.
+    extras = db._load_json(page.extras, {})
+    if not isinstance(extras, dict):
+        extras = {}
+    extras['requires_review'] = blocks_module.blocks_requiring_review(blocks)
+    extras['submitted_by_name'] = _user_display_name(user_id)
+    extras['first_publication'] = page.published_json is None
+    page.extras = json.dumps(extras)
     page.rejection_reason = None
     page.modified = now
     if status == 'approved':

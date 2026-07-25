@@ -26,6 +26,7 @@
   <label for="b{{ index }}-ds-ids">{{ _("Dataset names, one per line") }}</label>
   <textarea id="b{{ index }}-ds-ids" name="blocks[{{ index }}][ids]" rows="4"
             >{{ block['ids'] | join('\n') }}</textarea>
+  {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='ids' %}
 </div>
 <div class="cs-field">
   <label for="b{{ index }}-ds-limit">{{ _("How many") }}</label>

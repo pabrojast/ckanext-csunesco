@@ -8,17 +8,22 @@
   Vars: block, ctx.
 #}
 {% if block['items'] %}
-  <section class="cs-section cs-block" id="block-{{ block.id }}"
-           {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+  <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}" id="block-{{ block.id }}"
+           aria-labelledby="title-{{ block.id }}">
     {% snippet "csunesco/blocks/_heading.html", block=block %}
     <div class="cs-stats-band">
       {% for item in block['items'] %}
         <div class="stat-item">
           <div class="stat-number">
+            {#- A missing key means the figure could not be computed, which is
+                not the same as a genuine zero -- a hero-sized "0" on a live
+                project reads as a bug. -#}
             {%- if item.source == 'manual' -%}
               {{ item.value }}
+            {%- elif item.source in ctx.stats -%}
+              {{ h.csunesco_format_number(ctx.stats[item.source]) }}
             {%- else -%}
-              {{ ctx.stats.get(item.source, 0) }}
+              &mdash;
             {%- endif -%}
           </div>
           <div class="stat-label">{{ item.label }}</div>

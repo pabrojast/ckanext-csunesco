@@ -174,6 +174,18 @@ def csunesco_block_type(key):
     return blocks.BLOCK_TYPES.get(key)
 
 
+def csunesco_format_number(value):
+    """Group a count for reading: 1605 -> "1,605" in the request's locale.
+
+    CKAN ships a localised formatter; fall back to the raw value rather than
+    letting a display detail break a counter.
+    """
+    try:
+        return tk.h.localised_number(int(value))
+    except Exception:
+        return value
+
+
 def csunesco_blocks_need_review(blocks):
     """True when a page embeds content from an origin we do not control.
 
@@ -224,20 +236,32 @@ def csunesco_video_embed_url(provider, video_id):
 def csunesco_project_data_sources(project_id):
     """Approved data sources of a project, for the editor's source pickers.
 
+    Memoised per request: the editor calls this once per chart and per
+    observation-map block, which on a full page meant ten identical lookups.
+
     Only approved rows: a block may only ever point at data the public can
     already reach through the proxy. Fails soft to an empty list so the editor
     still renders when the listing errors.
     """
     if not project_id:
         return []
+    cache_attr = '_csunesco_sources_%s' % project_id
+    cached = getattr(tk.g, cache_attr, None)
+    if cached is not None:
+        return cached
     try:
         result = tk.get_action('csunesco_data_source_list')(
             {}, {'project_id': project_id, 'limit': 50})
-        return [source for source in result.get('results', [])
-                if source.get('status') == 'approved']
+        sources = [source for source in result.get('results', [])
+                   if source.get('status') == 'approved']
     except Exception:
         log.warning('csunesco: data sources for the page editor unavailable')
-        return []
+        sources = []
+    try:
+        setattr(tk.g, cache_attr, sources)
+    except Exception:
+        pass          # no request context: just do not cache
+    return sources
 
 
 def csunesco_block_palette():

@@ -26,7 +26,10 @@
 
 .cs-hero {
   padding: calc(var(--space-unit) * 2) var(--space-unit);
-  background: linear-gradient(135deg, var(--unesco-blue) 0%, var(--unesco-blue-light) 100%);
+  /* Ends on --unesco-blue-dark, not --unesco-blue-light: white body copy over
+     #009EE0 is 3.01:1, which fails AA for anything but large text. Against
+     #005A9C it is 7.14:1. */
+  background: linear-gradient(135deg, var(--unesco-blue) 0%, var(--unesco-blue-dark) 100%);
   color: #fff;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -146,6 +149,8 @@
   font-size: 1rem;
 }
 
+.cs-field select:focus,
+.cs-field textarea:focus,
 .cs-field input:focus {
   outline: 2px solid var(--unesco-blue-light);
   outline-offset: 1px;
@@ -1342,9 +1347,17 @@
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-.cs-gallery-item:hover {
+.cs-gallery-item:hover,
+.cs-gallery-item:focus-within {
   transform: translateY(-6px);
   box-shadow: 0 16px 32px rgba(0, 114, 188, 0.18);
+}
+
+/* The card clips its content, so a ring drawn outside the image is invisible.
+   A negative offset puts it inside the clip. */
+.cs-gallery-item img:focus-visible {
+  outline: 3px solid var(--unesco-blue-dark);
+  outline-offset: -3px;
 }
 
 .cs-gallery-item img {
@@ -1459,13 +1472,10 @@
   text-align: center;
 }
 
-/* Once a chart renders, its CSV link moves out of the way but stays reachable. */
-.cs-chart.is-rendered .cs-chart-fallback {
-  position: absolute;
-  right: 0;
-  bottom: -1.6rem;
-  font-size: 0.8rem;
-}
+/* The placeholder is only for the pre-render / failed / no-JS states. The CSV
+   link now lives in the figcaption, so nothing has to be offset out of the
+   card to stay reachable. */
+.cs-chart.is-rendered .cs-chart-fallback { display: none; }
 
 .cs-chart-legend {
   display: flex;
@@ -1550,29 +1560,122 @@
 }
 
 .cs-pb-block {
+  position: relative;
   background: #fff;
   border: 1px solid #e2e8ef;
   border-radius: 12px;
   box-shadow: var(--shadow);
   overflow: hidden;
+  scroll-margin-top: 1rem;
 }
 
-/* A hidden block stays fully editable -- it is just visibly "off". */
-.cs-pb-block.is-hidden { opacity: 0.62; }
-.cs-pb-block.is-hidden .cs-pb-head { background: #f1f3f5; }
+/* A hidden block stays fully EDITABLE, so its text must stay readable: dimming
+   the whole card with opacity dropped every label to ~2.4-3.7:1, and WCAG's
+   exception for inactive controls does not apply to a live form. Signal it with
+   a dashed border and a flat tint instead. */
+.cs-pb-block.is-hidden {
+  border-style: dashed;
+  border-color: #b6c2ce;
+  background: #f8f9fa;
+}
 
-.cs-pb-head {
+.cs-pb-block.is-hidden .cs-pb-summary { background: #eef1f4; }
+.cs-pb-block:target { outline: 3px solid var(--admin-gold); outline-offset: 2px; }
+.cs-pb-block:focus { outline: none; }
+
+/* `display: flex` on a <summary> suppresses the native disclosure marker, so
+   the row gave no sign it opened. Draw our own and rotate it when open. */
+.cs-pb-summary { list-style: none; }
+.cs-pb-summary::-webkit-details-marker { display: none; }
+
+.cs-pb-summary::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.15rem;
+  border-right: 2px solid var(--unesco-blue-dark);
+  border-bottom: 2px solid var(--unesco-blue-dark);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.cs-pb-details[open] > .cs-pb-summary::before { transform: rotate(45deg); }
+
+.cs-pb-summary:focus-visible {
+  outline: 2px solid var(--unesco-blue-light);
+  outline-offset: -2px;
+}
+
+.cs-pb-name { font-weight: 400; color: #33475b; }
+
+.cs-pb-tag-off {
+  border-color: #b6c2ce;
+  background: #eef1f4;
+  color: #46586a;
+}
+
+/* Jump-to list: with 17+ blocks the editor is several screens tall. */
+.cs-pb-jump { margin-top: var(--space-unit); }
+
+.cs-pb-jump-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #5a6b7b;
+}
+
+.cs-pb-jump-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cs-pb-jump-list a {
+  display: inline-block;
+  padding: 0.3rem 0.7rem;
+  background: #fff;
+  border: 1px solid #cfe0f2;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  color: var(--unesco-blue-dark);
+  text-decoration: none;
+}
+
+.cs-pb-jump-list a:hover,
+.cs-pb-jump-list a:focus-visible { background: var(--unesco-blue-pale); }
+
+.cs-pb-drop code {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.cs-pb-returned { background: #fff8e1; border-left-color: var(--admin-gold); color: #6b5100; }
+
+.cs-pb-summary {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.7rem var(--space-unit);
+  /* Room for the ops cluster, which is overlaid on the right of this bar. */
+  padding: 0.7rem 12rem 0.7rem var(--space-unit);
   background: var(--unesco-blue-pale);
   border-bottom: 1px solid #dbe7f5;
+  cursor: pointer;
 }
 
+/* <summary> is a heading here, so it must not inherit h3's block margins. */
+.cs-pb-summary .cs-pb-kind { margin: 0; font-size: 1rem; }
+
 .cs-pb-kind {
+  margin: 0;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--unesco-blue-dark);
   display: flex;
@@ -1597,9 +1700,22 @@
 
 .cs-pb-tag-review { border-color: #f0d39a; background: #fff8e8; color: #8a5a00; }
 
-.cs-pb-ops { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.cs-pb-ops {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.75rem;
+  z-index: 1;
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
 .cs-pb-ops .cs-btn { padding: 0.35rem 0.7rem; }
-.cs-pb-ops .cs-btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+.cs-pb-ops .cs-btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 .cs-pb-body { padding: var(--space-unit); }
 .cs-pb-body > .cs-hint:first-child { margin-top: 0; }
@@ -1697,7 +1813,9 @@
 }
 
 .cs-rt-btn {
-  min-width: 34px;
+  /* A real touch target: 34x28 with a 4px gap made adjacent mis-taps likely. */
+  min-width: 44px;
+  min-height: 44px;
   padding: 0.3rem 0.55rem;
   background: #fff;
   border: 1px solid #dbe7f5;
@@ -1708,6 +1826,11 @@
 }
 
 .cs-rt-btn:hover { background: var(--unesco-blue-pale); }
+
+.cs-rt-btn:focus-visible {
+  outline: 2px solid var(--unesco-blue-light);
+  outline-offset: 1px;
+}
 
 .cs-rt-area {
   min-height: 9rem;
@@ -1741,3 +1864,76 @@
 .cs-pb-item-inline > span label { display: block; }
 .cs-pb-item-inline > span input,
 .cs-pb-item-inline > span select { width: 100%; }
+
+
+/* ---------------------------------------------------------------------------
+ * Cross-cutting polish
+ * ------------------------------------------------------------------------- */
+
+/* Counters are meant to be compared down a row, so the digits must line up. */
+.stat-number,
+.cs-stat-card .value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Stop headings breaking to a one-word last line. */
+.cs-section-title,
+.cs-hero h1,
+.cs-callout-title {
+  text-wrap: balance;
+}
+
+/* No 300ms tap delay on the editor's many small controls. */
+.cs-btn,
+.cs-rt-btn,
+.cs-pb-add,
+.cs-pb-summary,
+.cs-tab {
+  touch-action: manipulation;
+}
+
+/* The lightbox is a modal: scrolling it must not scroll the page behind it. */
+.cs-lightbox {
+  overscroll-behavior: contain;
+}
+
+/* A hidden section in the draft preview -- visible only to its manager. */
+.cs-block-hidden-marker {
+  border: 2px dashed #b6c2ce;
+  border-radius: var(--radius);
+  padding: 0 var(--space-unit) var(--space-unit);
+  margin-top: var(--space-unit);
+  background: #f8f9fa;
+}
+
+/* The chart's caption row: caption left, CSV link right. */
+.cs-chart-caption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 0.6rem;
+}
+
+/*
+ * Motion is decoration here -- every hover lift and the loading spinner. Some
+ * people get motion sickness from it, and the whole stylesheet had no opt-out.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .cs-gallery-item:hover,
+  .cs-gallery-item:focus-within,
+  .cs-pb-add:hover,
+  .cs-pb-add:focus-visible {
+    transform: none;
+  }
+}

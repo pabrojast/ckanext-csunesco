@@ -10,17 +10,28 @@
 
   var overlay = null;
   var lastFocused = null;
+  var closeButton = null;
+  // Labels come from the gallery's data- attributes so they go through _().
+  var labels = { close: "Close", open: "View image" };
 
   function close() {
     if (!overlay) { return; }
     document.removeEventListener("keydown", onKeydown);
+    closeButton = null;
     overlay.parentNode.removeChild(overlay);
     overlay = null;
     if (lastFocused) { lastFocused.focus(); }
   }
 
   function onKeydown(event) {
-    if (event.key === "Escape") { close(); }
+    if (event.key === "Escape") { close(); return; }
+    // Trap Tab. The page behind is still in the DOM and focusable, so without
+    // this a keyboard user tabs straight out of an aria-modal dialog into
+    // content they cannot see.
+    if (event.key === "Tab" && closeButton) {
+      event.preventDefault();
+      closeButton.focus();
+    }
   }
 
   function open(src, alt) {
@@ -31,7 +42,9 @@
     overlay.className = "cs-lightbox";
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-modal", "true");
-    overlay.setAttribute("aria-label", alt || "");
+    // An empty aria-label is treated as NO name, so a picture with no alt
+    // text produced a dialog that announced nothing at all.
+    overlay.setAttribute("aria-label", alt || labels.open);
 
     var image = document.createElement("img");
     image.src = src;
@@ -40,7 +53,7 @@
     var button = document.createElement("button");
     button.type = "button";
     button.className = "cs-lightbox-close";
-    button.setAttribute("aria-label", "Close");
+    button.setAttribute("aria-label", labels.close);
     button.textContent = "×";
     button.addEventListener("click", close);
 
@@ -52,6 +65,7 @@
     overlay.appendChild(image);
     overlay.appendChild(button);
     document.body.appendChild(overlay);
+    closeButton = button;
     button.focus();
     document.addEventListener("keydown", onKeydown);
   }
@@ -59,10 +73,15 @@
   function init() {
     var galleries = document.querySelectorAll(".cs-gallery[data-lightbox]");
     Array.prototype.forEach.call(galleries, function (gallery) {
+      labels.close = gallery.getAttribute("data-label-close") || labels.close;
+      labels.open = gallery.getAttribute("data-label-open") || labels.open;
       var images = gallery.querySelectorAll("img[data-full]");
       Array.prototype.forEach.call(images, function (image) {
         // An author-supplied link wins: they meant it to go somewhere.
         if (image.closest("a")) { return; }
+        // A focusable role="button" with no accessible name is a tab stop that
+        // announces nothing. Without alt text, leave it a plain image.
+        if (!image.alt) { return; }
         image.style.cursor = "zoom-in";
         image.tabIndex = 0;
         image.setAttribute("role", "button");

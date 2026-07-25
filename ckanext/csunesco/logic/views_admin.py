@@ -150,17 +150,36 @@ def admin_dashboard():
 # Moderation POST handlers (each delegates to a domain action)
 # ---------------------------------------------------------------------------
 
-def _decide(action_name, data_dict, tab, ok_message):
-    """Run a moderation action, flash the outcome and PRG back to ``tab``."""
+def _decide(action_name, data_dict, tab, ok_message, gone_message=None):
+    """Run a moderation action, flash the outcome and PRG back to ``tab``.
+
+    ``gone_message`` turns an ``ObjectNotFound`` into a flash + redirect instead
+    of a 404. Aborting is right when a URL is wrong, but wrong when the row
+    simply moved on while the panel was open -- it throws the reviewer off the
+    dashboard and loses every rejection reason they had typed into other rows.
+    """
     context = _context()
     try:
         tk.get_action(action_name)(context, data_dict)
     except tk.NotAuthorized:
         return _not_authorized_response()
     except tk.ObjectNotFound:
-        return tk.abort(404, tk._('Not found'))
-    except tk.ValidationError:
-        tk.h.flash_error(tk._('That item could not be updated.'))
+        if gone_message is None:
+            return tk.abort(404, tk._('Not found'))
+        tk.h.flash_notice(gone_message)
+        return _redirect_dashboard(tab)
+    except tk.ValidationError as error:
+        # The actions write careful, actionable messages ("this page changed
+        # after you opened the review"). Throwing them away and flashing a
+        # generic failure just makes the reviewer press the button again.
+        messages = []
+        for value in (error.error_dict or {}).values():
+            if isinstance(value, str):
+                messages.append(value)
+            else:
+                messages.extend(str(item) for item in value)
+        tk.h.flash_error(' '.join(messages)
+                         or tk._('That item could not be updated.'))
         return _redirect_dashboard(tab)
     except Exception:
         log.warning('csunesco: moderation action %s failed', action_name)
@@ -329,11 +348,13 @@ def page_approve(project_id):
     return _decide('csunesco_project_page_approve',
                    {'project_id': project_id,
                     'draft_hash': (request.form.get('draft_hash') or '').strip()},
-                   'pages', tk._('Project page published.'))
+                   'pages', tk._('Project page published.'),
+                   gone_message=tk._('That page is no longer awaiting review — its author has edited it again.'))
 
 
 def page_reject(project_id):
     reason = sanitize_html((request.form.get('reason') or '').strip())
     return _decide('csunesco_project_page_reject',
                    {'project_id': project_id, 'reason': reason},
-                   'pages', tk._('Project page sent back to its author.'))
+                   'pages', tk._('Project page sent back to its author.'),
+                   gone_message=tk._('That page is no longer awaiting review — its author has edited it again.'))

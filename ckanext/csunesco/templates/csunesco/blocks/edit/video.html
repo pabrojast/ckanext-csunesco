@@ -11,6 +11,7 @@
   <input type="url" id="b{{ index }}-video-url" name="blocks[{{ index }}][url]"
          value="{{ block.url }}" placeholder="https://www.youtube.com/watch?v=…"
          aria-describedby="b{{ index }}-video-hint">
+  {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='url' %}
   <p class="cs-hint" id="b{{ index }}-video-hint">
     {{ _("YouTube or Vimeo, or a direct link to an .mp4/.webm file (https only).") }}
     {% if block.url and not block.provider %}

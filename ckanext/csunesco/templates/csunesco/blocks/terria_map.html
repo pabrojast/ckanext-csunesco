@@ -9,8 +9,8 @@
 #}
 {% if block.url %}
   {% set embed = h.csunesco_terria_embed_url(block.url) %}
-  <section class="cs-section cs-block" id="block-{{ block.id }}"
-           {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+  <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}" id="block-{{ block.id }}"
+           aria-labelledby="title-{{ block.id }}">
     {% snippet "csunesco/blocks/_heading.html", block=block %}
     {% if embed %}
       <div class="cs-terria-embed" style="height: {{ block.height }}px;">

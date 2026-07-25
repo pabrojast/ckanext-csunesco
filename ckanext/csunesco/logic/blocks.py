@@ -71,6 +71,48 @@ _VIMEO_ID_RE = re.compile(r'^[0-9]{6,12}$')
 _VIDEO_FILE_RE = re.compile(r'\.(mp4|webm|ogg)$', re.IGNORECASE)
 
 
+# A drop report rides back to the editor through the signed session cookie, so
+# it has to stay small.
+MAX_DROPS = 8
+
+
+class DropReport(object):
+    """Collects author input that normalization threw away. Never raises.
+
+    Opt-in: ``normalize_blocks(raw, report=None)`` by default, so the READ path
+    -- which runs on every render of stored JSON -- pays nothing and behaves
+    identically. This NEVER changes what is stored; it is a parallel record of
+    what was discarded, so the editor can say so instead of flashing
+    "Draft saved" over the top of it.
+
+    Records a stable ``reason`` code, not a sentence: the wording belongs in the
+    templates, where it can be translated, and this module stays CKAN-free.
+    """
+
+    def __init__(self):
+        self.drops = []
+        self._block = None
+
+    def enter(self, block_id):
+        """Called once a block's final id is known; drops attach to it."""
+        self._block = block_id
+
+    def note(self, field, reason, value=u'', item=None):
+        if len(self.drops) >= MAX_DROPS or self._block is None:
+            return
+        self.drops.append({'block': self._block, 'field': field,
+                           'item': item, 'reason': reason,
+                           'value': _plain(value, 60)})
+
+
+def _kept(report, field, cleaner, value, reason, item=None):
+    """Run ``cleaner``; note it when a non-empty author value came back empty."""
+    out = cleaner(value)
+    if report is not None and not out and _plain(value, MAX_URL):
+        report.note(field, reason, value, item)
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Field primitives                                                            #
 # --------------------------------------------------------------------------- #
@@ -229,24 +271,27 @@ def parse_video(url):
 # Each returns ONLY the type-specific keys; the envelope is added by
 # normalize_block. None of them may raise.
 
-def _n_rich_text(raw):
+def _n_rich_text(raw, report=None):
     return {'html': _rich(raw.get('html'), MAX_RICH_TEXT)}
 
 
-def _n_chart(raw):
+def _n_chart(raw, report=None):
     return {
         # Re-checked against THIS project's approved sources at render time --
         # an id in stored JSON proves nothing (the source may since have been
         # rejected, or the JSON copied from another project).
-        'data_source_id': _ref(raw.get('data_source_id')),
+        'data_source_id': _kept(report, 'data_source_id', _ref,
+                                raw.get('data_source_id'), 'bad_ref'),
         'chart': _enum(raw.get('chart'), ('line', 'bar', 'pie'), 'line'),
         'mode': _enum(raw.get('mode'), ('numeric', 'category', 'count'),
                       'count'),
-        'field': _field_name(raw.get('field')),
+        'field': _kept(report, 'field', _field_name, raw.get('field'),
+                       'bad_field_name'),
         'agg': _enum(raw.get('agg'),
                      ('mean', 'min', 'max', 'sum', 'count'), 'mean'),
         'group_by': (u'auto' if raw.get('group_by') in (None, '', 'auto')
-                     else _field_name(raw.get('group_by'))),
+                     else _kept(report, 'group_by', _field_name,
+                                raw.get('group_by'), 'bad_field_name')),
         'bucket': _enum(raw.get('bucket'),
                         ('auto', 'day', 'week', 'month'), 'auto'),
         'range': _enum(raw.get('range'), ('all', '1y', '90d', '30d'), 'all'),
@@ -259,7 +304,7 @@ STAT_SOURCES = ('manual', 'observations', 'sites_monitored',
                 'citizen_scientists', 'member_states')
 
 
-def _n_stats(raw):
+def _n_stats(raw, report=None):
     items = []
     for item in _items(raw.get('items'), 4):
         source = _enum(item.get('source'), STAT_SOURCES, 'manual')
@@ -267,7 +312,9 @@ def _n_stats(raw):
         label = _plain(item.get('label'), 60)
         # The JS-off editor always renders four rows so a counter can be added
         # without a round trip; the unfilled ones must not become empty tiles.
-        if source == 'manual' and not value and not label:
+        # A manual row needs a NUMBER to be a counter; a label on its own
+        # rendered a tile with an empty figure.
+        if source == 'manual' and not value:
             continue
         items.append({
             # A live source overrides the stored number at render time, so a
@@ -279,17 +326,19 @@ def _n_stats(raw):
     return {'items': items}
 
 
-def _n_image(raw):
+def _n_image(raw, report=None):
     items = []
-    for item in _items(raw.get('items'), 12):
-        url = _https_url(item.get('url'))
+    for index, item in enumerate(_items(raw.get('items'), 12)):
+        url = _kept(report, 'url', _https_url, item.get('url'),
+                    'not_https', item=index)
         if not url:
             continue
         items.append({
             'url': url,
             'alt': _plain(item.get('alt'), 160),
             'caption': _plain(item.get('caption'), 200),
-            'link': _link_url(item.get('link')),
+            'link': _kept(report, 'link', _link_url, item.get('link'),
+                          'bad_link', item=index),
         })
     return {
         'layout': _enum(raw.get('layout'), ('grid', 'single', 'wide'), 'grid'),
@@ -298,8 +347,8 @@ def _n_image(raw):
     }
 
 
-def _n_video(raw):
-    url = _https_url(raw.get('url'))
+def _n_video(raw, report=None):
+    url = _kept(report, 'url', _https_url, raw.get('url'), 'not_https')
     provider, video_id = parse_video(url)
     return {
         'url': url,
@@ -310,20 +359,21 @@ def _n_video(raw):
     }
 
 
-def _n_observation_map(raw):
+def _n_observation_map(raw, report=None):
     return {
-        'data_source_id': _ref(raw.get('data_source_id')),
+        'data_source_id': _kept(report, 'data_source_id', _ref,
+                                raw.get('data_source_id'), 'bad_ref'),
         'height': _int(raw.get('height'), 360, 240, 700),
         'caption': _plain(raw.get('caption'), MAX_CAPTION),
     }
 
 
-def _n_terria_map(raw):
+def _n_terria_map(raw, report=None):
     # Shape only. Whether the URL sits under an allowlisted Terria base is
     # config-dependent policy, enforced on write by the action layer and AGAIN
     # at render by helpers.csunesco_terria_embed_url.
     return {
-        'url': _https_url(raw.get('url')),
+        'url': _kept(report, 'url', _https_url, raw.get('url'), 'not_https'),
         'height': _int(raw.get('height'), 520, 300, 800),
         'caption': _plain(raw.get('caption'), MAX_CAPTION),
     }
@@ -332,7 +382,7 @@ def _n_terria_map(raw):
 CONTENT_LIST_TYPES = ('cs-news', 'cs-event', 'cs-publication', 'cs-map', 'all')
 
 
-def _n_content_list(raw):
+def _n_content_list(raw, report=None):
     return {
         'content_type': _enum(raw.get('content_type'), CONTENT_LIST_TYPES,
                               'all'),
@@ -344,12 +394,17 @@ def _n_content_list(raw):
     }
 
 
-def _n_datasets_list(raw):
-    ids = [ref for ref in (_ref(value) for value in _list(raw.get('ids'))) if ref]
+def _n_datasets_list(raw, report=None):
+    ids = []
+    for index, value in enumerate(_list(raw.get('ids'))):
+        ref = _kept(report, 'ids', dataset_ref, value, 'bad_ref',
+                    item=index)
+        if ref:
+            ids.append(ref)
     return {
         'source': _enum(raw.get('source'), ('project', 'organization', 'ids'),
                         'project'),
-        'org': _ref(raw.get('org')),
+        'org': _kept(report, 'org', _ref, raw.get('org'), 'bad_ref'),
         'ids': ids[:10],
         'limit': _int(raw.get('limit'), 6, 1, 12),
         'show_description': _bool(raw.get('show_description')),
@@ -373,17 +428,36 @@ def _list(value):
     return []
 
 
-def _n_callout(raw):
+# What someone actually copies out of the address bar: .../dataset/<name>.
+_DATASET_URL_RE = re.compile(
+    r'^https?://[^/]+/(?:[a-z]{2}(?:_[A-Za-z]{2})?/)?dataset/([A-Za-z0-9._-]+)')
+
+
+def dataset_ref(value):
+    """A dataset name, accepting a full dataset URL and taking its slug.
+
+    Pasting the link is the obvious thing to do and used to be discarded in
+    silence, leaving the block showing "No datasets to show yet".
+    """
+    text = _plain(value, MAX_URL)
+    match = _DATASET_URL_RE.match(text)
+    if match:
+        return _ref(match.group(1))
+    return _ref(text)
+
+
+def _n_callout(raw, report=None):
     return {
         'tone': _enum(raw.get('tone'),
                       ('info', 'success', 'warning', 'action'), 'info'),
         'html': _rich(raw.get('html'), MAX_CALLOUT_HTML),
         'cta_label': _plain(raw.get('cta_label'), 60),
-        'cta_url': _link_url(raw.get('cta_url')),
+        'cta_url': _kept(report, 'cta_url', _link_url, raw.get('cta_url'),
+                         'bad_link'),
     }
 
 
-def _n_builtin(raw):
+def _n_builtin(raw, report=None):
     """Built-in wrappers carry no payload -- only the envelope matters."""
     return {}
 
@@ -427,10 +501,12 @@ _TYPES = [
     BlockType('rich_text', u'Text', u'\U0001F4DD', _n_rich_text,
               u'A paragraph of formatted text.', max_instances=20),
     BlockType('chart', u'Chart', u'\U0001F4CA', _n_chart,
-              u'A chart of the observations collected with the CS Toolbox app.',
+              u'A chart of the observations your volunteers collected in the '
+              u'app. Nothing shows until you pick which data to chart.',
               max_instances=6),
-    BlockType('stats', u'Counters', u'\U0001F522', _n_stats,
-              u'Up to four highlighted numbers.', max_instances=3),
+    BlockType('stats', u'Your own counters', u'\U0001F522', _n_stats,
+              u'Up to four big numbers you choose - typed in, or kept up to '
+              u'date automatically from your data.', max_instances=3),
     BlockType('image', u'Images', u'\U0001F5BC', _n_image,
               u'One image or a gallery.', max_instances=8,
               requires_review=True),
@@ -439,15 +515,18 @@ _TYPES = [
               requires_review=True),
     BlockType('observation_map', u'Observation map', u'\U0001F4CD',
               _n_observation_map,
-              u'A map of the observations of one connected data source.',
+              u'A map with a pin for every observation in one set of app data.',
               max_instances=4),
-    BlockType('terria_map', u'Map viewer', u'\U0001F5FA', _n_terria_map,
-              u'An IHP-WINS map viewer (Terria) scene.', max_instances=2,
-              requires_review=True),
-    BlockType('content_list', u'News & events', u'\U0001F4F0', _n_content_list,
-              u'The latest news, events or publications.', max_instances=4),
+    BlockType('terria_map', u'Interactive map', u'\U0001F5FA', _n_terria_map,
+              u'A map you built in the IHP-WINS map viewer and shared with its '
+              u'Share button.', max_instances=2, requires_review=True),
+    BlockType('content_list', u'A list of news or events', u'\U0001F4F0',
+              _n_content_list,
+              u'Pick exactly which news, events or publications to list, and '
+              u'how many. (The standard "News, Events & More" section already '
+              u'shows the most recent ones.)', max_instances=4),
     BlockType('datasets_list', u'Datasets', u'\U0001F5C3', _n_datasets_list,
-              u'Datasets published on IHP-WINS.', max_instances=2),
+              u'A list of datasets published on IHP-WINS.', max_instances=2),
     BlockType('callout', u'Highlight', u'\U0001F4A1', _n_callout,
               u'A highlighted note with an optional button.', max_instances=6),
 
@@ -455,18 +534,22 @@ _TYPES = [
     # Addable=False: they exist on every page from the start and are toggled
     # with `hidden`, never added twice.
     BlockType('builtin_at_a_glance', u'At a Glance', u'\U0001F4C8', _n_builtin,
-              u'The project counters.', builtin=True, addable=False),
+              u'The four standard project counters, kept up to date for you.',
+              builtin=True, addable=False),
     BlockType('builtin_region_map', u'Project region', u'\U0001F30D',
               _n_builtin, u'The region map (hidden when no region is set).',
               builtin=True, addable=False),
-    BlockType('builtin_about', u'About (legacy)', u'\U0001F4C4', _n_builtin,
-              u'The old description field. Convert it to a text block.',
+    BlockType('builtin_about', u'About this project', u'\U0001F4C4',
+              _n_builtin,
+              u'Description text from before this editor existed. It cannot be '
+              u'edited here - move it into a text block to change it.',
               builtin=True, addable=False, deprecated=True),
     BlockType('builtin_data', u'Data', u'\U0001F4BE', _n_builtin,
-              u'Connected app data: maps and downloads.',
-              builtin=True, addable=False),
+              u'Every set of app data on this project, with its map and '
+              u'download links.', builtin=True, addable=False),
     BlockType('builtin_news_events', u'News, Events & More', u'\U0001F4F0',
-              _n_builtin, u'The project content cards.',
+              _n_builtin,
+              u'The six most recent items published for this project.',
               builtin=True, addable=False),
     BlockType('builtin_join', u'Join this project', u'\U0001F91D', _n_builtin,
               u'The join button, QR code and share link.',
@@ -504,7 +587,7 @@ def new_block_id():
     return uuid.uuid4().hex[:8]
 
 
-def normalize_block(raw):
+def normalize_block(raw, report=None):
     """One untrusted dict -> one stored block, or ``None`` to drop it."""
     if not isinstance(raw, dict):
         return None
@@ -525,8 +608,12 @@ def normalize_block(raw):
         'hidden': _bool(raw.get('hidden')),
         'width': _enum(raw.get('width'), WIDTHS, 'full'),
     }
+    if report is not None:
+        # Attach any drop to the id the template will actually render, so the
+        # editor can open and anchor the right block.
+        report.enter(block_id)
     try:
-        payload = block_type.normalize(raw)
+        payload = block_type.normalize(raw, report)
     except Exception:
         # A normalizer must not raise; if one ever does, degrade to an empty
         # payload rather than losing the whole page.
@@ -535,7 +622,7 @@ def normalize_block(raw):
     return block
 
 
-def normalize_blocks(raw_blocks, max_blocks=MAX_BLOCKS):
+def normalize_blocks(raw_blocks, max_blocks=MAX_BLOCKS, report=None):
     """An untrusted list -> the stored block list. Total: never raises.
 
     Enforces the per-type ``max_instances`` by dropping the extras beyond the
@@ -546,17 +633,28 @@ def normalize_blocks(raw_blocks, max_blocks=MAX_BLOCKS):
         return []
     out = []
     seen = {}
+    used_ids = set()
     for raw in raw_blocks:
-        block = normalize_block(raw)
+        block = normalize_block(raw, report)
         if block is None:
             continue
         key = block['type']
         used = seen.get(key, 0)
         if used >= BLOCK_TYPES[key].max_instances:
+            if report is not None:
+                report.note(u'', 'too_many', key)
             continue
         seen[key] = used + 1
+        # Ids round-trip through a visible hidden field, so a hand-edited POST
+        # can repeat one. Duplicates would put two id="block-X" on the public
+        # page and collapse every aria-labelledby onto the first of them.
+        if block['id'] in used_ids:
+            block['id'] = new_block_id()
+        used_ids.add(block['id'])
         out.append(block)
         if len(out) >= max_blocks:
+            if report is not None:
+                report.note(u'', 'too_many', u'')
             break
     return out
 
@@ -611,7 +709,7 @@ _FORM_KEY_RE = re.compile(
     r'^blocks\[(\d+)\]\[([A-Za-z0-9_]+)\](?:\[(\d+)\]\[([A-Za-z0-9_]+)\])?$')
 
 
-def blocks_from_form(pairs):
+def blocks_from_form(pairs, report=None):
     """Parse ``blocks[N][field]`` form pairs into a normalized block list.
 
     ``pairs`` is an iterable of ``(key, value)`` -- e.g.
@@ -634,14 +732,33 @@ def blocks_from_form(pairs):
                 block[field] = items
             items.setdefault(int(sub_index), {})[sub_field] = value
     ordered = [by_index[index] for index in sorted(by_index)]
-    return normalize_blocks(ordered)
+    return normalize_blocks(ordered, report=report)
 
 
 # --------------------------------------------------------------------------- #
 # Editor operations                                                           #
 # --------------------------------------------------------------------------- #
 
-_OP_RE = re.compile(r'^(save|submit|move_up|move_down|delete|add)(?::(.+))?$')
+_OP_RE = re.compile(
+    r'^(save|submit|preview|convert|move_up|move_down|delete|add)(?::(.+))?$')
+
+
+def choose_op(pressed, js_fallback):
+    """The operation this POST asked for. The PRESSED button always wins.
+
+    Two different form names on purpose. Carrying both on one name makes the
+    answer depend on their order in the DOM -- a rule that lives in a template
+    and is read in a view, i.e. one nobody can see being broken. It WAS broken:
+    a hidden ``op`` rendered before the buttons made ``MultiDict.get`` return
+    ``"save"`` every time, so with JavaScript disabled every button in the
+    editor silently became "Draft saved" -- including "Save and publish", which
+    therefore never reached a reviewer.
+
+    ``js_fallback`` exists only because a ``disabled`` button contributes
+    neither its name nor its value, so a future disable-on-submit needs
+    somewhere else to put the operation.
+    """
+    return (pressed or js_fallback or u'').strip()
 
 
 def parse_op(raw):
@@ -652,17 +769,21 @@ def parse_op(raw):
     return match.group(1), (match.group(2) or u'')[:64]
 
 
-def apply_op(blocks, raw_op):
+def apply_op(blocks, raw_op, convert_html=None):
     """Apply one editor operation. Returns ``(blocks, anchor_block_id)``.
 
     Out-of-range indices and no-op moves (up from the top, down from the
     bottom) are silently ignored, so a stale form or a double submit cannot
     corrupt the order.
+
+    ``convert_html`` is the legacy description a ``convert`` op moves into a new
+    text block; the caller supplies it because this module never touches the
+    database.
     """
     blocks = list(blocks or [])
     name, argument = parse_op(raw_op)
 
-    if name in ('save', 'submit'):
+    if name in ('save', 'submit', 'preview'):
         return blocks, None
 
     if name == 'add':
@@ -675,7 +796,12 @@ def apply_op(blocks, raw_op):
         if len(blocks) >= MAX_BLOCKS:
             return blocks, None
         block = normalize_block({'type': argument})
-        blocks.append(block)
+        # Insert BEFORE the first standard section rather than appending: the
+        # six built-ins already sit in the list, so appending would drop every
+        # new section below "Join this project" and cost the author one full
+        # page reload per position to move it up.
+        at = _first_builtin_index(blocks)
+        blocks.insert(at, block)
         return blocks, block['id']
 
     # Strict: a non-numeric argument is NOT index 0. Coercing garbage to 0
@@ -685,6 +811,22 @@ def apply_op(blocks, raw_op):
     index = int(argument)
     if index >= len(blocks):
         return blocks, None
+
+    if name == 'convert':
+        # Turn the deprecated "About" wrapper into a real text block holding a
+        # copy of the legacy description, and hide the original so the text is
+        # not published twice. The promise of a one-click conversion was in the
+        # UI long before the action existed.
+        block = blocks[index]
+        if block['type'] != 'builtin_about':
+            return blocks, block['id']
+        replacement = normalize_block({'type': 'rich_text',
+                                       'html': convert_html or u''})
+        if replacement is None:
+            return blocks, block['id']
+        block['hidden'] = True
+        blocks.insert(index, replacement)
+        return blocks, replacement['id']
 
     if name == 'delete':
         block = blocks[index]
@@ -704,6 +846,15 @@ def apply_op(blocks, raw_op):
     elif name == 'move_down' and index < len(blocks) - 1:
         blocks[index + 1], blocks[index] = blocks[index], blocks[index + 1]
     return blocks, moved['id']
+
+
+def _first_builtin_index(blocks):
+    """Where the standard sections start (end of the list when there are none)."""
+    for index, block in enumerate(blocks or []):
+        if BLOCK_TYPES.get(block.get('type')) is not None \
+                and BLOCK_TYPES[block['type']].builtin:
+            return index
+    return len(blocks or [])
 
 
 def ensure_builtins(blocks):

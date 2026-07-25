@@ -10,15 +10,23 @@
 {% if block['items'] %}
   <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}"
            id="block-{{ block.id }}"
-           {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+           aria-labelledby="title-{{ block.id }}">
     {% snippet "csunesco/blocks/_heading.html", block=block %}
     <div class="cs-gallery cs-gallery-{{ block.layout }}"
-         {% if block.lightbox %}data-lightbox{% endif %}>
+         {% if block.lightbox %}data-lightbox
+         data-label-close="{{ _('Close') }}"
+         data-label-open="{{ _('View image') }}"{% endif %}>
       {% for item in block['items'] %}
         <figure class="cs-gallery-item">
-          {% if item.link %}<a href="{{ item.link }}" class="cs-gallery-link">{% endif %}
+          {# Without alt text the <img> is the link's only content, so the
+             link would have no accessible name at all. #}
+          {% if item.link %}
+            <a href="{{ item.link }}" class="cs-gallery-link"
+               {% if not item.alt %}aria-label="{{ item.caption or _('Open link') }}"{% endif %}>
+          {% endif %}
+          {# width/height reserve the box before the image arrives (CLS). #}
           <img src="{{ item.url }}" alt="{{ item.alt }}" loading="lazy"
-               referrerpolicy="no-referrer"
+               width="800" height="600" referrerpolicy="no-referrer"
                {% if block.lightbox %}data-full="{{ item.url }}"{% endif %}>
           {% if item.link %}</a>{% endif %}
           {% if item.caption %}

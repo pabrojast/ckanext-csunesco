@@ -8,8 +8,8 @@
   Vars: block, ctx.
 #}
 {% set items = h.csunesco_block_content(ctx, block) %}
-<section class="cs-section cs-block" id="block-{{ block.id }}"
-         {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+<section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}" id="block-{{ block.id }}"
+         aria-labelledby="title-{{ block.id }}">
   {% snippet "csunesco/blocks/_heading.html", block=block %}
   {% if block.layout == 'list' %}
     <ul class="cs-block-list">

@@ -16,5 +16,19 @@
 #}
 {% set spec = h.csunesco_block_type(block.type) %}
 {% if spec %}
-  {% snippet spec.snippet, block=block, ctx=ctx %}
+  {% if block.hidden %}
+    {# Only reachable from the draft preview: the public render
+       filters hidden blocks out before the loop. #}
+    {% if ctx.preview %}
+      <div class="cs-block-hidden-marker">
+        <p class="cs-hint">
+          {{ _("Hidden — visitors do not see this section.") }}
+          <strong>{{ _(spec.label) }}</strong>
+        </p>
+        {% snippet spec.snippet, block=block, ctx=ctx %}
+      </div>
+    {% endif %}
+  {% else %}
+    {% snippet spec.snippet, block=block, ctx=ctx %}
+  {% endif %}
 {% endif %}

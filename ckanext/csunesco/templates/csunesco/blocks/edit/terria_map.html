@@ -4,6 +4,7 @@
   <input type="url" id="b{{ index }}-terria-url" name="blocks[{{ index }}][url]"
          value="{{ block.url }}" placeholder="https://…/terria/#share=…"
          aria-describedby="b{{ index }}-terria-hint">
+  {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='url' %}
   <p class="cs-hint" id="b{{ index }}-terria-hint">
     {{ _("Build your map in the IHP-WINS map viewer, use its Share button and paste the link here. Only links to the official map viewer are accepted.") }}
   </p>

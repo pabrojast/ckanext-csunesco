@@ -1,0 +1,39 @@
+{#
+  "What you typed here was not saved, and why."
+
+  Normalization discards values it cannot use — a non-https image URL, a
+  dataset reference with spaces, a chart field name that is not a column. That
+  is the right thing to store, but doing it in silence under a green
+  "Draft saved." is how an author ends up retyping the same thing three times.
+
+  The wording lives HERE rather than in logic/blocks.py: that module stays
+  CKAN-free and translation-free and emits only stable reason codes.
+
+  Vars:
+    drops -- {field: [drop, ...]} for this block (may be empty/undefined)
+    field -- the field name to report on
+    item  -- optional index, for repeatable rows (images, dataset refs)
+#}
+{#
+  `item` is optional, and an omitted Jinja variable is Undefined -- which is NOT
+  `none`, so testing it directly silently matched nothing for every field that
+  is not a repeatable row.
+#}
+{% set slot_filter = item if item is defined else none %}
+{% for drop in (drops or {}).get(field, [])
+   if slot_filter is none or drop.item == slot_filter %}
+  <p class="cs-field-error cs-pb-drop" role="alert">
+    {%- if drop.reason == 'not_https' -%}
+      {{ _("This link was not saved: only https:// links can be shown on the page.") }}
+    {%- elif drop.reason == 'bad_link' -%}
+      {{ _("This link was not saved: use a full https:// address, or a path starting with /.") }}
+    {%- elif drop.reason == 'bad_ref' -%}
+      {{ _("This was not saved: use the dataset's short name (no spaces), or paste its full link.") }}
+    {%- elif drop.reason == 'bad_field_name' -%}
+      {{ _("This was not saved: use the column name exactly as it appears in the data — letters, numbers, - and _ only.") }}
+    {%- else -%}
+      {{ _("This value was not saved.") }}
+    {%- endif %}
+    {% if drop.value %}<code>{{ drop.value }}</code>{% endif %}
+  </p>
+{% endfor %}

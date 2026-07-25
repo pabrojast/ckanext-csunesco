@@ -13,7 +13,14 @@
   repeatables). N only ORDERS the blocks; it is never a count, because a
   client-side delete leaves gaps in the sequence.
 
+  Blocks are COLLAPSED by default (<details>): with 17 of them the editor
+  already renders ~150 controls, and the cap is 60. Collapsed fields are
+  still submitted -- the form is built from the DOM tree, not from what is
+  painted -- which every operation depends on, since each one re-parses the
+  whole list.
+
   Vars: project, page (dict), blocks (list), errors (dict), notice (str|None),
+        drops_by_block (dict), attention_ids (set), open_ids (set),
         palette (list of BlockType), max_blocks (int).
 #}
 
@@ -29,6 +36,14 @@
     <p>{{ project.title }}</p>
   </section>
 
+  {#
+    The editor opens on six sections the manager never created. Say where they
+    came from before they wonder whether they broke something.
+  #}
+  <p class="cs-hint cs-pb-intro">
+    {{ _("Your page starts with the standard sections below. You can reorder them or hide them, but not delete them — their content comes from your project record. Add your own sections at the bottom, then publish when you are ready.") }}
+  </p>
+
   <div class="cs-pb-toolbar">
     <p class="cs-pb-status">
       {% if page.status == 'pending' %}
@@ -36,8 +51,12 @@
         {{ _("This page is waiting for a reviewer. Editing it now takes it back out of the queue.") }}
       {% elif page.status == 'rejected' %}
         <span class="cs-status-badge cs-status-rejected">{{ _("Changes requested") }}</span>
-        {% if page.rejection_reason %}{{ page.rejection_reason | striptags }}{% endif %}
-      {% elif page.published_blocks is not none %}
+      {#
+        `page` is {} when the page could not be loaded, and in Jinja
+        `Undefined is not none` is True -- which announced "Published" for a
+        page that may never have existed. Ask for the key explicitly.
+      #}
+      {% elif page.get('published_blocks') is not none %}
         <span class="cs-status-badge cs-status-approved">{{ _("Published") }}</span>
         {{ _("Your draft is separate: the public keeps seeing the published page until a new version is approved.") }}
       {% else %}
@@ -47,75 +66,193 @@
     </p>
     <span class="cs-pb-toolbar-links">
       <a class="cs-btn cs-btn-secondary cs-btn-sm"
-         href="{{ h.url_for('csunesco.project_page_preview', slug=project.slug) }}">
-        {{ _("Preview draft") }}
-      </a>
-      <a class="cs-btn cs-btn-secondary cs-btn-sm"
          href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
         {{ _("Back to the project") }}
       </a>
     </span>
   </div>
 
-  {% if notice %}<p class="cs-hint" role="status">{{ notice }}</p>{% endif %}
-  {% if errors.message %}
-    <div class="cs-form-error" role="alert">{{ errors.message }}</div>
-  {% endif %}
-  {% if errors.blocks %}
-    <div class="cs-form-error" role="alert">
-      <ul>{% for message in errors.blocks %}<li>{{ message }}</li>{% endfor %}</ul>
+  {#
+    Shown whenever a reason exists, NOT only while the page is still flagged
+    rejected: saving flips the status back to draft, which used to make the
+    reviewer's instruction disappear the moment the manager started acting on
+    it. It is cleared when the page is published again.
+  #}
+  {% if page.rejection_reason %}
+    <div class="cs-form-error cs-pb-returned" role="note">
+      <strong>{{ _("A reviewer sent this page back:") }}</strong>
+      {{ page.rejection_reason | striptags }}
     </div>
   {% endif %}
 
-  <form method="post" class="cs-pb-form" id="cs-page-form"
+  {% if notice %}<p class="cs-hint">{{ notice }}</p>{% endif %}
+  {#
+    Render EVERY error key, not just the two we happened to think of. A
+    ValidationError keyed on something else (e.g. project_id, raised when the
+    project is not approved yet) used to reload the page showing nothing at all.
+    `block_ids` is machinery for opening the right blocks, not a message.
+  #}
+  {% set error_keys = (errors or {}).keys() | reject('equalto', 'block_ids') | list %}
+  {% if error_keys %}
+    <div class="cs-form-error" role="alert" tabindex="-1" id="cs-pb-errors">
+      <ul>
+        {% for key in error_keys %}
+          {% set value = errors[key] %}
+          {% if value is string %}
+            <li>{{ value }}</li>
+          {% else %}
+            {% for message in value %}<li>{{ message }}</li>{% endfor %}
+          {% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {#
+    A summary of what the last save could not keep, linked to the blocks it
+    happened in. The detail sits next to each field; this is so a manager who
+    scrolled away still finds out.
+  #}
+  {% if drops_by_block %}
+    <div class="cs-form-error" role="alert">
+      <p>{{ _("Some of what you entered could not be saved:") }}</p>
+      <ul>
+        {% for block in blocks if block.id in drops_by_block %}
+          {% set spec = h.csunesco_block_type(block.type) %}
+          <li>
+            <a href="#block-{{ block.id }}">
+              {{ _(spec.label) if spec else block.type }}{% if block.title %} — {{ block.title }}{% endif %}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {#
+    novalidate: the browser cannot validate a control it cannot show, so with
+    blocks collapsed an invalid url/number field made Chrome refuse to submit
+    the form at all ("An invalid form control is not focusable") -- the page
+    would become unsaveable with nothing on screen to explain why. The server
+    re-parses and re-validates everything regardless, and reports what it threw
+    away next to the field (blocks/edit/_drop.html).
+  #}
+  {% if blocks | length > 3 %}
+    <nav class="cs-pb-jump" aria-labelledby="cs-pb-jump-title">
+      <h2 id="cs-pb-jump-title" class="cs-pb-jump-title">{{ _("Sections on this page") }}</h2>
+      <ol class="cs-pb-jump-list">
+        {% for block in blocks %}
+          {% set spec = h.csunesco_block_type(block.type) %}
+          {% if spec %}
+            <li>
+              <a href="#block-{{ block.id }}">
+                <span aria-hidden="true">{{ spec.icon }}</span>
+                {{ _(spec.label) }}{% if block.title %} — {{ block.title }}{% endif %}
+                {% if block.hidden %}<span class="cs-pb-tag cs-pb-tag-off">{{ _("hidden") }}</span>{% endif %}
+                {% if block.id in attention_ids %}<span class="cs-pb-tag cs-pb-tag-review">{{ _("needs attention") }}</span>{% endif %}
+              </a>
+            </li>
+          {% endif %}
+        {% endfor %}
+      </ol>
+    </nav>
+  {% endif %}
+
+  <form method="post" class="cs-pb-form" id="cs-page-form" novalidate
         action="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
     {{ h.csrf_input() }}
     {#
-      The op a JS-enhanced submit writes before submitting. A `disabled` button
-      contributes neither name nor value, so disable-on-submit would otherwise
-      swallow the operation entirely.
+      Where a JS-enhanced submit writes the operation before submitting, because
+      a `disabled` button contributes neither its name nor its value.
+
+      A DIFFERENT name from the buttons, deliberately. Both on one name made the
+      answer depend on DOM order, and it was wrong: a hidden `op` before the
+      buttons meant MultiDict.get always returned "save", so with JavaScript
+      disabled every button became "Draft saved" -- including Save and publish.
+      The server prefers `op` and falls back to `op_js` (blocks.choose_op), so
+      this input's POSITION is irrelevant and nothing may depend on it.
     #}
-    <input type="hidden" name="op" id="cs-pb-op" value="save">
+    <input type="hidden" name="op_js" id="cs-pb-op" value="">
+    {#
+      The form's default button decides what Enter does. The first one in the
+      DOM is a "move up" that is disabled on the first block, and a disabled
+      default button suppresses implicit submission entirely -- so Enter was a
+      dead key in every field. This makes it "Save draft".
+    #}
+    <button type="submit" name="op" value="save" class="cs-visually-hidden">
+      {{ _("Save draft") }}
+    </button>
 
     <ol class="cs-pb-list">
       {% for block in blocks %}
         {% set spec = h.csunesco_block_type(block.type) %}
         {% if spec %}
+          {% set open_now = block.id in open_ids %}
           <li class="cs-pb-block{% if block.hidden %} is-hidden{% endif %}"
-              id="block-{{ block.id }}">
+              id="block-{{ block.id }}" tabindex="-1"
+              role="group" aria-labelledby="kind-{{ block.id }}">
             <input type="hidden" name="blocks[{{ loop.index0 }}][type]" value="{{ block.type }}">
             <input type="hidden" name="blocks[{{ loop.index0 }}][id]" value="{{ block.id }}">
 
-            <div class="cs-pb-head">
-              <span class="cs-pb-kind">
-                <span class="cs-pb-icon" aria-hidden="true">{{ spec.icon }}</span>
-                {{ _(spec.label) }}
-                {% if spec.builtin %}
-                  <span class="cs-pb-tag">{{ _("standard section") }}</span>
-                {% endif %}
-                {% if spec.requires_review %}
-                  <span class="cs-pb-tag cs-pb-tag-review">{{ _("reviewed") }}</span>
-                {% endif %}
-              </span>
-              <span class="cs-pb-ops">
-                <button type="submit" name="op" value="move_up:{{ loop.index0 }}"
-                        class="cs-btn cs-btn-secondary cs-btn-sm"
-                        {% if loop.first %}disabled{% endif %}
-                        aria-label="{{ _('Move up') }}">&uarr;</button>
-                <button type="submit" name="op" value="move_down:{{ loop.index0 }}"
-                        class="cs-btn cs-btn-secondary cs-btn-sm"
-                        {% if loop.last %}disabled{% endif %}
-                        aria-label="{{ _('Move down') }}">&darr;</button>
-                {% if not spec.builtin %}
-                  <button type="submit" name="op" value="delete:{{ loop.index0 }}"
-                          class="cs-btn cs-btn-danger cs-btn-sm"
-                          data-confirm-op="{{ _('Delete this block?') }}">
-                    {{ _("Delete") }}
-                  </button>
-                {% endif %}
-              </span>
-            </div>
+            {#
+              The ops sit BEFORE the <details> in the DOM on purpose: they are
+              overlaid on the summary bar, and this is the only order that puts
+              them next to the block they act on in both tab order and screen
+              reader order. They must NOT go inside <summary> -- a click there
+              bubbles to the disclosure, and summary is already a button in the
+              accessibility tree.
 
+              aria-disabled rather than disabled: a disabled control leaves the
+              tab order entirely, so the reason it is unavailable becomes
+              unreachable for anyone not using a mouse.
+            #}
+            <span class="cs-pb-ops">
+              <button type="submit" name="op" value="move_up:{{ loop.index0 }}"
+                      class="cs-btn cs-btn-secondary cs-btn-sm"
+                      {% if loop.first %}aria-disabled="true"{% endif %}
+                      aria-label="{% if loop.first %}{{ _('Move up (already first)') }}{% else %}{{ _('Move up') }}{% endif %}: {{ _(spec.label) }}{% if block.title %} — {{ block.title }}{% endif %}">&uarr;</button>
+              <button type="submit" name="op" value="move_down:{{ loop.index0 }}"
+                      class="cs-btn cs-btn-secondary cs-btn-sm"
+                      {% if loop.last %}aria-disabled="true"{% endif %}
+                      aria-label="{% if loop.last %}{{ _('Move down (already last)') }}{% else %}{{ _('Move down') }}{% endif %}: {{ _(spec.label) }}{% if block.title %} — {{ block.title }}{% endif %}">&darr;</button>
+              {% if not spec.builtin %}
+                <button type="submit" name="op" value="delete:{{ loop.index0 }}"
+                        class="cs-btn cs-btn-danger cs-btn-sm"
+                        data-confirm-op="{{ _('Delete this block?') }}"
+                        aria-label="{{ _('Delete') }}: {{ _(spec.label) }}{% if block.title %} — {{ block.title }}{% endif %}">
+                  {{ _("Delete") }}
+                </button>
+              {% endif %}
+            </span>
+
+            {#
+              Collapsed by default. The fields of a closed <details> are still
+              submitted -- the form is built from the tree, not from what is
+              painted -- which is load-bearing here, because every operation
+              re-parses the whole list.
+            #}
+            <details class="cs-pb-details"{% if open_now %} open{% endif %}>
+              <summary class="cs-pb-summary">
+                <h3 class="cs-pb-kind" id="kind-{{ block.id }}">
+                  <span class="cs-pb-icon" aria-hidden="true">{{ spec.icon }}</span>
+                  {{ _(spec.label) }}
+                  {%- if block.title %} <span class="cs-pb-name">— {{ block.title }}</span>{% endif %}
+                  {% if spec.builtin %}
+                    <span class="cs-pb-tag">{{ _("standard section") }}</span>
+                  {% endif %}
+                  {% if spec.requires_review %}
+                    <span class="cs-pb-tag cs-pb-tag-review">{{ _("needs review") }}</span>
+                  {% endif %}
+                  {# Visible from the header, because the "Hide" checkbox is not
+                     while the block is collapsed. #}
+                  {% if block.hidden %}
+                    <span class="cs-pb-tag cs-pb-tag-off">{{ _("hidden") }}</span>
+                  {% endif %}
+                  {% if block.id in attention_ids %}
+                    <span class="cs-pb-tag cs-pb-tag-review">{{ _("needs attention") }}</span>
+                  {% endif %}
+                </h3>
+              </summary>
             <div class="cs-pb-body">
               <p class="cs-hint">{{ _(spec.description) }}</p>
 
@@ -127,9 +264,23 @@
                   be unrecoverable from this screen.
                 #}
                 {% if spec.deprecated %}
-                  <p class="cs-hint">
-                    {{ _("This is the old description field. Add a Text block for new content.") }}
-                  </p>
+                  {% if project.landing_content %}
+                    <div class="cs-pb-legacy">
+                      <p class="cs-hint">
+                        {{ _("This text was written before this editor existed, so it cannot be edited here:") }}
+                      </p>
+                      {# Sanitized before storage, like every other | safe here. #}
+                      <div class="cs-rich-text">{{ project.landing_content | safe }}</div>
+                      <button type="submit" name="op" value="convert:{{ loop.index0 }}"
+                              class="cs-btn cs-btn-secondary cs-btn-sm">
+                        {{ _("Move this into an editable text block") }}
+                      </button>
+                    </div>
+                  {% else %}
+                    <p class="cs-hint">
+                      {{ _("There is no old description on this project, so this section shows nothing.") }}
+                    </p>
+                  {% endif %}
                 {% endif %}
               {% else %}
                 <div class="cs-field">
@@ -140,7 +291,8 @@
                          placeholder="{{ _('Leave empty for no heading') }}">
                 </div>
                 {% snippet spec.editor_snippet, block=block, index=loop.index0,
-                           project=project %}
+                           project=project,
+                           drops=drops_by_block.get(block.id, {}) %}
                 <div class="cs-field cs-pb-width">
                   <label for="b{{ loop.index0 }}-width">{{ _("Width") }}</label>
                   <select id="b{{ loop.index0 }}-width" name="blocks[{{ loop.index0 }}][width]">
@@ -156,6 +308,7 @@
                 {{ _("Hide this section from the public page") }}
               </label>
             </div>
+            </details>
           </li>
         {% endif %}
       {% endfor %}
@@ -164,6 +317,14 @@
     <div class="cs-pb-actions">
       <button type="submit" name="op" value="save" class="cs-btn cs-btn-secondary">
         {{ _("Save draft") }}
+      </button>
+      {#
+        A submit, not a link: previewing has to SAVE first, or it would both
+        throw away everything typed since the last save and then show the older
+        version -- on the one action a manager repeats constantly.
+      #}
+      <button type="submit" name="op" value="preview" class="cs-btn cs-btn-secondary">
+        {{ _("Save and preview") }}
       </button>
       <button type="submit" name="op" value="submit" class="cs-btn cs-btn-primary">
         {{ _("Save and publish") }}
