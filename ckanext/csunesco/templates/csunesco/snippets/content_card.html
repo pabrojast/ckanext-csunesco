@@ -39,8 +39,29 @@
     {% if item.excerpt %}
       <p class="cs-content-excerpt">{{ item.excerpt }}</p>
     {% endif %}
-    {% if show_status and item.status %}
-      <span class="cs-status-badge cs-status-{{ item.status }}">{{ item.status }}</span>
+    {#
+      Manager-only. The label is TRANSLATED rather than printing the raw column
+      value: this used to reach sysadmins only, but a project admin now sees
+      their own pending and rejected items here, and "rejected" in English on a
+      French portal is not a status, it is a bug.
+
+      The reason is the point of showing a rejection at all -- an author who
+      cannot see why cannot fix it. It was stored from day one and rendered
+      nowhere. `| striptags` because it is sanitized HTML, and this sits inside
+      a link where markup has no business.
+    #}
+    {% if show_status and item.status and item.status != 'approved' %}
+      {% set status_labels = {
+        'pending': _("Awaiting review"),
+        'rejected': _("Rejected"),
+        'draft': _("Draft"),
+      } %}
+      <span class="cs-status-badge cs-status-{{ item.status }}">
+        {{ status_labels.get(item.status, item.status) }}
+      </span>
+      {% if item.status == 'rejected' and item.rejection_reason %}
+        <span class="cs-card-reason">{{ item.rejection_reason | striptags }}</span>
+      {% endif %}
     {% endif %}
     <span class="cs-card-cta">{{ _("Read more") }} &rarr;</span>
   </a>

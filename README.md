@@ -128,7 +128,7 @@ enumerate accounts.
 | Action | Access |
 | --- | --- |
 | `csunesco_project_list`, `csunesco_project_show`, `csunesco_project_stats_show`, `csunesco_aggregate_stats` | public (read; approved only for non-sysadmins) |
-| `csunesco_content_list`, `csunesco_content_show` | public (read; approved only for non-sysadmins) |
+| `csunesco_content_list`, `csunesco_content_show` | public (read; approved only — **except** a manager reading their own project, who also sees its pending/rejected rows) |
 | `csunesco_project_request_create` | authenticated |
 | `csunesco_join_request_create` | authenticated |
 | `csunesco_my_projects` | authenticated (the projects **you** administer, whatever your role) |
@@ -229,7 +229,12 @@ Four tabs:
 2. **Join requests** (sysadmin, initiative admin or project admin).
 3. **Content to review** — news, events, publications and maps; portal-authored
    sysadmin content publishes directly, everything else (including *all*
-   app-authored content) waits here.
+   app-authored content) waits here. The author sees the outcome on their own
+   project page: `csunesco_content_list` scopes like `csunesco_data_source_list`,
+   so a manager listing **their** project also gets its pending and rejected
+   rows, badged, with the rejection reason. (The public indexes pass no project
+   filter, so they stay approved-only.) Editing a rejected item sends it back
+   through review, which closes the loop.
 4. **Data to review** (sysadmin or initiative admin) — each row shows a live probe of the form's
    public data (reachable? observations, geolocated count, date range) and an
    "Open in the app" link (`ofform_app_url`), so nothing is approved blind.

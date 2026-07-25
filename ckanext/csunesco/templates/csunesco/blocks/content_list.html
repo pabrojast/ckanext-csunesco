@@ -27,7 +27,10 @@
   {% else %}
     <div class="cs-content-grid">
       {% for item in items %}
-        {% snippet "csunesco/snippets/content_card.html", item=item, show_status=false %}
+        {# Managers now receive their unapproved rows here too (the action
+           scopes by project), so the badge must be on -- an unapproved item
+           rendered exactly like a live one is worse than not showing it. #}
+        {% snippet "csunesco/snippets/content_card.html", item=item, show_status=ctx.can_manage %}
       {% else %}
         <p class="cs-empty">{{ block.empty_text or _("Nothing published yet.") }}</p>
       {% endfor %}

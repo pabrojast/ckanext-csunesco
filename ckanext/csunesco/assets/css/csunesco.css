@@ -2155,3 +2155,25 @@
   font-size: 0.88rem;
   color: #5a6b7b;
 }
+
+/* Why a content item was rejected -------------------------------------------- */
+/* Stored since the reject action was written, rendered nowhere until now: an
+   author who cannot see the reason cannot act on it. */
+
+.cs-card-reason,
+.cs-article-reason {
+  font-size: 0.85rem;
+  color: #8a4b2a;
+}
+
+.cs-card-reason {
+  display: block;
+  margin-top: 0.2rem;
+}
+
+.cs-article-manage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+}

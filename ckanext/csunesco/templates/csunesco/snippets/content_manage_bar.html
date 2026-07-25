@@ -1,0 +1,32 @@
+{#
+  Manager-only bar on a content detail page: what state this item is in, why it
+  was rejected, and the way to fix it.
+
+  Shared by all four detail pages (news / events / publications / maps), which
+  carried four byte-identical copies of it -- so the rejection reason had to be
+  added in four places or none, and it was none.
+
+  The status label is TRANSLATED rather than printing the raw column value: it
+  is read by project managers, not only by sysadmins, and "rejected" in English
+  on a French portal is not a status, it is a bug. The reason is `| striptags`
+  because it is stored as sanitized HTML and this is a one-line chip.
+
+  Vars: content (full csunesco_content_show dict).
+#}
+{% set status_labels = {
+  'approved': _("Published"),
+  'pending': _("Awaiting review"),
+  'rejected': _("Rejected"),
+  'draft': _("Draft"),
+} %}
+<p class="cs-article-manage">
+  <span class="cs-status-badge cs-status-{{ content.status }}">
+    {{ status_labels.get(content.status, content.status) }}
+  </span>
+  {% if content.status == 'rejected' and content.rejection_reason %}
+    <span class="cs-article-reason">{{ content.rejection_reason | striptags }}</span>
+  {% endif %}
+  <a class="cs-link" href="{{ h.url_for('csunesco.content_edit', id=content.id) }}">
+    {{ _("Edit") }}
+  </a>
+</p>

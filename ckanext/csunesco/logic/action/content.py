@@ -344,7 +344,22 @@ def csunesco_content_list(context, data_dict):
     featured = (tk.asbool(data_dict.get('featured'))
                 if data_dict.get('featured') is not None else None)
 
-    if auth._is_sysadmin(context):
+    # Same scoping rule as ``csunesco_data_source_list``: a manager listing
+    # THEIR OWN project also sees its unapproved rows.
+    #
+    # Without this, content was the one review pipeline with no way back for
+    # its author. Rejecting stores a reason (see csunesco_content_reject) and
+    # ``csunesco_content_show`` lets the author open the row -- but nothing
+    # listed it, so a rejected item vanished from every page and the author was
+    # never told. The landing block has passed ``show_status=can_manage`` to
+    # the card since it was written; it simply never received a row to badge.
+    #
+    # The privilege is per-project on purpose: with no project filter (the
+    # public /news and /events indexes) every non-sysadmin stays pinned to
+    # approved, so nothing leaks into a public listing.
+    privileged = auth._is_sysadmin(context) or (
+        project_id and auth.can_manage_project(context, project_id))
+    if privileged:
         status = data_dict.get('status')          # None -> all statuses
     else:
         status = 'approved'

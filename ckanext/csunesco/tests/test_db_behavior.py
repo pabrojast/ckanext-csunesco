@@ -798,3 +798,52 @@ def test_projects_administered_honours_the_limit(session):
         _member(session, project.id, 'u1')
     session.commit()
     assert len(db.projects_administered('u1', limit=2)) == 2
+
+
+# ---------------------------------------------------------------------------
+# Rejected content: the author has to be able to find it AND read why
+# ---------------------------------------------------------------------------
+
+def test_rejection_reason_survives_the_summary_dictize(session):
+    """The landing card is a SUMMARY row, so the reason has to ride in extras.
+
+    ``content_dictize`` merges extras in both modes; if that ever changed, the
+    rejection chip on the project page would silently render blank.
+    """
+    content = db.CsContent()
+    content.slug = 'n1'
+    content.content_type = 'cs-news'
+    content.title = 'N'
+    content.status = 'rejected'
+    content.body = '<b>hello</b>'
+    content.extras = json.dumps({'excerpt': 'teaser',
+                                 'rejection_reason': 'Please add a source.'})
+    session.add(content)
+    session.commit()
+
+    summary = db.content_dictize(db.get_content('n1'), summary=True)
+    assert 'body' not in summary
+    assert summary['status'] == 'rejected'
+    assert summary['rejection_reason'] == 'Please add a source.'
+
+
+def test_list_content_unfiltered_returns_every_status(session):
+    """What a project manager gets for their OWN project; the public call
+    passes status='approved' and must still get only that."""
+    for slug, status in (('a', 'approved'), ('b', 'pending'), ('c', 'rejected')):
+        content = db.CsContent()
+        content.slug = slug
+        content.content_type = 'cs-news'
+        content.title = slug.upper()
+        content.project_id = 'p1'
+        content.status = status
+        session.add(content)
+    session.commit()
+
+    total, rows = db.list_content(project_id='p1')
+    assert total == 3
+    assert {row.status for row in rows} == {'approved', 'pending', 'rejected'}
+
+    total, rows = db.list_content(project_id='p1', status='approved')
+    assert total == 1
+    assert rows[0].slug == 'a'
