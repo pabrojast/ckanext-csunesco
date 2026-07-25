@@ -527,6 +527,74 @@ print('   OK: %d block types, all with templates; page queue wired everywhere'
       % len(keys))
 PYEOF
 
+# (d8b2) Every route must be REACHABLE. A view nobody links to is a URL you
+# have to remember, which is how /citizen-science/admin ended up invisible the
+# moment a reviewer's queue hit zero (the link was gated on the count, not on
+# the role). Any endpoint not referenced from a template or a view has to be
+# listed below with the reason it is reached another way.
+echo "-- checks (every blueprint endpoint is linked from somewhere)"
+"${PY}" - <<'PYEOF'
+import collections
+import os
+import re
+import sys
+
+# Reached without a literal 'csunesco.<endpoint>' anywhere:
+REACHED_OTHERWISE = {
+    # builtin_region_map.html builds it by concatenation:
+    # h.csunesco_project_url(slug) + "/geojson".
+    'project_geojson',
+}
+
+blueprint = open('ckanext/csunesco/blueprint.py').read()
+# Quote-agnostic on purpose: a rule written with double quotes must not slip
+# past the audit just because the rest of the file happens to use single ones.
+endpoints = set(re.findall(
+    r"""add_url_rule\(\s*['"][^'"]+['"],\s*['"]([^'"]+)['"]""", blueprint))
+if not endpoints:
+    sys.exit('FAIL: no endpoints found in blueprint.py')
+
+referenced = collections.defaultdict(list)
+for base in ('ckanext/csunesco/templates', 'ckanext/csunesco/logic'):
+    for directory, subdirs, files in os.walk(base):
+        # Byte-compiled caches are not source and are not UTF-8.
+        subdirs[:] = [d for d in subdirs if d != '__pycache__']
+        for name in files:
+            if not name.endswith(('.html', '.py')):
+                continue
+            path = os.path.join(directory, name)
+            with open(path, 'r') as handle:
+                text = handle.read()
+            for endpoint in endpoints:
+                if re.search(r"""csunesco\.%s['"]""" % re.escape(endpoint),
+                             text):
+                    referenced[endpoint].append(path)
+
+orphans = sorted(endpoints - set(referenced) - REACHED_OTHERWISE)
+if orphans:
+    sys.exit('FAIL: blueprint endpoints nothing links to: %s\n'
+             '      Link them, or add them to REACHED_OTHERWISE with a reason.'
+             % ', '.join(orphans))
+
+stale = sorted(REACHED_OTHERWISE - endpoints)
+if stale:
+    sys.exit('FAIL: REACHED_OTHERWISE names endpoints that no longer exist: %s'
+             % ', '.join(stale))
+
+# The approval panel is the one page with no other entry point, so its link
+# must be gated on the ROLE, never on "is anything pending".
+header = open('ckanext/csunesco/templates/header.html').read()
+if 'admin_dashboard' not in header:
+    sys.exit('FAIL: header.html no longer links the approval dashboard')
+if not re.search(r"check_access\('csunesco_admin_pending_list'\)", header):
+    sys.exit("FAIL: the Review link must be gated on "
+             "h.check_access('csunesco_admin_pending_list'), not on the pending "
+             "count -- otherwise the panel disappears when the queue is empty")
+
+print('   OK: %d endpoints, all linked (%d reached another way)'
+      % (len(endpoints), len(REACHED_OTHERWISE)))
+PYEOF
+
 # (d8c) Every template must PARSE. CKAN's own tags are stubbed so this needs
 # nothing but jinja2 -- and it catches the class of error the other checks
 # cannot see, e.g. a {# comment #} inside a {% set %} expression, which is a

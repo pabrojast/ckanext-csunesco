@@ -4,11 +4,20 @@
   ckanext-csunesco header override (nav wiring only).
 
   Adds a "Citizen Science" entry to CKAN's main navigation and -- for reviewers
-  only -- a small badge linking to the approval dashboard when items are pending.
-  We super() the core block so nothing is removed (non-breaking). The badge is
-  inherently role-gated: h.csunesco_pending_count() already returns 0 for
-  anonymous users and non-managers, so it is only ever > 0 for a sysadmin or a
-  project-admin (h.csunesco_can_manage_project) -- no extra check needed here.
+  only -- a link to the approval dashboard, carrying a count badge when there is
+  anything pending. We super() the core block so nothing is removed.
+
+  The link is gated on the dashboard's OWN auth (csunesco_admin_pending_list:
+  sysadmin, any initiative admin, any project admin) rather than on "is the
+  count above zero". Gating on the count meant the entire panel vanished from
+  the UI the moment a reviewer cleared their queue -- and /citizen-science/admin
+  is linked from nowhere else, so it became a URL you had to remember. Its five
+  tabs all render proper empty states precisely because it is meant to be
+  visited when there is nothing pending.
+
+  This is also cheaper than before: a non-reviewer no longer pays for
+  h.csunesco_pending_count() (which counted five queues to always return 0 for
+  them), because the check short-circuits first.
 #}
 {% block header_site_navigation_tabs %}
   {{ super() }}
@@ -22,15 +31,19 @@
     </a>
   </li>
 
-  {% set cs_pending = h.csunesco_pending_count() %}
-  {% if cs_pending and cs_pending > 0 %}
+  {% if h.check_access('csunesco_admin_pending_list') %}
+    {% set cs_pending = h.csunesco_pending_count() %}
     <li class="nav-item">
-      {# bg-warning + text-dark keeps AA-level contrast for the count badge. #}
       <a class="nav-link"
          href="{{ h.url_for('csunesco.admin_dashboard') }}"
-         aria-label="{{ _('Citizen Science: %(count)s items awaiting review', count=cs_pending) }}">
+         {% if cs_pending %}
+           aria-label="{{ _('Citizen Science: %(count)s items awaiting review', count=cs_pending) }}"
+         {% endif %}>
         {{ _('Review') }}
-        <span class="badge bg-warning text-dark">{{ cs_pending }}</span>
+        {% if cs_pending %}
+          {# bg-warning + text-dark keeps AA-level contrast for the count badge. #}
+          <span class="badge bg-warning text-dark">{{ cs_pending }}</span>
+        {% endif %}
       </a>
     </li>
   {% endif %}
