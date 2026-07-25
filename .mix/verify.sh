@@ -729,6 +729,7 @@ REQUIRED_FILES=(
   "ckanext/csunesco/tests/test_aggregate.py"
   "ckanext/csunesco/tests/test_chat.py"
   "ckanext/csunesco/tests/test_data_chat.py"
+  "ckanext/csunesco/tests/test_admin_bulk.py"
   "ckanext/csunesco/tests/fixtures/ofform_form3.json"
   "ckanext/csunesco/templates/csunesco/citizen-science.html"
   "ckanext/csunesco/templates/csunesco/register_citizen.html"

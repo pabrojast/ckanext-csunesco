@@ -162,6 +162,21 @@ def admin_dashboard():
 # Moderation POST handlers (each delegates to a domain action)
 # ---------------------------------------------------------------------------
 
+def _validation_messages(error):
+    """Flatten a ``ValidationError``'s ``error_dict`` into readable sentences.
+
+    The actions phrase these for the reviewer, so they are worth surfacing
+    verbatim rather than collapsing into "something went wrong".
+    """
+    messages = []
+    for value in (getattr(error, 'error_dict', None) or {}).values():
+        if isinstance(value, str):
+            messages.append(value)
+        else:
+            messages.extend(str(item) for item in value)
+    return messages
+
+
 def _decide(action_name, data_dict, tab, ok_message, gone_message=None):
     """Run a moderation action, flash the outcome and PRG back to ``tab``.
 
@@ -184,13 +199,7 @@ def _decide(action_name, data_dict, tab, ok_message, gone_message=None):
         # The actions write careful, actionable messages ("this page changed
         # after you opened the review"). Throwing them away and flashing a
         # generic failure just makes the reviewer press the button again.
-        messages = []
-        for value in (error.error_dict or {}).values():
-            if isinstance(value, str):
-                messages.append(value)
-            else:
-                messages.extend(str(item) for item in value)
-        tk.h.flash_error(' '.join(messages)
+        tk.h.flash_error(' '.join(_validation_messages(error))
                          or tk._('That item could not be updated.'))
         return _redirect_dashboard(tab)
     except Exception:
@@ -236,6 +245,76 @@ def content_reject(id):
 
 
 # Tope defensivo de filas por request de bulk-approve (el panel pagina de a 20).
+# Distinct causes shown in the failure flash. Rows are deduplicated by reason,
+# and in practice a batch fails for one or two reasons (a missing owner org, a
+# portal-schema field), so this is generous rather than restrictive.
+MAX_BULK_REASONS = 3
+
+
+def _bulk_approve(action_name, ids):
+    """Approve each id best-effort. Returns ``(approved, reasons)``.
+
+    Both halves of this exist because "3 item(s) could not be approved" on its
+    own is a dead end: the reviewer cannot act on it and no one can reconstruct
+    it afterwards. So
+
+    * every failure is **logged with its row id** and cause, which is how a
+      sysadmin finds the row when the reviewer only reports a count, and
+    * the distinct causes come back **deduplicated** for the flash -- the
+      single-row path already surfaces the actions' own wording (see
+      :func:`_decide`), and the usual causes here are fixable configuration.
+
+    Per-row failures never abort the batch: authorization is re-checked for
+    every row, and one row a reviewer may not touch must not cost them the
+    other ninety-nine.
+    """
+    context = _context()
+    approved = 0
+    reasons = []
+
+    def remember(found):
+        for reason in found:
+            if reason not in reasons:
+                reasons.append(reason)
+
+    for row_id in ids:
+        try:
+            tk.get_action(action_name)(dict(context), {'id': row_id})
+        except tk.ValidationError as error:
+            found = _validation_messages(error)
+            log.warning('csunesco: bulk %s rejected %s: %s', action_name,
+                        row_id, '; '.join(found) or 'no message')
+            remember(found or [tk._(GENERIC_ERROR)])
+        except tk.NotAuthorized:
+            log.warning('csunesco: bulk %s not authorized for %s',
+                        action_name, row_id)
+            remember([tk._('You are not authorized to approve some of these.')])
+        except tk.ObjectNotFound:
+            log.warning('csunesco: bulk %s: %s no longer exists',
+                        action_name, row_id)
+            remember([tk._('Some of them were no longer there.')])
+        except Exception as error:
+            # Type only, never the message: an unexpected error can carry
+            # anything, including upstream detail that has no business on a
+            # flash. The type is what makes it findable in the log.
+            log.warning('csunesco: bulk %s failed on %s (%s)', action_name,
+                        row_id, type(error).__name__)
+            remember([tk._(GENERIC_ERROR)])
+        else:
+            approved += 1
+    return approved, reasons
+
+
+def _bulk_error_message(summary, reasons):
+    """``summary`` followed by the distinct causes, capped."""
+    if not reasons:
+        return summary
+    shown = ' '.join(reasons[:MAX_BULK_REASONS])
+    if len(reasons) > MAX_BULK_REASONS:
+        shown = '%s %s' % (shown, tk._('There were other problems too.'))
+    return '%s %s' % (summary, shown)
+
+
 BULK_APPROVE_MAX = 100
 # Data sources: cada aprobación crea un dataset CKAN (lento, puede fallar por
 # fila), así que el lote es más chico.
@@ -255,22 +334,15 @@ def content_bulk_approve():
     if not ids:
         tk.h.flash_error(tk._('Select at least one content item.'))
         return _redirect_dashboard('content')
-    context = _context()
-    approved = 0
-    failed = 0
-    for content_id in ids:
-        try:
-            tk.get_action('csunesco_content_approve')(
-                dict(context), {'id': content_id})
-            approved += 1
-        except Exception:
-            failed += 1
+    approved, reasons = _bulk_approve('csunesco_content_approve', ids)
     if approved:
         tk.h.flash_success(
             tk._('Approved %(n)s content item(s).') % {'n': approved})
+    failed = len(ids) - approved
     if failed:
-        tk.h.flash_error(
-            tk._('%(n)s item(s) could not be approved.') % {'n': failed})
+        tk.h.flash_error(_bulk_error_message(
+            tk._('%(n)s item(s) could not be approved.') % {'n': failed},
+            reasons))
     return _redirect_dashboard('content')
 
 
@@ -290,24 +362,17 @@ def data_source_bulk_approve():
     if not ids:
         tk.h.flash_error(tk._('Select at least one data source.'))
         return _redirect_dashboard('data')
-    context = _context()
-    approved = 0
-    failed = 0
-    for source_id in ids:
-        try:
-            tk.get_action('csunesco_data_source_approve')(
-                dict(context), {'id': source_id})
-            approved += 1
-        except Exception:
-            failed += 1
+    approved, reasons = _bulk_approve('csunesco_data_source_approve', ids)
     if approved:
         tk.h.flash_success(
             tk._('Approved %(n)s data source(s); their datasets are live.')
             % {'n': approved})
+    failed = len(ids) - approved
     if failed:
-        tk.h.flash_error(
+        tk.h.flash_error(_bulk_error_message(
             tk._('%(n)s data source(s) could not be approved (they remain '
-                 'pending).') % {'n': failed})
+                 'pending).') % {'n': failed},
+            reasons))
     return _redirect_dashboard('data')
 
 

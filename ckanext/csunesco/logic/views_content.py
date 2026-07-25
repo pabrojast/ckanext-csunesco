@@ -255,6 +255,11 @@ def content_edit(id):
         project = tk.get_action('csunesco_project_show')(
             context, {'id': content['project_id']})
     except Exception:
+        # Genuinely unexpected: can_manage_project just said yes about THIS
+        # project, so it exists and this user may read it. The editor still
+        # renders without it, but nobody should have to guess why.
+        log.warning('csunesco: project %s unavailable for the content editor',
+                    content.get('project_id'))
         project = None
 
     if request.method == 'GET':

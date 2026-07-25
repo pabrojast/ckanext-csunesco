@@ -90,6 +90,10 @@ def _member_state_choices():
             {'id': MEMBER_STATES_GROUP, 'include_groups': True},
         )
     except Exception:
+        # An unseeded portal legitimately has no member-state group, but so
+        # does a broken one -- and either way the project-request form renders
+        # an empty country picker that looks like a bug in the form.
+        log.warning('csunesco: member-state choices unavailable')
         return []
     choices = []
     for child in (parent.get('groups') or []):

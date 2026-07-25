@@ -142,7 +142,15 @@ def csunesco_can_manage_project(project_id):
         context = {'model': model, 'user': tk.g.user}
         return tk.check_access(
             'csunesco_content_create', context, {'project_id': project_id})
+    except tk.NotAuthorized:
+        # The expected answer for most visitors -- not an error, and logging it
+        # would put a line in the log for every card on every public page.
+        return False
     except Exception:
+        # Anything else IS an error, and it silently strips a manager of every
+        # affordance on their own project. Same visible outcome, very different
+        # cause, so they must not share a branch.
+        log.warning('csunesco: manage-project check failed for %s', project_id)
         return False
 
 
