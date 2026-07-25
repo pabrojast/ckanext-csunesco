@@ -501,3 +501,125 @@ def test_project_trusted_default_false_and_dictized(session):
     got.trusted = True
     session.commit()
     assert db.project_dictize(got)['trusted'] is True
+
+
+# ---------------------------------------------------------------------------
+# Project pages (block-composed landing)
+# ---------------------------------------------------------------------------
+
+def test_project_page_roundtrip_and_defaults(session):
+    page = db.CsProjectPage()
+    page.project_id = 'p-page'
+    page.draft_json = '[{"id":"aaaaaaaa","type":"rich_text","html":"<p>x</p>"}]'
+    session.add(page)
+    session.commit()
+
+    got = session.query(db.CsProjectPage).get('p-page')
+    assert got.status == 'draft', 'status column default'
+    assert got.published_json is None, 'a new page is not published'
+    assert got.created is not None and got.modified is not None
+
+
+def test_page_dictize_separates_never_published_from_emptied(session):
+    """``None`` (fall back to the default layout) and ``[]`` (deliberately
+    emptied) must not collapse -- ``_load_json`` would merge them."""
+    page = db.CsProjectPage()
+    page.project_id = 'p-empty'
+    session.add(page)
+    session.commit()
+    assert db.page_dictize(page)['published_blocks'] is None
+
+    page.published_json = '[]'
+    session.commit()
+    assert db.page_dictize(page)['published_blocks'] == []
+
+
+def test_page_dictize_parses_and_normalizes_blocks(session):
+    page = db.CsProjectPage()
+    page.project_id = 'p-blocks'
+    page.published_json = ('[{"id":"aaaaaaaa","type":"callout","tone":"info"},'
+                           '{"type":"from_the_future"}]')
+    page.draft_json = '[{"id":"bbbbbbbb","type":"rich_text"}]'
+    session.add(page)
+    session.commit()
+
+    public = db.page_dictize(page)
+    # The unknown type is dropped on read, so one stale row cannot 500 a page.
+    assert [b['type'] for b in public['published_blocks']] == ['callout']
+    # The draft is withheld unless the caller explicitly asks for it.
+    assert 'draft_blocks' not in public
+    assert [b['type'] for b in
+            db.page_dictize(page, include_draft=True)['draft_blocks']] \
+        == ['rich_text']
+
+
+def test_page_dictize_survives_corrupt_json(session):
+    page = db.CsProjectPage()
+    page.project_id = 'p-corrupt'
+    page.published_json = '{not json at all'
+    session.add(page)
+    session.commit()
+    assert db.page_dictize(page)['published_blocks'] == []
+
+
+def test_get_or_create_project_page_is_idempotent(session):
+    first = db.get_or_create_project_page('p-once', created_by='u1')
+    session.commit()
+    second = db.get_or_create_project_page('p-once', created_by='u2')
+    session.commit()
+    assert first.project_id == second.project_id == 'p-once'
+    assert second.created_by == 'u1', 'the existing row is reused, not reset'
+    assert session.query(db.CsProjectPage).count() == 1
+
+
+def test_pending_pages_lists_only_pending_rows(session):
+    project = db.CsProject()
+    project.slug = 'page-proj'
+    project.title = 'Page Proj'
+    project.initiative_group = 'riverwatch'
+    project.status = 'approved'
+    session.add(project)
+    session.commit()
+
+    for project_id, status in (('other', 'draft'), (project.id, 'pending')):
+        page = db.CsProjectPage()
+        page.project_id = project_id
+        page.status = status
+        session.add(page)
+    session.commit()
+
+    total, rows = db.pending_pages()
+    assert total == 1
+    assert rows[0]['project_id'] == project.id
+    # The listing carries what the review tab needs without loading the JSON.
+    assert rows[0]['project_title'] == 'Page Proj'
+    assert rows[0]['project_slug'] == 'page-proj'
+    assert 'draft_json' not in rows[0]
+
+
+def test_pending_counts_key_set_never_drifts(session):
+    """The guard: a new queue must reach the zero dict, BOTH branches and the
+    total. Anything half-wired shows up here first."""
+    expected = {'project_requests', 'join_requests', 'content_requests',
+                'data_requests', 'page_requests', 'total'}
+
+    page = db.CsProjectPage()
+    page.project_id = 'p-count'
+    page.status = 'pending'
+    session.add(page)
+    session.commit()
+
+    contexts = {
+        'anonymous': {},
+        'sysadmin': {'auth_user_obj': _FakeUser('u-sys', True)},
+        'plain_user': {'auth_user_obj': _FakeUser('u-nobody', False)},
+    }
+    for label, context in contexts.items():
+        counts = db.pending_counts(context)
+        assert set(counts) == expected, label
+        assert counts['total'] == sum(
+            value for key, value in counts.items() if key != 'total'), label
+
+    assert db.pending_counts(contexts['sysadmin'])['page_requests'] == 1
+    # A user with no role sees zeros, not somebody else's queue.
+    assert db.pending_counts(contexts['plain_user'])['page_requests'] == 0

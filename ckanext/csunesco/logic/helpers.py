@@ -162,6 +162,90 @@ def csunesco_data_stories_new_url():
         return None
 
 
+def csunesco_block_type(key):
+    """The registry entry for a block type, or ``None`` when it is unknown.
+
+    The block-render dispatcher uses this to resolve a type to its snippet.
+    Returning ``None`` (rather than raising) is what lets a page whose JSON
+    predates a removed block type still render -- the stale block is simply
+    skipped instead of taking down a public URL.
+    """
+    from ckanext.csunesco.logic import blocks
+    return blocks.BLOCK_TYPES.get(key)
+
+
+def csunesco_blocks_need_review(blocks):
+    """True when a page embeds content from an origin we do not control.
+
+    Drives the editor's honest "what happens when I publish" line, and mirrors
+    the rule the submit action applies -- a trusted project auto-publishes only
+    while this is False.
+    """
+    from ckanext.csunesco.logic import blocks as blocks_module
+    return bool(blocks_module.blocks_requiring_review(blocks))
+
+
+def csunesco_block_content(ctx, block):
+    """Rows a ``content_list`` block should render (resolved in the view).
+
+    The resolution is memoised per QUERY in ``page_render``, so several blocks
+    asking for the same thing share one lookup. Templates go through this
+    helper because the memo is keyed by a tuple they cannot build.
+    """
+    from ckanext.csunesco.logic import page_render
+    lists = (ctx or {}).get('content_lists') or {}
+    return lists.get(page_render.content_list_key(block), [])
+
+
+def csunesco_block_datasets(ctx, block):
+    """Packages a ``datasets_list`` block should render (resolved in the view)."""
+    from ckanext.csunesco.logic import page_render
+    lists = (ctx or {}).get('dataset_lists') or {}
+    return lists.get(page_render.dataset_list_key(block), [])
+
+
+def csunesco_video_embed_url(provider, video_id):
+    """The embed URL for a recognised video, or ``None``.
+
+    Built HERE from the id extracted at save time -- the author's URL is never
+    used as an iframe ``src``, which is what keeps a video block from becoming
+    an arbitrary-embed block. YouTube goes through the nocookie host so merely
+    loading a project page does not hand the visitor to an ad profile.
+    """
+    if not provider or not video_id:
+        return None
+    if provider == 'youtube':
+        return 'https://www.youtube-nocookie.com/embed/%s' % video_id
+    if provider == 'vimeo':
+        return 'https://player.vimeo.com/video/%s' % video_id
+    return None
+
+
+def csunesco_project_data_sources(project_id):
+    """Approved data sources of a project, for the editor's source pickers.
+
+    Only approved rows: a block may only ever point at data the public can
+    already reach through the proxy. Fails soft to an empty list so the editor
+    still renders when the listing errors.
+    """
+    if not project_id:
+        return []
+    try:
+        result = tk.get_action('csunesco_data_source_list')(
+            {}, {'project_id': project_id, 'limit': 50})
+        return [source for source in result.get('results', [])
+                if source.get('status') == 'approved']
+    except Exception:
+        log.warning('csunesco: data sources for the page editor unavailable')
+        return []
+
+
+def csunesco_block_palette():
+    """The block types a manager may ADD, in editor-palette order."""
+    from ckanext.csunesco.logic import blocks
+    return [blocks.BLOCK_TYPES[key] for key in blocks.ADDABLE_TYPES]
+
+
 def csunesco_terria_embed_url(url):
     """Return ``url`` when it is under an allowlisted Terria base, else None.
 

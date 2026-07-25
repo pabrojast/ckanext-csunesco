@@ -1,0 +1,44 @@
+{#
+  Editor: highlighted counters.
+
+  Four rows always. A row set to a live source ignores its typed number and
+  reads the project's current figure at render time, so a counter cannot go
+  stale inside the stored JSON. Empty manual rows are dropped on save.
+
+  Vars: block, index, project.
+#}
+{% set items = block['items'] or [] %}
+<div class="cs-pb-items">
+  {% for slot in range(4) %}
+    {% set item = items[slot] if slot < items | length else {} %}
+    <fieldset class="cs-pb-item cs-pb-item-inline">
+      <legend>{{ _("Counter %(n)s", n=slot + 1) }}</legend>
+      <span>
+        <label for="b{{ index }}-s{{ slot }}-label">{{ _("Label") }}</label>
+        <input type="text" id="b{{ index }}-s{{ slot }}-label"
+               name="blocks[{{ index }}][items][{{ slot }}][label]"
+               value="{{ item.label or '' }}">
+      </span>
+      <span>
+        <label for="b{{ index }}-s{{ slot }}-source">{{ _("Number") }}</label>
+        <select id="b{{ index }}-s{{ slot }}-source"
+                name="blocks[{{ index }}][items][{{ slot }}][source]">
+          {% for value, label in [('manual', _('A number I type')),
+                                  ('observations', _('Observations (live)')),
+                                  ('sites_monitored', _('Sites monitored (live)')),
+                                  ('citizen_scientists', _('Citizen scientists (live)')),
+                                  ('member_states', _('Member states (live)'))] %}
+            <option value="{{ value }}"
+                    {% if (item.source or 'manual') == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </span>
+      <span>
+        <label for="b{{ index }}-s{{ slot }}-value">{{ _("Typed number") }}</label>
+        <input type="text" id="b{{ index }}-s{{ slot }}-value"
+               name="blocks[{{ index }}][items][{{ slot }}][value]"
+               value="{{ item.value or '' }}">
+      </span>
+    </fieldset>
+  {% endfor %}
+</div>

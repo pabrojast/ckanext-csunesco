@@ -32,8 +32,12 @@ services:
       CKAN_SOLR_URL: http://solr:8983/solr/ckan
       CKAN_REDIS_URL: redis://redis:6379/1
       CKAN_SITE_URL: http://localhost:5000
-      # Enable the plugin (keep the CKAN defaults + csunesco).
-      CKAN__PLUGINS: image_view text_view datatables_view csunesco
+      # Enable the plugin (keep the CKAN defaults + csunesco). `envvars` must be
+      # here for the CKAN___* options below to reach the config at all -- without
+      # it they sit in the environment and are silently ignored, which makes the
+      # optional features below look broken rather than unset. The real portal
+      # runs it too.
+      CKAN__PLUGINS: envvars image_view text_view datatables_view csunesco
       # Required for the Citizen-Scientist self-registration blueprint.
       CKAN__AUTH__CREATE_USER_VIA_WEB: "true"
       # --- Optional csunesco features (uncomment to test manually) ----------

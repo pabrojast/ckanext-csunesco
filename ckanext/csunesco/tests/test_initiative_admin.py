@@ -270,3 +270,61 @@ def test_pending_counts_for_initiative_admin(session):
     assert counts['data_requests'] == 1
     assert counts['total'] == 4
     assert pending_project.status == 'pending'
+
+
+def _page(session, project_id, status='pending'):
+    page = db.CsProjectPage()
+    page.project_id = project_id
+    page.status = status
+    session.add(page)
+    session.commit()
+    return page
+
+
+def test_pending_pages_initiative_scope(session):
+    """Pages scope by INITIATIVE (like data sources), not by project: a plain
+    project admin cannot approve their own page, so it must not reach them."""
+    river = _project(session, 'river-p', 'riverwatch', status='approved')
+    island = _project(session, 'island-p', 'islandwatch', status='approved')
+    _page(session, river.id)
+    _page(session, island.id)
+
+    total, rows = db.pending_pages(initiative_groups=None)      # sysadmin
+    assert total == 2
+
+    total, rows = db.pending_pages(initiative_groups=['riverwatch'])
+    assert total == 1 and rows[0]['project_slug'] == 'river-p'
+
+    # An empty scope is "no initiatives", never "all of them".
+    assert db.pending_pages(initiative_groups=[]) == (0, [])
+
+
+def test_pending_counts_includes_pages_for_initiative_admin(session):
+    riverwatch = _group(session, 'riverwatch')
+    user = _StubUser('u-adm-pages')
+    _member(session, riverwatch, user.id, 'admin')
+
+    river = _project(session, 'river-c', 'riverwatch', status='approved')
+    island = _project(session, 'island-c', 'islandwatch', status='approved')
+    _page(session, river.id)
+    _page(session, island.id)          # out of scope
+
+    counts = db.pending_counts({'auth_user_obj': user})
+    assert counts['page_requests'] == 1
+    assert counts['total'] == sum(
+        value for key, value in counts.items() if key != 'total')
+
+
+def test_pending_counts_hides_pages_from_a_plain_project_admin(session):
+    project = _project(session, 'river-d', 'riverwatch', status='approved')
+    member = db.CsProjectMember()
+    member.project_id = project.id
+    member.user_id = 'u-pm'
+    member.role = 'admin'
+    member.status = 'active'
+    session.add(member)
+    session.commit()
+    _page(session, project.id)
+
+    counts = db.pending_counts({'auth_user_obj': _StubUser('u-pm')})
+    assert counts['page_requests'] == 0

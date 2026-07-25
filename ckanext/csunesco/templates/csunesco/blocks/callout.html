@@ -1,0 +1,18 @@
+{# Block: a highlighted note with an optional button. Vars: block, ctx. #}
+{% if block.html or block.cta_label %}
+  <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}"
+           id="block-{{ block.id }}">
+    <div class="cs-callout cs-callout-{{ block.tone }}">
+      {% if block.title %}
+        <h2 class="cs-callout-title" id="title-{{ block.id }}">{{ block.title }}</h2>
+      {% endif %}
+      {# sanitized server-side before storage -> safe #}
+      <div class="cs-rich-text">{{ block.html | safe }}</div>
+      {% if block.cta_label and block.cta_url %}
+        <p class="cs-callout-action">
+          <a class="cs-btn cs-btn-primary" href="{{ block.cta_url }}">{{ block.cta_label }}</a>
+        </p>
+      {% endif %}
+    </div>
+  </section>
+{% endif %}

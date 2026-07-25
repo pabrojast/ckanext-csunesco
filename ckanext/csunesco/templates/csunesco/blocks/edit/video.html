@@ -1,0 +1,34 @@
+{#
+  Editor: video.
+
+  Only the URL is stored from the author; the embed src is rebuilt at render
+  time from the extracted id, so an arbitrary URL can never reach an iframe.
+
+  Vars: block, index, project.
+#}
+<div class="cs-field">
+  <label for="b{{ index }}-video-url">{{ _("Video link") }}</label>
+  <input type="url" id="b{{ index }}-video-url" name="blocks[{{ index }}][url]"
+         value="{{ block.url }}" placeholder="https://www.youtube.com/watch?v=…"
+         aria-describedby="b{{ index }}-video-hint">
+  <p class="cs-hint" id="b{{ index }}-video-hint">
+    {{ _("YouTube or Vimeo, or a direct link to an .mp4/.webm file (https only).") }}
+    {% if block.url and not block.provider %}
+      <strong>{{ _("This link was not recognised as a video, so nothing will be shown.") }}</strong>
+    {% endif %}
+  </p>
+</div>
+<div class="cs-field cs-pb-pair">
+  <span>
+    <label for="b{{ index }}-video-caption">{{ _("Caption") }}</label>
+    <input type="text" id="b{{ index }}-video-caption" name="blocks[{{ index }}][caption]"
+           value="{{ block.caption }}">
+  </span>
+  <span>
+    <label for="b{{ index }}-video-ratio">{{ _("Shape") }}</label>
+    <select id="b{{ index }}-video-ratio" name="blocks[{{ index }}][ratio]">
+      <option value="16:9" {% if block.ratio == '16:9' %}selected{% endif %}>16:9</option>
+      <option value="4:3" {% if block.ratio == '4:3' %}selected{% endif %}>4:3</option>
+    </select>
+  </span>
+</div>

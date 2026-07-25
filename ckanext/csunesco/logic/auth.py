@@ -121,6 +121,23 @@ def _is_data_source_initiative_admin(context, data_source_id):
     return _is_project_initiative_admin(context, source.project_id)
 
 
+# --- The composite every "may this user edit the project's stuff" check uses -
+
+def can_manage_project(context, project_id):
+    """Sysadmin OR the project's admin (PM) OR its initiative's admin (ADM).
+
+    THE write authorization for anything owned by a project: content, data
+    connections and the project page. It lives here, not in an action module,
+    because ``logic/action/data.py`` happens to define a same-named helper with
+    a NARROWER meaning (sysadmin OR PM only, no ADM) -- so importing "the"
+    ``_can_manage_project`` from wherever was a coin flip. Callers that want the
+    full composite must use this one.
+    """
+    return (_is_sysadmin(context)
+            or _is_project_admin(context, project_id)
+            or _is_project_initiative_admin(context, project_id))
+
+
 # ---------------------------------------------------------------------------
 # Auth functions (CKAN contract: return {'success': bool, 'msg': ...})
 # ---------------------------------------------------------------------------
@@ -354,6 +371,74 @@ def csunesco_data_source_show(context, data_dict):
 
 
 # ---------------------------------------------------------------------------
+# Project pages (block-composed landing)
+# ---------------------------------------------------------------------------
+
+@tk.auth_allow_anonymous_access
+def csunesco_data_source_fields(context, data_dict):
+    # Public read: the action serves only APPROVED sources, whose data is
+    # already downloadable through the CSV/GeoJSON proxy.
+    return {'success': True}
+
+
+@tk.auth_allow_anonymous_access
+def csunesco_data_source_series(context, data_dict):
+    # Public read, same reasoning as _fields: an aggregate of data the public
+    # can already download row by row.
+    return {'success': True}
+
+
+@tk.auth_allow_anonymous_access
+def csunesco_project_page_show(context, data_dict):
+    # Public read. The action returns only the PUBLISHED blocks unless the
+    # caller both asks for the draft and passes can_manage_project.
+    return {'success': True}
+
+
+def csunesco_project_page_update(context, data_dict):
+    # Sysadmin, the project's admin or its initiative admin. When the project
+    # is not resolvable here we let any authenticated user through and rely on
+    # the action's re-check against the RESOLVED project (defence in depth,
+    # same shape as csunesco_content_create).
+    project_id = (data_dict or {}).get('project_id')
+    if project_id:
+        if can_manage_project(context, project_id):
+            return {'success': True}
+        return {'success': False,
+                'msg': tk._('Only the project admin or the initiative admin '
+                            'can edit this page')}
+    if context.get('user'):
+        return {'success': True}
+    return {'success': False, 'msg': tk._('You must be logged in')}
+
+
+def _is_page_initiative_admin(context, project_id):
+    """ADM of the project whose page this is."""
+    return _is_project_initiative_admin(context, project_id)
+
+
+def csunesco_project_page_approve(context, data_dict):
+    # Sysadmin or the project's initiative admin -- the SAME rule content and
+    # data-source approval use. A project's own admin may not approve their own
+    # page, which is the whole point of the queue.
+    project_id = (data_dict or {}).get('project_id')
+    if _is_sysadmin(context) or _is_page_initiative_admin(context, project_id):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only sysadmins or the initiative admin can approve '
+                        'a project page')}
+
+
+def csunesco_project_page_reject(context, data_dict):
+    project_id = (data_dict or {}).get('project_id')
+    if _is_sysadmin(context) or _is_page_initiative_admin(context, project_id):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only sysadmins or the initiative admin can reject '
+                        'a project page')}
+
+
+# ---------------------------------------------------------------------------
 # Server-to-server Citizen Scientist registration (Increment 9)
 # ---------------------------------------------------------------------------
 
@@ -394,6 +479,12 @@ def get_auth_functions():
         'csunesco_data_source_reject': csunesco_data_source_reject,
         'csunesco_data_source_list': csunesco_data_source_list,
         'csunesco_data_source_show': csunesco_data_source_show,
+        'csunesco_data_source_fields': csunesco_data_source_fields,
+        'csunesco_data_source_series': csunesco_data_source_series,
+        'csunesco_project_page_show': csunesco_project_page_show,
+        'csunesco_project_page_update': csunesco_project_page_update,
+        'csunesco_project_page_approve': csunesco_project_page_approve,
+        'csunesco_project_page_reject': csunesco_project_page_reject,
         'csunesco_register_citizen_scientist':
             csunesco_register_citizen_scientist,
     }

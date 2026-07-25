@@ -1,0 +1,29 @@
+{#
+  Block: highlighted counters.
+
+  A row whose source is not "manual" reads the project's CURRENT figure from
+  ctx.stats, so a live counter can never be served from a stale number that was
+  frozen into the stored JSON.
+
+  Vars: block, ctx.
+#}
+{% if block['items'] %}
+  <section class="cs-section cs-block" id="block-{{ block.id }}"
+           {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+    {% snippet "csunesco/blocks/_heading.html", block=block %}
+    <div class="cs-stats-band">
+      {% for item in block['items'] %}
+        <div class="stat-item">
+          <div class="stat-number">
+            {%- if item.source == 'manual' -%}
+              {{ item.value }}
+            {%- else -%}
+              {{ ctx.stats.get(item.source, 0) }}
+            {%- endif -%}
+          </div>
+          <div class="stat-label">{{ item.label }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}

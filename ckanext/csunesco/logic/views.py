@@ -23,6 +23,7 @@ import ckan.plugins.toolkit as tk
 import ckan.model as model
 
 from ckanext.csunesco import constants
+from ckanext.csunesco.logic import page_render
 
 log = logging.getLogger(__name__)
 
@@ -198,35 +199,44 @@ def project_landing(slug):
     project['initiative_title'] = _INITIATIVE_TITLES.get(
         project.get('initiative_group'), project.get('initiative_group'))
 
-    # Recent news/events for this project (summarized cards). Fetched HERE via
-    # the action so the template never calls actions from Jinja. Fails soft to an
-    # empty list so a content error never breaks the landing page.
-    try:
-        content_listing = tk.get_action('csunesco_content_list')(
-            _context(), {'project_id': project['id'], 'limit': 6, 'offset': 0})
-        news_events = content_listing.get('results', [])
-    except Exception:
-        log.warning('csunesco: project landing news/events unavailable')
-        news_events = []
-
-    # Connected app-data sources. The action widens scope for managers (they
-    # also see their pending/rejected rows with status badges); the public gets
-    # approved sources only. Fails soft so the landing always renders.
-    try:
-        ds_listing = tk.get_action('csunesco_data_source_list')(
-            _context(), {'project_id': project['id'], 'limit': 20})
-        data_sources = ds_listing.get('results', [])
-    except Exception:
-        log.warning('csunesco: project landing data sources unavailable')
-        data_sources = []
+    # The page body is the project's PUBLISHED block list. A project whose
+    # manager never published one falls back to the default layout, which is
+    # exactly the section order this page had before it became block-driven --
+    # so there is one rendering path, not a default template plus a custom one.
+    blocks = _published_blocks(project['id'])
+    blocks = page_render.visible_blocks(blocks)
+    ctx = page_render.build_context(
+        _context(), project, blocks,
+        has_region=has_region,
+        can_manage=tk.h.csunesco_can_manage_project(project['id']))
 
     return tk.render('csunesco/project_landing.html', extra_vars={
         'project': project,
-        'stats': project.get('stats') or {},
-        'has_region': has_region,
-        'news_events': news_events,
-        'data_sources': data_sources,
+        'blocks': blocks,
+        'ctx': ctx,
+        'is_draft_preview': False,
     })
+
+
+def _published_blocks(project_id):
+    """The project's published blocks, or the default layout.
+
+    ``published_blocks`` is ``None`` (never published) rather than ``[]``
+    (deliberately emptied) -- only the first falls back to the default. Fails
+    soft to the default so a page-storage problem degrades the landing to the
+    standard sections instead of breaking it.
+    """
+    from ckanext.csunesco.logic import blocks as blocks_module
+    try:
+        page = tk.get_action('csunesco_project_page_show')(
+            _context(), {'project_id': project_id})
+    except Exception:
+        log.warning('csunesco: project page could not be loaded')
+        return blocks_module.default_blocks()
+    published = page.get('published_blocks')
+    if published is None:
+        return blocks_module.default_blocks()
+    return published
 
 
 def project_geojson(slug):

@@ -1253,3 +1253,491 @@
 .cs-news-band .cs-content-grid {
   margin-top: var(--space-unit);
 }
+
+/* ===========================================================================
+ * Project pages: the blocks a manager composes, and the editor that builds
+ * them. Uses the existing tokens plus the water-family proportions the old CS
+ * Toolbox portal used: a 8/10/12/16px radius ladder, a soft lift on hover, and
+ * a gradient rule under section titles.
+ * ========================================================================= */
+
+/* ---- Shared block chrome ----------------------------------------------- */
+
+.cs-block-narrow {
+  max-width: 68ch;      /* a comfortable measure for prose */
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.cs-block-caption {
+  margin: 0.6rem 0 0;
+  color: #5a6b7b;
+  font-size: 0.9rem;
+}
+
+.cs-preview-banner,
+.cs-page-edit-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 var(--space-unit);
+}
+
+.cs-preview-banner {
+  padding: 0.75rem 1rem;
+  background: #fff8e1;
+  border-left: 4px solid var(--admin-gold);
+  border-radius: var(--radius);
+  color: #6b5100;
+}
+
+.cs-page-edit-bar {
+  justify-content: flex-end;
+  margin-top: var(--space-unit);
+}
+
+/* ---- Callout ----------------------------------------------------------- */
+
+.cs-callout {
+  padding: calc(var(--space-unit) * 1.25) calc(var(--space-unit) * 1.5);
+  border-left: 5px solid var(--unesco-blue);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #f8fbff 0%, #eef5fd 100%);
+  box-shadow: var(--shadow);
+}
+
+.cs-callout-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+  color: var(--unesco-blue-dark);
+}
+
+.cs-callout .cs-rich-text > :last-child { margin-bottom: 0; }
+.cs-callout-action { margin: var(--space-unit) 0 0; }
+
+.cs-callout-success { border-left-color: #1baa80; background: #f2fbf8; }
+.cs-callout-success .cs-callout-title { color: #0f7a5b; }
+.cs-callout-warning { border-left-color: var(--admin-gold); background: #fff8e8; }
+.cs-callout-warning .cs-callout-title { color: #8a5a00; }
+.cs-callout-action-tone { border-left-color: var(--unesco-blue-light); }
+
+/* ---- Gallery ----------------------------------------------------------- */
+
+.cs-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: calc(var(--space-unit) * 1.25);
+}
+
+.cs-gallery-single,
+.cs-gallery-wide { grid-template-columns: 1fr; }
+
+.cs-gallery-item {
+  margin: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--unesco-blue-pale);
+  box-shadow: var(--shadow);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.cs-gallery-item:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 32px rgba(0, 114, 188, 0.18);
+}
+
+.cs-gallery-item img {
+  display: block;
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+}
+
+.cs-gallery-single .cs-gallery-item img,
+.cs-gallery-wide .cs-gallery-item img { height: auto; max-height: 520px; }
+
+.cs-gallery-caption {
+  padding: 0.75rem 1rem;
+  background: #fff;
+  font-size: 0.9rem;
+  color: #46586a;
+}
+
+/* The lightbox is built in JS; without it the images are still plain links. */
+.cs-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgba(0, 24, 48, 0.88);
+}
+
+.cs-lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.cs-lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--unesco-blue-dark);
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+/* ---- Video / Terria embeds --------------------------------------------- */
+
+.cs-video {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  background: #000;
+}
+
+.cs-video-16-9 { aspect-ratio: 16 / 9; }
+.cs-video-4-3 { aspect-ratio: 4 / 3; }
+
+.cs-video iframe,
+.cs-video video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.cs-terria-embed {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.cs-terria-embed iframe { width: 100%; height: 100%; border: 0; }
+
+/* ---- Chart card -------------------------------------------------------- */
+/* min-width:0 is load-bearing: without it a wide canvas refuses to shrink and
+   blows the whole grid past the viewport. */
+
+.cs-chart-card {
+  margin: 0;
+  padding: var(--space-unit);
+  min-width: 0;
+  background: #fff;
+  border: 1px solid #e2e8ef;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.cs-chart {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cs-chart canvas { max-width: 100%; }
+
+.cs-chart-fallback,
+.cs-chart-message {
+  margin: 0;
+  color: #5a6b7b;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* Once a chart renders, its CSV link moves out of the way but stays reachable. */
+.cs-chart.is-rendered .cs-chart-fallback {
+  position: absolute;
+  right: 0;
+  bottom: -1.6rem;
+  font-size: 0.8rem;
+}
+
+.cs-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+  font-size: 0.82rem;
+  color: #46586a;
+}
+
+.cs-chart-legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 0.35rem;
+  border-radius: 50%;
+  vertical-align: baseline;
+}
+
+/* ---- Dataset + content list blocks ------------------------------------- */
+
+.cs-dataset-list,
+.cs-block-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.cs-dataset-item {
+  padding: var(--space-unit);
+  background: #fff;
+  border: 1px solid #e2e8ef;
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.cs-dataset-title {
+  font-weight: 600;
+  color: var(--unesco-blue-dark);
+  text-decoration: none;
+}
+
+.cs-dataset-title:hover { text-decoration: underline; }
+.cs-dataset-notes { margin: 0.35rem 0 0; color: #46586a; font-size: 0.92rem; }
+
+.cs-block-list-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--unesco-blue-pale);
+}
+
+/* ===========================================================================
+ * The page editor
+ * ========================================================================= */
+
+.cs-pb-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-unit);
+  margin-top: var(--space-unit);
+  padding: var(--space-unit);
+  background: var(--unesco-blue-pale);
+  border-radius: var(--radius);
+}
+
+.cs-pb-status { margin: 0; color: #33475b; font-size: 0.95rem; }
+.cs-pb-toolbar-links { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+.cs-pb-list {
+  list-style: none;
+  margin: calc(var(--space-unit) * 1.5) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-unit);
+}
+
+.cs-pb-block {
+  background: #fff;
+  border: 1px solid #e2e8ef;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* A hidden block stays fully editable -- it is just visibly "off". */
+.cs-pb-block.is-hidden { opacity: 0.62; }
+.cs-pb-block.is-hidden .cs-pb-head { background: #f1f3f5; }
+
+.cs-pb-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.7rem var(--space-unit);
+  background: var(--unesco-blue-pale);
+  border-bottom: 1px solid #dbe7f5;
+}
+
+.cs-pb-kind {
+  font-weight: 600;
+  color: var(--unesco-blue-dark);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cs-pb-icon { font-size: 1.15rem; }
+
+.cs-pb-tag {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid #cfe0f2;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #5a6b7b;
+}
+
+.cs-pb-tag-review { border-color: #f0d39a; background: #fff8e8; color: #8a5a00; }
+
+.cs-pb-ops { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.cs-pb-ops .cs-btn { padding: 0.35rem 0.7rem; }
+.cs-pb-ops .cs-btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+.cs-pb-body { padding: var(--space-unit); }
+.cs-pb-body > .cs-hint:first-child { margin-top: 0; }
+
+.cs-pb-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  font-size: 0.92rem;
+  color: #46586a;
+}
+
+.cs-pb-pair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.cs-pb-items { display: grid; gap: 0.75rem; }
+
+.cs-pb-item {
+  border: 1px solid #e6ecf3;
+  border-radius: 10px;
+  padding: 0.75rem;
+  margin: 0;
+}
+
+.cs-pb-item legend {
+  padding: 0 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6c757d;
+}
+
+.cs-pb-richtext { font-family: inherit; line-height: 1.5; }
+
+.cs-pb-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: calc(var(--space-unit) * 1.25);
+}
+
+/* ---- Add-a-section palette --------------------------------------------- */
+
+.cs-pb-palette { margin-top: calc(var(--space-unit) * 2); }
+
+.cs-pb-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 0.75rem;
+}
+
+.cs-pb-add {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: var(--space-unit);
+  text-align: left;
+  background: #fff;
+  border: 1px solid #e2e8ef;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.cs-pb-add:hover:not([disabled]),
+.cs-pb-add:focus-visible:not([disabled]) {
+  transform: translateY(-3px);
+  border-color: var(--unesco-blue-light);
+  box-shadow: 0 10px 22px rgba(0, 114, 188, 0.16);
+}
+
+.cs-pb-add[disabled] { opacity: 0.5; cursor: not-allowed; }
+.cs-pb-add-icon { font-size: 1.5rem; }
+.cs-pb-add-label { font-weight: 700; color: var(--unesco-blue-dark); }
+.cs-pb-add-desc { font-size: 0.85rem; color: #5a6b7b; line-height: 1.35; }
+.cs-pb-add-limit { font-size: 0.75rem; font-weight: 600; color: #8a5a00; }
+
+/* ---- Rich-text toolbar (progressive enhancement) ----------------------- */
+
+.cs-rt-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  background: #f4f8fd;
+  border: 1px solid #dbe7f5;
+  border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.cs-rt-btn {
+  min-width: 34px;
+  padding: 0.3rem 0.55rem;
+  background: #fff;
+  border: 1px solid #dbe7f5;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: var(--unesco-blue-dark);
+  cursor: pointer;
+}
+
+.cs-rt-btn:hover { background: var(--unesco-blue-pale); }
+
+.cs-rt-area {
+  min-height: 9rem;
+  padding: 0.75rem;
+  background: #fff;
+  border: 1px solid #dbe7f5;
+  border-radius: 0 0 var(--radius) var(--radius);
+  line-height: 1.55;
+}
+
+.cs-rt-area:focus-visible { outline: 2px solid var(--unesco-blue-light); }
+
+@media (min-width: 600px) {
+  .cs-pb-pair { grid-template-columns: 1fr 1fr; }
+  .cs-pb-item-inline { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; align-items: end; }
+  .cs-pb-item-inline legend { grid-column: 1 / -1; }
+}
+
+/* The portal theme appends ":" to every <label> (it assumes a field caption).
+   These labels wrap a checkbox and read as a sentence, so the colon lands in
+   the middle of the phrase -- suppress it just for them. */
+.cs-pb-toggle::after,
+.cs-pb-toggle::before {
+  content: none !important;
+}
+
+/* Repeatable rows lay their label+input pairs out in columns. Each pair is
+   wrapped in a <span> so the grid places PAIRS, not alternating labels and
+   inputs -- otherwise a caption ends up under someone else's field. */
+.cs-pb-item-inline > span { display: block; min-width: 0; }
+.cs-pb-item-inline > span label { display: block; }
+.cs-pb-item-inline > span input,
+.cs-pb-item-inline > span select { width: 100%; }

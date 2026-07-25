@@ -1,0 +1,25 @@
+{#
+  Block: a map of one data source's observations.
+
+  The id is looked up in ctx.approved_sources -- this project's APPROVED set,
+  rebuilt on every render. A source rejected after this block was saved, or an
+  id copied from another project, simply resolves to nothing.
+
+  Vars: block, ctx.
+#}
+{% set source = ctx.approved_sources.get(block.data_source_id) %}
+{% if source %}
+  <section class="cs-section cs-block" id="block-{{ block.id }}"
+           {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+    {% snippet "csunesco/blocks/_heading.html", block=block %}
+    <div class="cs-map cs-data-map" style="height: {{ block.height }}px;"
+         data-observations-url="{{ h.url_for('csunesco.data_source_geojson', id=source.id) }}"
+         role="img" aria-label="{{ _('Map of the observations collected by this project') }}">
+      <div class="cs-map-skeleton" aria-hidden="true">
+        <span class="cs-map-skeleton-text">{{ _("Loading observations…") }}</span>
+      </div>
+      <p class="cs-map-fallback" hidden></p>
+    </div>
+    {% if block.caption %}<p class="cs-block-caption">{{ block.caption }}</p>{% endif %}
+  </section>
+{% endif %}

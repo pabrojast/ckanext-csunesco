@@ -352,6 +352,192 @@ def csunesco_data_source_show(context, data_dict):
     return db.data_source_dictize(data_source)
 
 
+# ---------------------------------------------------------------------------
+# Chart feeds: aggregated series + the field list behind the editor's picker
+# ---------------------------------------------------------------------------
+#
+# Both reuse ofform.fetch_dashboard_data and therefore its TTL cache, and both
+# aggregate SERVER-side. That is the whole point: the raw payload for a real
+# form is ~1.6 MB (1605 rows), which must never be shipped to a browser just to
+# draw a line. What goes out is a few KB of dense arrays.
+#
+# Neither is hung off csunesco_data_source_show: the CSV/GeoJSON proxy calls
+# that action on EVERY request, and adding an upstream fetch to it would make
+# every download pay for a feature it does not use.
+
+def _approved_source_or_404(data_dict):
+    """Resolve an APPROVED data source, honouring an optional project pin.
+
+    Approval is checked here rather than trusted from the caller: a source can
+    be rejected after a block was saved pointing at it, and a block's stored id
+    may have been copied from another project. Same rule the CSV/GeoJSON proxy
+    applies in ``views_data._approved_source``.
+    """
+    data_source = db.get_data_source((data_dict or {}).get('id'))
+    if data_source is None or data_source.status != 'approved':
+        raise tk.ObjectNotFound(tk._('Data source not found'))
+    project_key = (data_dict or {}).get('project_id')
+    if project_key:
+        project = db.get_project(project_key)
+        if project is None or project.id != data_source.project_id:
+            raise tk.ObjectNotFound(tk._('Data source not found'))
+    return data_source
+
+
+@tk.side_effect_free
+def csunesco_data_source_fields(context, data_dict):
+    """The chartable fields of a data source's form (public, TTL-cached).
+
+    Feeds the page editor's field picker: which columns hold numbers, which are
+    categorical and how the observations are spread in time.
+    """
+    tk.check_access('csunesco_data_source_fields', context, data_dict)
+    data_source = _approved_source_or_404(data_dict)
+
+    from ckanext.csunesco.logic import aggregate, ofform
+    payload = ofform.fetch_dashboard_data(data_source.form_id)
+    rows = payload.get('rows') or []
+    schema = payload.get('schema') or {}
+    site_field = aggregate.detect_site_field(schema, rows)
+    first, last = aggregate.date_span(rows)
+
+    return {
+        'data_source_id': data_source.id,
+        'form_id': data_source.form_id,
+        'title': data_source.title,
+        'total': payload.get('total', len(rows)),
+        'truncated': bool(payload.get('truncated')),
+        'first_date': first.isoformat() if first else None,
+        'last_date': last.isoformat() if last else None,
+        'site_field': site_field,
+        'numeric': aggregate.numeric_fields_with_data(schema, rows),
+        'categorical': aggregate.categorical_field_options(
+            schema, rows, site_field),
+    }
+
+
+@tk.side_effect_free
+def csunesco_data_source_series(context, data_dict):
+    """Aggregated, display-ready series for one chart block (public).
+
+    Returns dense arrays aligned to ``labels`` -- ``points[i]`` is ``None``
+    where a period has no observation, so a gap stays a visible hole instead of
+    a straight line drawn across it. Labels are sortable, locale-free period
+    keys, which is why the browser needs no date adapter.
+    """
+    tk.check_access('csunesco_data_source_series', context, data_dict)
+    data_dict = data_dict or {}
+    data_source = _approved_source_or_404(data_dict)
+
+    from ckanext.csunesco.logic import aggregate, ofform
+    payload = ofform.fetch_dashboard_data(data_source.form_id)
+    rows = payload.get('rows') or []
+    schema = payload.get('schema') or {}
+    total_rows = payload.get('total', len(rows))
+
+    mode = data_dict.get('mode')
+    if mode not in ('numeric', 'category', 'count'):
+        mode = 'count'
+    field = (data_dict.get('field') or '').strip()
+    agg = data_dict.get('agg')
+    if agg not in aggregate.AGGREGATIONS:
+        agg = 'mean'
+
+    # Time window: an explicit start/end wins over the preset.
+    start = aggregate.parse_iso_day(data_dict.get('start'))
+    end = aggregate.parse_iso_day(data_dict.get('end'))
+    if start is None and end is None:
+        start = aggregate.preset_start(data_dict.get('range'),
+                                       datetime.datetime.utcnow().date())
+    rows = aggregate.filter_rows_by_date(rows, start, end)
+
+    result = {
+        'data_source_id': data_source.id,
+        'form_id': data_source.form_id,
+        'mode': mode,
+        'total_rows': total_rows,
+        'truncated': bool(payload.get('truncated')),
+    }
+
+    if mode == 'category':
+        if not field:
+            raise tk.ValidationError({'field': [tk._('Missing value')]})
+        out = aggregate.aggregate_categories(
+            rows, field, top_n=_bounded(data_dict.get('max_categories'),
+                                        aggregate.MAX_CATEGORIES, 2, 24))
+        result.update({
+            'field': field,
+            'field_label': aggregate.field_label(schema, field),
+            'labels': out['labels'],
+            'series': aggregate.round_series(out['series']),
+            'used_rows': out['used_rows'],
+        })
+        return result
+
+    # Both remaining modes are time series, so they share the bucketing.
+    first, last = aggregate.date_span(rows)
+    granularity = data_dict.get('bucket')
+    if granularity not in ('day', 'week', 'month'):
+        granularity = aggregate.choose_bucket(first, last)
+    elif aggregate.estimate_labels(first, last, granularity) \
+            > aggregate.MAX_LABELS:
+        # An author-chosen granularity must still respect the axis ceiling.
+        granularity = aggregate.choose_bucket(first, last)
+    labels = aggregate.bucket_labels(first, last, granularity)
+
+    if mode == 'numeric':
+        if not field:
+            raise tk.ValidationError({'field': [tk._('Missing value')]})
+        group_by = data_dict.get('group_by')
+        if group_by == 'auto' or group_by is None:
+            site_field = aggregate.detect_site_field(schema, rows)
+        else:
+            site_field = group_by or None
+        out = aggregate.aggregate_numeric(
+            rows, field, granularity, labels, site_field=site_field, agg=agg,
+            max_series=_bounded(data_dict.get('max_series'),
+                                aggregate.MAX_SERIES, 1, aggregate.MAX_SERIES))
+        result.update({
+            'field': field,
+            'field_label': aggregate.field_label(schema, field),
+            'agg': agg,
+            'group_by': site_field or '',
+            'used_rows': out['used_rows'],
+        })
+        # Only sent when the data actually crosses a Tukey fence: a lone bad
+        # reading must not flatten the real signal, but clean data is left to
+        # auto-scale (the keys are simply absent then).
+        clamp = aggregate.robust_range(out['values'])
+        if 'min' in clamp:
+            result['y_min'] = clamp['min']
+        if 'max' in clamp:
+            result['y_max'] = clamp['max']
+        series = out['series']
+    else:
+        out = aggregate.aggregate_counts(rows, granularity, labels,
+                                         series_name='observations')
+        result.update({'field': '', 'field_label': tk._('Observations'),
+                       'used_rows': out['used_rows']})
+        series = out['series']
+
+    result.update({
+        'bucket': granularity,
+        'labels': labels,
+        'series': aggregate.round_series(series),
+        'first_date': first.isoformat() if first else None,
+        'last_date': last.isoformat() if last else None,
+    })
+    return result
+
+
+def _bounded(value, default, minimum, maximum):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, number))
+
+
 def get_actions():
     return {
         'csunesco_data_source_create': csunesco_data_source_create,
@@ -359,4 +545,6 @@ def get_actions():
         'csunesco_data_source_reject': csunesco_data_source_reject,
         'csunesco_data_source_list': csunesco_data_source_list,
         'csunesco_data_source_show': csunesco_data_source_show,
+        'csunesco_data_source_fields': csunesco_data_source_fields,
+        'csunesco_data_source_series': csunesco_data_source_series,
     }

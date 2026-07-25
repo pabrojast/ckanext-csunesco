@@ -1,0 +1,9 @@
+{#
+  Built-in block: the "At a Glance" counter band.
+
+  A thin wrapper over the existing snippet so the section can be reordered or
+  hidden like any other block without duplicating its markup.
+
+  Vars: block, ctx (see snippets/block_render.html).
+#}
+{% snippet "csunesco/snippets/at_a_glance.html", stats=ctx.stats %}

@@ -1,0 +1,22 @@
+{# Editor: an IHP-WINS map viewer (Terria) scene. Vars: block, index, project. #}
+<div class="cs-field">
+  <label for="b{{ index }}-terria-url">{{ _("Map share link") }}</label>
+  <input type="url" id="b{{ index }}-terria-url" name="blocks[{{ index }}][url]"
+         value="{{ block.url }}" placeholder="https://…/terria/#share=…"
+         aria-describedby="b{{ index }}-terria-hint">
+  <p class="cs-hint" id="b{{ index }}-terria-hint">
+    {{ _("Build your map in the IHP-WINS map viewer, use its Share button and paste the link here. Only links to the official map viewer are accepted.") }}
+  </p>
+</div>
+<div class="cs-field cs-pb-pair">
+  <span>
+    <label for="b{{ index }}-terria-caption">{{ _("Caption") }}</label>
+    <input type="text" id="b{{ index }}-terria-caption" name="blocks[{{ index }}][caption]"
+           value="{{ block.caption }}">
+  </span>
+  <span>
+    <label for="b{{ index }}-terria-height">{{ _("Height (pixels)") }}</label>
+    <input type="number" id="b{{ index }}-terria-height" name="blocks[{{ index }}][height]"
+           value="{{ block.height }}" min="300" max="800" step="20">
+  </span>
+</div>

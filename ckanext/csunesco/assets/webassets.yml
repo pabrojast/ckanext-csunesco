@@ -27,3 +27,39 @@ cs-data-map-js:
   output: js/cs-data-map.js
   contents:
     - js/cs-data-map.js
+
+# Chart.js 4.5.1, VENDORED rather than pulled from a CDN: a public UNESCO page
+# should make no third-party request, and the portal must keep working without
+# outbound internet access. No rjsmin filter -- the file is already minified and
+# re-minifying a 208 KB bundle only burns build time.
+chartjs:
+  output: js/chart.umd.min.js
+  contents:
+    - vendor/chart.umd.min.js
+
+# Chart blocks on a project page. Depends on Chart.js being loaded first (the
+# template emits the chartjs bundle before this one) and on nothing else.
+cs-charts-js:
+  filters: rjsmin
+  output: js/cs-charts.js
+  contents:
+    - js/cs-charts.js
+
+# The project-page editor: rich-text toolbar, reorder, chart field picker.
+# Preloads csunesco-js so it can reuse its shared helpers.
+cs-page-editor-js:
+  filters: rjsmin
+  output: js/cs-page-editor.js
+  extra:
+    preload:
+      - csunesco/csunesco-js
+  contents:
+    - js/cs-page-editor.js
+
+# Public project-page behaviour (the gallery lightbox). Loaded only by pages
+# that actually have one; the gallery works without it.
+cs-page-view-js:
+  filters: rjsmin
+  output: js/cs-page-view.js
+  contents:
+    - js/cs-page-view.js

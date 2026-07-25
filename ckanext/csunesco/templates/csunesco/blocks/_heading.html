@@ -1,0 +1,12 @@
+{#
+  Shared: a block's optional section heading.
+
+  The title renders as <h2>, which is why the rich-text allowlist refuses
+  author-level <h2> -- otherwise the page's heading outline would depend on
+  what someone typed into a paragraph.
+
+  Vars: block.
+#}
+{% if block.title %}
+  <h2 class="cs-section-title" id="title-{{ block.id }}">{{ block.title }}</h2>
+{% endif %}

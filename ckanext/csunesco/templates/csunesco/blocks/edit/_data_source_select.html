@@ -1,0 +1,31 @@
+{#
+  Shared control: pick one of the project's APPROVED data sources.
+
+  Approved only -- a block may only point at data the public can already reach
+  through the proxy. The chosen id is re-checked against this project's approved
+  set at render time anyway, so a stale or copied id simply renders nothing.
+
+  Vars: block, index, project, field_id.
+#}
+{% set sources = h.csunesco_project_data_sources(project.id) %}
+<div class="cs-field">
+  <label for="{{ field_id }}">{{ _("Data") }}</label>
+  {% if sources %}
+    <select id="{{ field_id }}" name="blocks[{{ index }}][data_source_id]">
+      <option value="">{{ _("— choose the data to show —") }}</option>
+      {% for source in sources %}
+        <option value="{{ source.id }}"
+                {% if block.data_source_id == source.id %}selected{% endif %}>
+          {{ source.title }}
+        </option>
+      {% endfor %}
+    </select>
+  {% else %}
+    <p class="cs-hint">
+      {{ _("This project has no approved data yet.") }}
+      <a href="{{ h.url_for('csunesco.data_connect', slug=project.slug) }}">{{ _("Connect app data") }}</a>
+    </p>
+    <input type="hidden" name="blocks[{{ index }}][data_source_id]"
+           value="{{ block.data_source_id }}">
+  {% endif %}
+</div>

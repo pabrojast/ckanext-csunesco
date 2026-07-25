@@ -1,0 +1,36 @@
+{#
+  Block: latest news / events / publications / maps.
+
+  Rows are resolved ONCE per distinct query in the view and looked up through
+  the helper -- several blocks with the same settings share one lookup instead
+  of each running its own on a public page.
+
+  Vars: block, ctx.
+#}
+{% set items = h.csunesco_block_content(ctx, block) %}
+<section class="cs-section cs-block" id="block-{{ block.id }}"
+         {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+  {% snippet "csunesco/blocks/_heading.html", block=block %}
+  {% if block.layout == 'list' %}
+    <ul class="cs-block-list">
+      {% for item in items %}
+        <li class="cs-block-list-item">
+          <a class="cs-link" href="{{ h.url_for('csunesco.' + item.content_type | replace('cs-', 'cs_') + 's_show', slug=item.slug) }}">{{ item.title }}</a>
+          {% if item.publish_date %}
+            <span class="cs-muted">{{ item.publish_date[:10] }}</span>
+          {% endif %}
+        </li>
+      {% else %}
+        <li class="cs-empty">{{ block.empty_text or _("Nothing published yet.") }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="cs-content-grid">
+      {% for item in items %}
+        {% snippet "csunesco/snippets/content_card.html", item=item, show_status=false %}
+      {% else %}
+        <p class="cs-empty">{{ block.empty_text or _("Nothing published yet.") }}</p>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>

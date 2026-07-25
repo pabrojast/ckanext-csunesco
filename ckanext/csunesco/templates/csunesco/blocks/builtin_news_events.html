@@ -1,0 +1,23 @@
+{#
+  Built-in block: the project's latest news, events, publications and maps.
+
+  Vars: block, ctx.
+#}
+<section class="cs-section" aria-labelledby="cs-news-events-title">
+  <div class="cs-section-header">
+    <h2 id="cs-news-events-title" class="cs-section-title">{{ _("News, Events & More") }}</h2>
+    {% if ctx.can_manage %}
+      <a class="cs-btn cs-btn-secondary cs-btn-sm"
+         href="{{ h.url_for('csunesco.content_new', slug=ctx.project.slug) }}">
+        {{ _("Add content") }}
+      </a>
+    {% endif %}
+  </div>
+  <div class="cs-content-grid">
+    {% for item in ctx.news_events %}
+      {% snippet "csunesco/snippets/content_card.html", item=item, show_status=ctx.can_manage %}
+    {% else %}
+      <p class="cs-empty">{{ _("No news or events have been published for this project yet.") }}</p>
+    {% endfor %}
+  </div>
+</section>

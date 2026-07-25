@@ -157,6 +157,40 @@ cs_data_source_table = Table(
                      name='uq_cs_data_source_project_form'),
 )
 
+cs_project_page_table = Table(
+    'cs_project_page', metadata,
+    # One row per project (like cs_project_stats): the page IS the project's,
+    # so the project id is the key.
+    Column('project_id', types.UnicodeText, primary_key=True),
+    # The two versions of the block list, each a JSON array.
+    #   draft_json     -- what the manager is editing; the edit source of truth.
+    #   published_json -- what the public sees.
+    # NULL published_json means "never published" and makes the landing fall
+    # back to blocks.default_blocks(); '[]' means "deliberately emptied". Read
+    # them with `is None` BEFORE _load_json, which collapses the two.
+    Column('draft_json', types.Text),
+    Column('published_json', types.Text),
+    # State of the DRAFT (never of the published version):
+    #   draft -> pending -> approved | rejected.
+    Column('status', types.UnicodeText, index=True, default=u'draft'),
+    # sha256 of draft_json as of the last update. The review panel echoes it
+    # back and approve refuses a stale one, so a reviewer can never approve a
+    # draft that changed between reading it and clicking Approve.
+    Column('draft_hash', types.UnicodeText),
+    Column('created_by', types.UnicodeText, index=True),
+    Column('submitted_by', types.UnicodeText),
+    Column('submitted_at', types.DateTime),
+    Column('reviewed_by', types.UnicodeText),
+    Column('reviewed_at', types.DateTime),
+    Column('published_at', types.DateTime),
+    Column('rejection_reason', types.Text),
+    Column('extras', types.Text, default=u'{}'),
+    Column('created', types.DateTime, default=_utcnow),
+    Column('modified', types.DateTime, default=_utcnow),
+    # The review-queue listing: filter by status, newest first.
+    Index('ix_cs_project_page_status_modified', 'status', 'modified'),
+)
+
 cs_citizen_scientist_table = Table(
     'cs_citizen_scientist', metadata,
     Column('id', types.UnicodeText, primary_key=True, default=make_uuid),
@@ -184,6 +218,7 @@ _ALL_TABLES = [
     cs_project_stats_table,
     cs_citizen_scientist_table,
     cs_data_source_table,
+    cs_project_page_table,
 ]
 
 
@@ -215,6 +250,10 @@ class CsDataSource(DomainObject):
     pass
 
 
+class CsProjectPage(DomainObject):
+    pass
+
+
 _mapped = False
 
 
@@ -229,6 +268,7 @@ def _ensure_mappers():
     mapper(CsProjectStats, cs_project_stats_table)
     mapper(CsCitizenScientist, cs_citizen_scientist_table)
     mapper(CsDataSource, cs_data_source_table)
+    mapper(CsProjectPage, cs_project_page_table)
     _mapped = True
 
 
@@ -301,19 +341,22 @@ def _ensure_columns(engine):
 
 
 def _ensure_indexes(engine):
-    """Create any missing composite index on cs_content (checkfirst=True).
+    """Create any missing index on ANY of our tables (checkfirst=True).
 
-    ``create_all`` only builds indexes when it first creates the owning table, so
-    an index added AFTER a table's first release would never appear on existing
-    deployments. This creates each ``cs_content`` index by name if absent -- run
-    AFTER ``_ensure_columns`` so index columns (e.g. the auto-healed ``slug``)
-    already exist. Failures are logged generically and never break startup.
+    ``create_all`` only builds indexes when it first creates the owning table,
+    so an index added AFTER a table's first release would never appear on
+    existing deployments. This walks every table we own -- not just one -- so a
+    new index is auto-healed wherever it is declared. Run AFTER
+    ``_ensure_columns`` so index columns (e.g. the auto-healed ``slug``) already
+    exist. Failures are logged generically and never break startup.
     """
-    for index in cs_content_table.indexes:
-        try:
-            index.create(bind=engine, checkfirst=True)
-        except Exception:
-            log.error("ckanext-csunesco: could not auto-heal a table index")
+    for table in _ALL_TABLES:
+        for index in table.indexes:
+            try:
+                index.create(bind=engine, checkfirst=True)
+            except Exception:
+                log.error(
+                    "ckanext-csunesco: could not auto-heal a table index")
 
 
 def ensure_tables():
@@ -1249,6 +1292,159 @@ def _count_pending_data_sources(initiative_groups=None):
     return query.count()
 
 
+# ---------------------------------------------------------------------------
+# Project pages (the block-composed landing)
+# ---------------------------------------------------------------------------
+
+def page_dictize(page, include_draft=False):
+    """Flatten a ``CsProjectPage`` to a plain dict, blocks already parsed.
+
+    ``published_blocks`` is ``None`` when the page has NEVER been published --
+    the caller then renders ``blocks.default_blocks()``. It is ``[]`` when the
+    manager deliberately emptied the page. Those two must not collapse, which is
+    why the NULL check happens here and not via ``_load_json``.
+
+    ``draft_blocks`` is only included for callers that may see the draft (its
+    manager and reviewers); the public dict never carries unpublished content.
+    """
+    if page is None:
+        return None
+    from ckanext.csunesco.logic import blocks as blocks_module
+    result = {
+        'project_id': page.project_id,
+        'status': page.status,
+        'draft_hash': page.draft_hash,
+        'created_by': page.created_by,
+        'submitted_by': page.submitted_by,
+        'submitted_at': _iso(page.submitted_at),
+        'reviewed_by': page.reviewed_by,
+        'reviewed_at': _iso(page.reviewed_at),
+        'published_at': _iso(page.published_at),
+        'rejection_reason': page.rejection_reason,
+        'created': _iso(page.created),
+        'modified': _iso(page.modified),
+        'published_blocks': (
+            None if page.published_json is None
+            else blocks_module.blocks_from_json(page.published_json)),
+    }
+    if include_draft:
+        result['draft_blocks'] = blocks_module.blocks_from_json(
+            page.draft_json)
+    extras = _load_json(page.extras, {})
+    if isinstance(extras, dict):
+        for key, value in extras.items():
+            result.setdefault(key, value)
+    return result
+
+
+def get_project_page(project_id):
+    """Fetch a ``CsProjectPage`` by project id (None when the row is absent)."""
+    _ensure_mappers()
+    if not project_id:
+        return None
+    return Session.query(CsProjectPage).get(project_id)
+
+
+def get_or_create_project_page(project_id, created_by=None, draft_json=None):
+    """Idempotently create the page row for a project (no commit).
+
+    Same SAVEPOINT discipline as :func:`ensure_stats`: a concurrent insert that
+    wins the race only rolls back the nested transaction, never the caller's.
+    """
+    _ensure_mappers()
+    existing = get_project_page(project_id)
+    if existing is not None:
+        return existing
+    page = CsProjectPage()
+    page.project_id = project_id
+    page.draft_json = draft_json
+    page.published_json = None
+    page.status = u'draft'
+    page.created_by = created_by
+    page.extras = u'{}'
+    page.created = _utcnow()
+    page.modified = page.created
+    savepoint = Session.begin_nested()
+    try:
+        Session.add(page)
+        Session.flush()
+        savepoint.commit()
+        return page
+    except IntegrityError:
+        # Another writer inserted the row first -> reuse it.
+        savepoint.rollback()
+        return get_project_page(project_id)
+
+
+def pending_pages(limit=20, offset=0, initiative_groups=None):
+    """Pages awaiting review in scope. ``(total, [dict, ...])``.
+
+    ``initiative_groups=None`` means "every pending page" (sysadmin scope); a
+    list restricts to the pages of those initiatives' projects and an EMPTY list
+    always returns zero -- the same scoping rule as ``pending_data_sources``.
+
+    Selects EXPLICIT columns rather than entities: the two JSON columns can hold
+    half a megabyte each, and the review tab only needs the metadata.
+    """
+    _ensure_mappers()
+    query = (
+        Session.query(
+            CsProjectPage.project_id,
+            CsProjectPage.status,
+            CsProjectPage.draft_hash,
+            CsProjectPage.submitted_by,
+            CsProjectPage.submitted_at,
+            CsProjectPage.modified,
+            CsProject.title,
+            CsProject.slug,
+            CsProject.initiative_group,
+        )
+        .outerjoin(CsProject, CsProject.id == CsProjectPage.project_id)
+        .filter(CsProjectPage.status == 'pending')
+    )
+    if initiative_groups is not None:
+        if not initiative_groups:
+            return 0, []
+        query = query.filter(CsProject.initiative_group.in_(initiative_groups))
+    total = query.count()
+    rows = (
+        query.order_by(CsProjectPage.modified.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    results = []
+    for row in rows:
+        results.append({
+            'project_id': row[0],
+            'status': row[1],
+            'draft_hash': row[2],
+            'submitted_by': row[3],
+            'submitted_at': _iso(row[4]),
+            'modified': _iso(row[5]),
+            'project_title': row[6],
+            'project_slug': row[7],
+            'initiative_group': row[8],
+        })
+    return total, results
+
+
+def _count_pending_pages(initiative_groups=None):
+    query = (
+        Session.query(CsProjectPage.project_id)
+        .filter(CsProjectPage.status == 'pending')
+    )
+    if initiative_groups is not None:
+        if not initiative_groups:
+            return 0
+        query = (
+            query.outerjoin(CsProject,
+                            CsProject.id == CsProjectPage.project_id)
+            .filter(CsProject.initiative_group.in_(initiative_groups))
+        )
+    return query.count()
+
+
 def _resolve_user(context):
     """Resolve the acting ``User`` object from a CKAN action context.
 
@@ -1268,17 +1464,23 @@ def _resolve_user(context):
 def pending_counts(context):
     """At-a-glance pending counts for the acting user (role-aware, cheap).
 
-    Sysadmins see every pending project / join / content / data source. An
-    initiative admin (ADM) sees the pending projects, content, joins and data
-    sources of THEIR initiatives; a project-admin sees pending joins + content
-    for THEIR projects. Everyone else sees zeros. Every count is a COUNT(*)
-    query -- this is the single source used by both the admin panel and the
-    header-badge helper so the numbers are always identical.
+    Sysadmins see every pending project / join / content / data source / page.
+    An initiative admin (ADM) sees the pending projects, content, joins, data
+    sources and pages of THEIR initiatives; a project-admin sees pending joins +
+    content for THEIR projects. Everyone else sees zeros. Every count is a
+    COUNT(*) query -- this is the single source used by both the admin panel and
+    the header-badge helper so the numbers are always identical.
+
+    Adding a queue means touching FOUR things in this function alone (the
+    ``zero`` dict, both branches and the ``total``) plus the action and the
+    view's fallback dict; ``test_db_behavior`` asserts the key set and that
+    ``total`` equals the sum, which is what catches a half-done addition.
     """
     _ensure_mappers()
     user_obj = _resolve_user(context)
     zero = {'project_requests': 0, 'join_requests': 0,
-            'content_requests': 0, 'data_requests': 0, 'total': 0}
+            'content_requests': 0, 'data_requests': 0,
+            'page_requests': 0, 'total': 0}
     if user_obj is None:
         return dict(zero)
 
@@ -1287,6 +1489,7 @@ def pending_counts(context):
         joins = _count_pending_joins(None)
         content = _count_pending_content(None)
         data_sources = _count_pending_data_sources()
+        pages = _count_pending_pages()
     else:
         project_ids = admin_project_ids(user_obj.id)
         initiative_groups = admin_initiative_groups(user_obj.id)
@@ -1301,11 +1504,17 @@ def pending_counts(context):
         content = _count_pending_content(scope_ids)
         data_sources = (_count_pending_data_sources(initiative_groups)
                         if initiative_groups else 0)
+        # Pages are scoped by INITIATIVE (like data sources), not by project:
+        # a plain project admin cannot approve their own page, so surfacing it
+        # in their queue would only show them a row with no buttons.
+        pages = (_count_pending_pages(initiative_groups)
+                 if initiative_groups else 0)
 
     return {
         'project_requests': projects,
         'join_requests': joins,
         'content_requests': content,
         'data_requests': data_sources,
-        'total': projects + joins + content + data_sources,
+        'page_requests': pages,
+        'total': projects + joins + content + data_sources + pages,
     }

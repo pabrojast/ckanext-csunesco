@@ -1,0 +1,38 @@
+{#
+  Block: video.
+
+  The src is built HERE from the extracted id -- the author's URL never reaches
+  an iframe verbatim, which is what stops a "video block" from becoming an
+  arbitrary-embed block. A link we could not parse renders nothing at all.
+
+  youtube-nocookie is used so a visitor is not tracked for merely loading the
+  page, and `allow` grants only what a player needs.
+
+  Deliberately NO referrerpolicy="no-referrer": YouTube and Vimeo verify the
+  embedding domain from the Referer header, so suppressing it makes the player
+  refuse to start ("Error 153 -- Video player configuration error"). And no
+  sandbox: a cross-origin player needs allow-scripts AND allow-same-origin,
+  which together let the frame clear its own sandbox anyway -- so it buys no
+  safety here while breaking playback. What actually contains this embed is
+  that WE build the src from a validated id, never from author input.
+
+  Vars: block, ctx.
+#}
+{% set embed = h.csunesco_video_embed_url(block.provider, block.video_id) %}
+{% if embed or (block.provider == 'file' and block.url) %}
+  <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}"
+           id="block-{{ block.id }}"
+           {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+    {% snippet "csunesco/blocks/_heading.html", block=block %}
+    <div class="cs-video cs-video-{{ block.ratio | replace(':', '-') }}">
+      {% if embed %}
+        <iframe src="{{ embed }}" title="{{ block.title or block.caption or _('Video') }}"
+                loading="lazy" allowfullscreen frameborder="0"
+                allow="encrypted-media; picture-in-picture; fullscreen"></iframe>
+      {% else %}
+        <video controls preload="none" src="{{ block.url }}"></video>
+      {% endif %}
+    </div>
+    {% if block.caption %}<p class="cs-block-caption">{{ block.caption }}</p>{% endif %}
+  </section>
+{% endif %}

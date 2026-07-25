@@ -1,0 +1,24 @@
+{#
+  Built-in block: the project region map.
+
+  Self-suppresses when the project has no region: an empty full-height box
+  pushes the real content below the fold, and the Data section already carries
+  the observation maps.
+
+  Vars: block, ctx.
+#}
+{% if ctx.has_region %}
+  <section class="cs-section" aria-labelledby="cs-map-title">
+    <h2 id="cs-map-title" class="cs-section-title">{{ _("Project Region") }}</h2>
+    <div id="cs-map" class="cs-map"
+         data-geojson-url="{{ h.csunesco_project_url(ctx.project.slug) }}/geojson"
+         role="img" aria-label="{{ _('Map of the project region') }}">
+      <div class="cs-map-skeleton" aria-hidden="true">
+        <span class="cs-map-skeleton-text">{{ _("Loading map…") }}</span>
+      </div>
+      <p class="cs-map-fallback" hidden>
+        {{ _("No region defined for this project.") }}
+      </p>
+    </div>
+  </section>
+{% endif %}

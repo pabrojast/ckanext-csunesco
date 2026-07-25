@@ -1,0 +1,90 @@
+{#
+  Editor: a chart of the app's observations.
+
+  The field name is a plain text input here so the block is fully editable
+  without JavaScript; with JS it becomes a picker populated from the data
+  source's own field list (/citizen-science/data/<id>/fields), which is why the
+  container carries data-fields-base.
+
+  Vars: block, index, project.
+#}
+{% snippet "csunesco/blocks/edit/_data_source_select.html", block=block,
+           index=index, project=project, field_id='b%s-chart-source' % index %}
+
+<div class="cs-pb-chart" data-chart-editor data-index="{{ index }}">
+  <div class="cs-field">
+    <label for="b{{ index }}-chart-mode">{{ _("What to show") }}</label>
+    <select id="b{{ index }}-chart-mode" name="blocks[{{ index }}][mode]">
+      {% for value, label in [('count', _('How many observations over time')),
+                              ('numeric', _('A measurement over time')),
+                              ('category', _('How often each answer was given'))] %}
+        <option value="{{ value }}" {% if block.mode == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="cs-field">
+    <label for="b{{ index }}-chart-field">{{ _("Which measurement or question") }}</label>
+    <input type="text" id="b{{ index }}-chart-field" name="blocks[{{ index }}][field]"
+           value="{{ block.field }}" list="b{{ index }}-chart-fieldlist"
+           placeholder="{{ _('e.g. ph') }}" aria-describedby="b{{ index }}-chart-field-hint">
+    <datalist id="b{{ index }}-chart-fieldlist"></datalist>
+    <p class="cs-hint" id="b{{ index }}-chart-field-hint">
+      {{ _("Not needed when showing how many observations over time.") }}
+    </p>
+  </div>
+
+  <div class="cs-field cs-pb-pair">
+    <span>
+      <label for="b{{ index }}-chart-type">{{ _("Chart type") }}</label>
+      <select id="b{{ index }}-chart-type" name="blocks[{{ index }}][chart]">
+        <option value="line" {% if block.chart == 'line' %}selected{% endif %}>{{ _("Line") }}</option>
+        <option value="bar" {% if block.chart == 'bar' %}selected{% endif %}>{{ _("Bars") }}</option>
+        <option value="pie" {% if block.chart == 'pie' %}selected{% endif %}>{{ _("Pie") }}</option>
+      </select>
+    </span>
+    <span>
+      <label for="b{{ index }}-chart-agg">{{ _("Combine values by") }}</label>
+      <select id="b{{ index }}-chart-agg" name="blocks[{{ index }}][agg]">
+        {% for value, label in [('mean', _('Average')), ('max', _('Highest')),
+                                ('min', _('Lowest')), ('sum', _('Total')),
+                                ('count', _('Number of readings'))] %}
+          <option value="{{ value }}" {% if block.agg == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </span>
+  </div>
+
+  <div class="cs-field cs-pb-pair">
+    <span>
+      <label for="b{{ index }}-chart-group">{{ _("One line per site") }}</label>
+      <select id="b{{ index }}-chart-group" name="blocks[{{ index }}][group_by]">
+        <option value="auto" {% if block.group_by == 'auto' %}selected{% endif %}>{{ _("Yes, detect the site column") }}</option>
+        <option value="" {% if block.group_by != 'auto' %}selected{% endif %}>{{ _("No, one line for everything") }}</option>
+      </select>
+    </span>
+    <span>
+      <label for="b{{ index }}-chart-range">{{ _("Time range") }}</label>
+      <select id="b{{ index }}-chart-range" name="blocks[{{ index }}][range]">
+        {% for value, label in [('all', _('All time')), ('1y', _('Last year')),
+                                ('90d', _('Last 90 days')), ('30d', _('Last 30 days'))] %}
+          <option value="{{ value }}" {% if block.range == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </span>
+  </div>
+
+  <div class="cs-field cs-pb-pair">
+    <span>
+      <label for="b{{ index }}-chart-caption">{{ _("Caption") }}</label>
+      <input type="text" id="b{{ index }}-chart-caption" name="blocks[{{ index }}][caption]"
+             value="{{ block.caption }}">
+    </span>
+    <span>
+      <label for="b{{ index }}-chart-height">{{ _("Height (pixels)") }}</label>
+      <input type="number" id="b{{ index }}-chart-height" name="blocks[{{ index }}][height]"
+             value="{{ block.height }}" min="200" max="600" step="20">
+    </span>
+  </div>
+  <input type="hidden" name="blocks[{{ index }}][bucket]" value="{{ block.bucket }}">
+</div>

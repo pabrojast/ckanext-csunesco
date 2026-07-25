@@ -126,6 +126,7 @@ def csunesco_admin_pending_list(context, data_dict):
         _content_count, content_requests = _pending_content(
             context, None, limit, offset)
         _data_count, data_requests = db.pending_data_sources(limit, offset)
+        _page_count, page_requests = db.pending_pages(limit, offset)
     else:
         # Initiative admins review the projects + data sources of THEIR
         # initiatives; plain project-admins never see either list.
@@ -134,9 +135,14 @@ def csunesco_admin_pending_list(context, data_dict):
                 initiative_groups, limit, offset)
             _data_count, data_requests = db.pending_data_sources(
                 limit, offset, initiative_groups=initiative_groups)
+            # Pages are scoped by initiative like data sources: a plain project
+            # admin cannot approve their own page, so it must not reach them.
+            _page_count, page_requests = db.pending_pages(
+                limit, offset, initiative_groups=initiative_groups)
         else:
             project_requests = []
             data_requests = []
+            page_requests = []
         scope = project_ids or []
         _join_count, join_requests = _pending_join_requests(
             context, scope, limit, offset)
@@ -148,6 +154,7 @@ def csunesco_admin_pending_list(context, data_dict):
         'join_requests': join_requests,
         'content_requests': content_requests,
         'data_requests': data_requests,
+        'page_requests': page_requests,
         # Identical numbers to the header badge (single cached source).
         'counts': _get_pending_counts(context),
         'limit': limit,

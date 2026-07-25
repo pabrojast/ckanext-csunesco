@@ -40,7 +40,12 @@ PROBE_TIMEOUT = 6
 # Hard cap on a proxied payload (bytes): protects CKAN worker memory from a
 # runaway upstream response. ofform itself truncates dashboard data at 20k rows.
 MAX_PROXY_BYTES = 20_000_000
-MAX_CACHE_ENTRIES = 128
+# Kept deliberately small: a cached entry is a PARSED dashboard payload, and a
+# real one runs to ~1.6 MB (form 3 on the dev portal: 1605 rows). At 128 that is
+# ~200 MB of resident dicts per worker. Chart blocks keep this cache far hotter
+# than the proxy alone did, so the ceiling has to be a size the workers can
+# actually afford.
+MAX_CACHE_ENTRIES = 32
 
 _cache = {}
 _cache_lock = threading.Lock()

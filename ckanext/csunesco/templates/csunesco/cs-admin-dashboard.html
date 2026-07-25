@@ -54,6 +54,13 @@
           <span class="cs-tab-count">{{ counts.get('data_requests', 0) }}</span>
         </button>
       {% endif %}
+      {% if can_review_pages %}
+        <button type="button" class="cs-tab" role="tab" id="cs-tabbtn-pages"
+                data-tab="pages" aria-controls="cs-tab-pages" aria-selected="false">
+          {{ _("Pages to review") }}
+          <span class="cs-tab-count">{{ counts.get('page_requests', 0) }}</span>
+        </button>
+      {% endif %}
     </div>
 
     {# ---- Project requests (sysadmin / initiative admin) --------------- #}
@@ -346,6 +353,68 @@
           </button>
         {% else %}
           <p class="cs-empty">{{ _("No data sources are awaiting review.") }}</p>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if can_review_pages %}
+      {#
+        Project pages awaiting review. Each row carries the draft_hash the
+        reviewer was shown: the approve action refuses a stale one, so a page
+        edited after this panel rendered cannot be published unseen.
+      #}
+      <div class="cs-tabpanel" id="cs-tab-pages" role="tabpanel"
+           aria-labelledby="cs-tabbtn-pages" hidden>
+        {% if page_requests %}
+          <table class="cs-admin-table">
+            <thead>
+              <tr>
+                <th scope="col">{{ _("Project") }}</th>
+                <th scope="col">{{ _("Initiative") }}</th>
+                <th scope="col">{{ _("Submitted") }}</th>
+                <th scope="col">{{ _("Decision") }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in page_requests %}
+                <tr>
+                  <td data-label="{{ _('Project') }}">
+                    <a href="{{ h.url_for('csunesco.project_landing', slug=row.project_slug) }}">
+                      {{ row.project_title or row.project_slug }}
+                    </a>
+                  </td>
+                  <td data-label="{{ _('Initiative') }}">{{ row.initiative_group }}</td>
+                  <td data-label="{{ _('Submitted') }}">{{ (row.submitted_at or row.modified or '')[:16] | replace('T', ' ') }}</td>
+                  <td data-label="{{ _('Decision') }}">
+                    <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                       href="{{ h.url_for('csunesco.project_page_preview', slug=row.project_slug) }}">
+                      {{ _("Preview") }}
+                    </a>
+                    <form method="post" class="cs-inline-form"
+                          action="{{ h.url_for('csunesco.page_approve', project_id=row.project_id) }}">
+                      {{ h.csrf_input() }}
+                      <input type="hidden" name="draft_hash" value="{{ row.draft_hash }}">
+                      <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">
+                        {{ _("Publish") }}
+                      </button>
+                    </form>
+                    <form method="post" class="cs-inline-form"
+                          action="{{ h.url_for('csunesco.page_reject', project_id=row.project_id) }}">
+                      {{ h.csrf_input() }}
+                      <input type="text" name="reason" class="cs-reason-input"
+                             placeholder="{{ _('Reason (optional)') }}"
+                             aria-label="{{ _('Reason for sending back') }}">
+                      <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">
+                        {{ _("Send back") }}
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="cs-empty">{{ _("No project pages are awaiting review.") }}</p>
         {% endif %}
       </div>
     {% endif %}

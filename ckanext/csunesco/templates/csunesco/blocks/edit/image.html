@@ -1,0 +1,53 @@
+{#
+  Editor: image / gallery.
+
+  Always renders the stored items PLUS two blank rows (up to the cap), so a
+  manager can add pictures without JavaScript and without a server round trip
+  just to grow the form. Blank rows are dropped on save (an item with no URL is
+  not an item).
+
+  Vars: block, index, project.
+#}
+<div class="cs-field">
+  <label for="b{{ index }}-layout">{{ _("Layout") }}</label>
+  <select id="b{{ index }}-layout" name="blocks[{{ index }}][layout]">
+    {% for value, label in [('grid', _('Grid')), ('single', _('One large image')),
+                            ('wide', _('Full-width banner'))] %}
+      <option value="{{ value }}" {% if block.layout == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+{% set items = block['items'] or [] %}
+{% set slots = [items | length + 2, 12] | min %}
+<div class="cs-pb-items" id="b{{ index }}-items">
+  {% for slot in range(slots) %}
+    {% set item = items[slot] if slot < items | length else {} %}
+    <fieldset class="cs-pb-item cs-pb-item-inline">
+      <legend>{{ _("Image %(n)s", n=slot + 1) }}</legend>
+      <span>
+        <label for="b{{ index }}-i{{ slot }}-url">{{ _("Image URL (https)") }}</label>
+        <input type="url" id="b{{ index }}-i{{ slot }}-url"
+               name="blocks[{{ index }}][items][{{ slot }}][url]"
+               value="{{ item.url or '' }}" placeholder="https://…/photo.jpg">
+      </span>
+      <span>
+        <label for="b{{ index }}-i{{ slot }}-alt">{{ _("Description for screen readers") }}</label>
+        <input type="text" id="b{{ index }}-i{{ slot }}-alt"
+               name="blocks[{{ index }}][items][{{ slot }}][alt]"
+               value="{{ item.alt or '' }}">
+      </span>
+      <span>
+        <label for="b{{ index }}-i{{ slot }}-caption">{{ _("Caption") }}</label>
+        <input type="text" id="b{{ index }}-i{{ slot }}-caption"
+               name="blocks[{{ index }}][items][{{ slot }}][caption]"
+               value="{{ item.caption or '' }}">
+      </span>
+    </fieldset>
+  {% endfor %}
+</div>
+<label class="cs-pb-toggle">
+  <input type="checkbox" name="blocks[{{ index }}][lightbox]" value="on"
+         {% if block.lightbox %}checked{% endif %}>
+  {{ _("Open images full size when clicked") }}
+</label>

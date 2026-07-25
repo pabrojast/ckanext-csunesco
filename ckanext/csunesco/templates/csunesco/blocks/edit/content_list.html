@@ -1,0 +1,45 @@
+{# Editor: latest news / events / publications. Vars: block, index, project. #}
+<div class="cs-field cs-pb-pair">
+  <span>
+    <label for="b{{ index }}-cl-type">{{ _("Show") }}</label>
+    <select id="b{{ index }}-cl-type" name="blocks[{{ index }}][content_type]">
+      {% for value, label in [('all', _('Everything')), ('cs-news', _('News')),
+                              ('cs-event', _('Events')),
+                              ('cs-publication', _('Publications')),
+                              ('cs-map', _('Maps'))] %}
+        <option value="{{ value }}" {% if block.content_type == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </span>
+  <span>
+    <label for="b{{ index }}-cl-scope">{{ _("From") }}</label>
+    <select id="b{{ index }}-cl-scope" name="blocks[{{ index }}][scope]">
+      <option value="project" {% if block.scope == 'project' %}selected{% endif %}>{{ _("This project") }}</option>
+      <option value="initiative" {% if block.scope == 'initiative' %}selected{% endif %}>{{ _("The whole initiative") }}</option>
+    </select>
+  </span>
+</div>
+<div class="cs-field cs-pb-pair">
+  <span>
+    <label for="b{{ index }}-cl-limit">{{ _("How many") }}</label>
+    <input type="number" id="b{{ index }}-cl-limit" name="blocks[{{ index }}][limit]"
+           value="{{ block.limit }}" min="1" max="12">
+  </span>
+  <span>
+    <label for="b{{ index }}-cl-layout">{{ _("Layout") }}</label>
+    <select id="b{{ index }}-cl-layout" name="blocks[{{ index }}][layout]">
+      <option value="grid" {% if block.layout == 'grid' %}selected{% endif %}>{{ _("Cards") }}</option>
+      <option value="list" {% if block.layout == 'list' %}selected{% endif %}>{{ _("List") }}</option>
+    </select>
+  </span>
+</div>
+<div class="cs-field">
+  <label for="b{{ index }}-cl-empty">{{ _("Text when there is nothing to show") }}</label>
+  <input type="text" id="b{{ index }}-cl-empty" name="blocks[{{ index }}][empty_text]"
+         value="{{ block.empty_text }}">
+</div>
+<label class="cs-pb-toggle">
+  <input type="checkbox" name="blocks[{{ index }}][featured_only]" value="on"
+         {% if block.featured_only %}checked{% endif %}>
+  {{ _("Only featured items") }}
+</label>

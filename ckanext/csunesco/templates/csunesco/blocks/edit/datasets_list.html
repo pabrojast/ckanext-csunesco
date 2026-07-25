@@ -1,0 +1,39 @@
+{#
+  Editor: datasets published on IHP-WINS.
+
+  References are one per line: splitting on any whitespace would chop an
+  invalid entry like "my dataset" into a "my" that happens to look like a valid
+  name, i.e. silently point at the wrong thing.
+
+  Vars: block, index, project.
+#}
+<div class="cs-field">
+  <label for="b{{ index }}-ds-source">{{ _("Which datasets") }}</label>
+  <select id="b{{ index }}-ds-source" name="blocks[{{ index }}][source]">
+    {% for value, label in [('project', _("This project's connected data")),
+                            ('organization', _('All datasets of an organization')),
+                            ('ids', _('A list I choose'))] %}
+      <option value="{{ value }}" {% if block.source == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</div>
+<div class="cs-field">
+  <label for="b{{ index }}-ds-org">{{ _("Organization name") }}</label>
+  <input type="text" id="b{{ index }}-ds-org" name="blocks[{{ index }}][org]"
+         value="{{ block.org }}" placeholder="citizen-science">
+</div>
+<div class="cs-field">
+  <label for="b{{ index }}-ds-ids">{{ _("Dataset names, one per line") }}</label>
+  <textarea id="b{{ index }}-ds-ids" name="blocks[{{ index }}][ids]" rows="4"
+            >{{ block['ids'] | join('\n') }}</textarea>
+</div>
+<div class="cs-field">
+  <label for="b{{ index }}-ds-limit">{{ _("How many") }}</label>
+  <input type="number" id="b{{ index }}-ds-limit" name="blocks[{{ index }}][limit]"
+         value="{{ block.limit }}" min="1" max="12">
+</div>
+<label class="cs-pb-toggle">
+  <input type="checkbox" name="blocks[{{ index }}][show_description]" value="on"
+         {% if block.show_description %}checked{% endif %}>
+  {{ _("Show each dataset's description") }}
+</label>

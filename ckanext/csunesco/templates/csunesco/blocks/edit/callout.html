@@ -1,0 +1,27 @@
+{# Editor: highlighted note with an optional button. Vars: block, index, project. #}
+<div class="cs-field">
+  <label for="b{{ index }}-tone">{{ _("Style") }}</label>
+  <select id="b{{ index }}-tone" name="blocks[{{ index }}][tone]">
+    {% for value, label in [('info', _('Information')), ('success', _('Positive')),
+                            ('warning', _('Warning')), ('action', _('Call to action'))] %}
+      <option value="{{ value }}" {% if block.tone == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</div>
+<div class="cs-field">
+  <label for="b{{ index }}-callout-html">{{ _("Text") }}</label>
+  <textarea id="b{{ index }}-callout-html" name="blocks[{{ index }}][html]" rows="4"
+            class="cs-pb-richtext">{{ block.html }}</textarea>
+</div>
+<div class="cs-field cs-pb-pair">
+  <span>
+    <label for="b{{ index }}-cta-label">{{ _("Button label") }}</label>
+    <input type="text" id="b{{ index }}-cta-label" name="blocks[{{ index }}][cta_label]"
+           value="{{ block.cta_label }}">
+  </span>
+  <span>
+    <label for="b{{ index }}-cta-url">{{ _("Button link") }}</label>
+    <input type="text" id="b{{ index }}-cta-url" name="blocks[{{ index }}][cta_url]"
+           value="{{ block.cta_url }}" placeholder="https://… {{ _('or') }} /citizen-science/…">
+  </span>
+</div>

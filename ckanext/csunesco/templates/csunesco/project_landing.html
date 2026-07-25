@@ -1,15 +1,22 @@
 {% extends "csunesco/base.html" %}
 
 {#
-  Public project landing (increment 4): hero, "At a Glance" band, a region map
-  block (async GeoJSON with a visible skeleton + "No region defined" fallback),
-  a sanitized description, and a JOIN block (POST button when logged in / login
-  + register links otherwise, plus a QR image and short link).
+  Public project landing: a fixed hero followed by the project's BLOCKS.
 
-  landing_content was sanitized server-side BEFORE storage, so it is the ONLY
-  value rendered with `| safe`. Every other `{{ ... }}` is autoescaped.
+  The body is composed by the project manager from an ordered block list
+  (logic/blocks.py). A project that has never published a page renders
+  blocks.default_blocks(), which is exactly the section order this page had
+  before it became block-driven -- so there is only ever ONE rendering path,
+  never a "default template" and a "custom template" to keep in step.
 
-  Vars: project (dict, region_geojson stripped), stats (dict), has_region (bool).
+  The hero stays outside the loop (it is the project's identity, not content),
+  and so does the sysadmin trust toggle (an admin control, not content).
+
+  Every `| safe` in the block snippets renders a value that was sanitized
+  server-side BEFORE storage. Everything else is autoescaped.
+
+  Vars: project (dict, region_geojson stripped), blocks (list), ctx (dict from
+        logic/page_render.build_context), is_draft_preview (bool).
 #}
 
 {% block subtitle %}{{ project.title }}{% endblock %}
@@ -17,6 +24,17 @@
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
+  {% if is_draft_preview %}
+    <p class="cs-preview-banner" role="status">
+      <strong>{{ _("Draft preview.") }}</strong>
+      {{ _("This is your unpublished version — the public still sees the published page.") }}
+      <a class="cs-btn cs-btn-secondary cs-btn-sm"
+         href="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
+        {{ _("Back to the editor") }}
+      </a>
+    </p>
+  {% endif %}
+
   <section class="cs-hero cs-project-hero" aria-labelledby="cs-project-title">
     {% if project.initiative_title %}
       <p class="cs-project-hero-initiative">{{ project.initiative_title }}</p>
@@ -27,10 +45,10 @@
     {% endif %}
   </section>
 
-  {% snippet "csunesco/snippets/at_a_glance.html", stats=stats %}
-
   {# ---- Trusted toggle (sysadmin-only policy lever, P2): trusted projects
-        publish news/events without review. ------------------------------- #}
+        publish news/events without review. Deliberately OUTSIDE the block
+        loop -- it is an admin control, not page content, so a manager can
+        neither reorder nor hide it. ------------------------------------- #}
   {% if h.check_access('csunesco_project_trusted_set', {'id': project.id}) %}
     <section class="cs-section" aria-label="{{ _('Trust policy') }}">
       <form method="post"
@@ -53,156 +71,21 @@
     </section>
   {% endif %}
 
-  {# ---- Region map (only when a region exists: an empty full-height box
-        pushes the real content below the fold; the Data section already
-        carries the observation maps). ------------------------------------ #}
-  {% if has_region %}
-    <section class="cs-section" aria-labelledby="cs-map-title">
-      <h2 id="cs-map-title" class="cs-section-title">{{ _("Project Region") }}</h2>
-      <div id="cs-map" class="cs-map"
-           data-geojson-url="{{ h.csunesco_project_url(project.slug) }}/geojson"
-           role="img" aria-label="{{ _('Map of the project region') }}">
-        <div class="cs-map-skeleton" aria-hidden="true">
-          <span class="cs-map-skeleton-text">{{ _("Loading map…") }}</span>
-        </div>
-        <p class="cs-map-fallback" hidden>
-          {{ _("No region defined for this project.") }}
-        </p>
-      </div>
-    </section>
+  {% if ctx.can_manage and not is_draft_preview %}
+    <p class="cs-page-edit-bar">
+      <a class="cs-btn cs-btn-secondary cs-btn-sm"
+         href="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
+        {{ _("Edit this page") }}
+      </a>
+    </p>
   {% endif %}
 
-  {# ---- Description (pre-sanitized landing_content) -------------------- #}
-  {% if project.landing_content %}
-    <section class="cs-section cs-project-description" aria-labelledby="cs-desc-title">
-      <h2 id="cs-desc-title" class="cs-section-title">{{ _("About this project") }}</h2>
-      {# landing_content is sanitized server-side before storage -> safe. #}
-      <div class="cs-rich-text">{{ project.landing_content | safe }}</div>
-    </section>
-  {% endif %}
-
-  {% set can_manage = h.csunesco_can_manage_project(project.id) %}
-
-  {# ---- Data (observations from the CS Toolbox app) --------------------- #}
-  <section class="cs-section" aria-labelledby="cs-data-title">
-    <div class="cs-section-header">
-      <h2 id="cs-data-title" class="cs-section-title">{{ _("Data") }}</h2>
-      {% if can_manage %}
-        <span class="cs-section-header-links">
-          <a class="cs-btn cs-btn-secondary cs-btn-sm"
-             href="{{ h.url_for('csunesco.data_connect', slug=project.slug) }}">
-            {{ _("Connect app data") }}
-          </a>
-          {% set stories_url = h.csunesco_data_stories_new_url() %}
-          {% if stories_url %}
-            <a class="cs-btn cs-btn-secondary cs-btn-sm" href="{{ stories_url }}">
-              {{ _("Create a data story") }}
-            </a>
-          {% endif %}
-        </span>
-      {% endif %}
-    </div>
-    {% set approved_sources = data_sources | selectattr('status', 'equalto', 'approved') | list %}
-    {% for ds in approved_sources %}
-      <article class="cs-data-source">
-        <h3 class="cs-data-source-title">{{ ds.title }}</h3>
-        {% if ds.description %}
-          {# description is sanitized server-side before storage -> safe. #}
-          <div class="cs-rich-text">{{ ds.description | safe }}</div>
-        {% endif %}
-        <div class="cs-map cs-data-map"
-             data-observations-url="{{ h.url_for('csunesco.data_source_geojson', id=ds.id) }}"
-             role="img" aria-label="{{ _('Map of the observations collected by this project') }}">
-          <div class="cs-map-skeleton" aria-hidden="true">
-            <span class="cs-map-skeleton-text">{{ _("Loading observations…") }}</span>
-          </div>
-          <p class="cs-map-fallback" hidden></p>
-        </div>
-        <p class="cs-data-links">
-          {% if ds.ckan_package_id %}
-            <a class="cs-link" href="{{ h.url_for('dataset.read', id=ds.ckan_package_id) }}">
-              {{ _("View dataset on IHP-WINS") }}
-            </a>
-          {% endif %}
-          <a class="cs-link" href="{{ h.url_for('csunesco.data_source_csv', id=ds.id) }}">
-            {{ _("Download CSV") }}
-          </a>
-          <a class="cs-link" href="{{ h.url_for('csunesco.data_source_geojson', id=ds.id) }}">
-            {{ _("GeoJSON") }}
-          </a>
-        </p>
-      </article>
-    {% endfor %}
-    {% if can_manage %}
-      {% for ds in data_sources if ds.status != 'approved' %}
-        <p class="cs-data-source-pending">
-          <span class="cs-status-badge cs-status-{{ ds.status }}">{{ ds.status }}</span>
-          {{ ds.title }}
-          {% if ds.status == 'rejected' and ds.rejection_reason %}
-            &mdash; {{ ds.rejection_reason | striptags }}
-          {% endif %}
-        </p>
-      {% endfor %}
-    {% endif %}
-    {% if not approved_sources %}
-      <p class="cs-empty">
-        {{ _("No datasets have been published for this project yet. Data collected in the CS Toolbox app appears here once approved.") }}
-      </p>
-    {% endif %}
-  </section>
-
-  {# ---- News & Events -------------------------------------------------- #}
-  <section class="cs-section" aria-labelledby="cs-news-events-title">
-    <div class="cs-section-header">
-      <h2 id="cs-news-events-title" class="cs-section-title">{{ _("News, Events & More") }}</h2>
-      {% if can_manage %}
-        <a class="cs-btn cs-btn-secondary cs-btn-sm"
-           href="{{ h.url_for('csunesco.content_new', slug=project.slug) }}">
-          {{ _("Add content") }}
-        </a>
-      {% endif %}
-    </div>
-    <div class="cs-content-grid">
-      {% for item in news_events %}
-        {% snippet "csunesco/snippets/content_card.html", item=item, show_status=can_manage %}
-      {% else %}
-        <p class="cs-empty">{{ _("No news or events have been published for this project yet.") }}</p>
-      {% endfor %}
-    </div>
-  </section>
-
-  {# ---- Join block ----------------------------------------------------- #}
-  {% set project_link = h.url_for('csunesco.project_landing', slug=project.slug, qualified=True) %}
-  {% set qr = h.csunesco_qr_data_uri(project_link) %}
-  <section class="cs-section cs-join" aria-labelledby="cs-join-title">
-    <h2 id="cs-join-title" class="cs-section-title">{{ _("Join this project") }}</h2>
-    <div class="cs-join-inner">
-      <div class="cs-join-actions">
-        {% if g.user %}
-          <form method="post" action="{{ h.csunesco_join_url(project.slug) }}" class="cs-join-form">
-            {{ h.csrf_input() }}
-            <button type="submit" class="cs-btn cs-btn-primary">{{ _("Request to join") }}</button>
-          </form>
-          <p class="cs-hint">{{ _("Your request will be reviewed by the project admin.") }}</p>
-        {% else %}
-          <p>{{ _("Log in or create a Citizen Scientist account to join this project.") }}</p>
-          <a class="cs-btn cs-btn-primary" href="{{ h.url_for('user.login') }}">{{ _("Log in") }}</a>
-          <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.register_citizen') }}">{{ _("Register") }}</a>
-        {% endif %}
-      </div>
-
-      <div class="cs-join-share">
-        {% if qr %}
-          <img class="cs-join-qr" src="{{ qr }}"
-               alt="{{ _('QR code to access this project') }}" width="160" height="160">
-        {% endif %}
-        <p class="cs-join-link">
-          <span class="cs-join-link-label">{{ _("Share this project:") }}</span>
-          <a href="{{ project_link }}">{{ project_link }}</a>
-        </p>
-      </div>
-    </div>
-  </section>
+  {# ---- The project's blocks ------------------------------------------
+        Managers see hidden blocks too when previewing their draft; the
+        public render skips them (logic/page_render.visible_blocks). ----- #}
+  {% for block in blocks %}
+    {% snippet "csunesco/snippets/block_render.html", block=block, ctx=ctx %}
+  {% endfor %}
 {% endblock %}
 
 {% block scripts %}
@@ -217,4 +100,12 @@
           crossorigin=""></script>
   {% asset 'csunesco/cs-map-js' %}
   {% asset 'csunesco/cs-data-map-js' %}
+  {# Chart.js is 208 KB: only ship it to pages that actually chart something. #}
+  {% if ctx.has_charts %}
+    {% asset 'csunesco/chartjs' %}
+    {% asset 'csunesco/cs-charts-js' %}
+  {% endif %}
+  {% if ctx.has_lightbox %}
+    {% asset 'csunesco/cs-page-view-js' %}
+  {% endif %}
 {% endblock %}

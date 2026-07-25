@@ -1,0 +1,27 @@
+{#
+  Block: an IHP-WINS map viewer (Terria) scene.
+
+  h.csunesco_terria_embed_url re-runs the base allowlist AT RENDER TIME, so a
+  URL stored before a config change cannot keep framing a host we no longer
+  trust. When it returns None we degrade to a plain link rather than an iframe.
+
+  Vars: block, ctx.
+#}
+{% if block.url %}
+  {% set embed = h.csunesco_terria_embed_url(block.url) %}
+  <section class="cs-section cs-block" id="block-{{ block.id }}"
+           {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+    {% snippet "csunesco/blocks/_heading.html", block=block %}
+    {% if embed %}
+      <div class="cs-terria-embed" style="height: {{ block.height }}px;">
+        <iframe src="{{ embed }}" title="{{ block.title or _('Map viewer') }}"
+                loading="lazy" allowfullscreen frameborder="0"></iframe>
+      </div>
+    {% else %}
+      <p class="cs-empty">
+        <a class="cs-link" href="{{ block.url }}" rel="noopener">{{ _("Open the map") }}</a>
+      </p>
+    {% endif %}
+    {% if block.caption %}<p class="cs-block-caption">{{ block.caption }}</p>{% endif %}
+  </section>
+{% endif %}

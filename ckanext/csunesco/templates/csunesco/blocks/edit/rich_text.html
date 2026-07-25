@@ -1,0 +1,20 @@
+{#
+  Editor: rich text.
+
+  A real <textarea> is what gets submitted -- with JS, the toolbar edits a
+  contenteditable and syncs back into this field on input. Rendering a
+  contenteditable and "falling back" is not possible: it submits nothing.
+
+  Vars: block, index, project.
+#}
+<div class="cs-field">
+  <label for="b{{ index }}-html">{{ _("Text") }}</label>
+  <p class="cs-hint" id="b{{ index }}-html-hint">
+    {{ _("Allowed HTML tags:") }}
+    <code>b i em strong u a p ul ol li br hr h3 h4 h5 blockquote table</code>.
+    {{ _("Everything else is removed when saved.") }}
+  </p>
+  <textarea id="b{{ index }}-html" name="blocks[{{ index }}][html]" rows="8"
+            class="cs-pb-richtext" aria-describedby="b{{ index }}-html-hint"
+            >{{ block.html }}</textarea>
+</div>

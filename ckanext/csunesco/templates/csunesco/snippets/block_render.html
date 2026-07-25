@@ -1,0 +1,20 @@
+{#
+  Render ONE project-page block.
+
+  This is the only place a block type maps to a template. Everything else reads
+  the registry in logic/blocks.py, so the type list can never be duplicated
+  (that duplication is exactly what rots in the Data Stories editor, where the
+  block types live in five hand-maintained places).
+
+  An unknown type renders NOTHING rather than raising: block JSON may predate a
+  release that removed a type, and one stale row must not take down a public
+  page. h.csunesco_block_type() returns None for anything not in the registry.
+
+  Vars:
+    block -- one normalized block dict (always has id/type/title/hidden/width).
+    ctx   -- the shared render context from logic/page_render.build_context.
+#}
+{% set spec = h.csunesco_block_type(block.type) %}
+{% if spec %}
+  {% snippet spec.snippet, block=block, ctx=ctx %}
+{% endif %}

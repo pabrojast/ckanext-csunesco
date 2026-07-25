@@ -1,3 +1,6 @@
 recursive-include ckanext/csunesco/templates *.html
 recursive-include ckanext/csunesco/assets *
 recursive-include ckanext/csunesco/public *
+# The aggregation tests read a real (trimmed) CS Toolbox capture, so the fixture
+# has to travel with the package for `pytest` to work from an sdist.
+recursive-include ckanext/csunesco/tests/fixtures *.json

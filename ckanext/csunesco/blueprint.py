@@ -222,6 +222,30 @@ def data_connect(slug):
     return views_data.data_connect(slug)
 
 
+def data_source_series(id):
+    """Aggregated chart series for an APPROVED data source (public JSON)."""
+    from ckanext.csunesco.logic import views_data
+    return views_data.data_source_series(id)
+
+
+def data_source_fields(id):
+    """Chartable field list of an APPROVED data source (public JSON)."""
+    from ckanext.csunesco.logic import views_data
+    return views_data.data_source_fields(id)
+
+
+def project_page_edit(slug):
+    """Project-page editor (GET the form / POST one block operation)."""
+    from ckanext.csunesco.logic import views_page
+    return views_page.project_page_edit(slug)
+
+
+def project_page_preview(slug):
+    """Render the project page DRAFT through the public template (managers)."""
+    from ckanext.csunesco.logic import views_page
+    return views_page.project_page_preview(slug)
+
+
 def data_source_approve(id):
     """POST: approve a pending data source (creates the CKAN dataset)."""
     from ckanext.csunesco.logic import views_admin
@@ -232,6 +256,18 @@ def data_source_reject(id):
     """POST: reject a pending data source with an optional reason."""
     from ckanext.csunesco.logic import views_admin
     return views_admin.data_source_reject(id)
+
+
+def page_approve(project_id):
+    """POST: publish a project page that is awaiting review."""
+    from ckanext.csunesco.logic import views_admin
+    return views_admin.page_approve(project_id)
+
+
+def page_reject(project_id):
+    """POST: send a pending project page back to its author with a reason."""
+    from ckanext.csunesco.logic import views_admin
+    return views_admin.page_reject(project_id)
 
 
 def content_edit(id):
@@ -322,6 +358,13 @@ csunesco_bp.add_url_rule(
 csunesco_bp.add_url_rule(
     '/admin/data/<id>/reject', 'data_source_reject', data_source_reject,
     methods=['POST'])
+# Project pages are keyed by PROJECT (one page per project), not by a row id.
+csunesco_bp.add_url_rule(
+    '/admin/page/<project_id>/approve', 'page_approve', page_approve,
+    methods=['POST'])
+csunesco_bp.add_url_rule(
+    '/admin/page/<project_id>/reject', 'page_reject', page_reject,
+    methods=['POST'])
 
 # Public news + events.
 csunesco_bp.add_url_rule('/news', 'cs_news_index', cs_news_index,
@@ -359,6 +402,22 @@ csunesco_bp.add_url_rule(
 csunesco_bp.add_url_rule(
     '/project/<slug>/data/connect', 'data_connect', data_connect,
     methods=['GET', 'POST'])
+# Chart feeds. Distinct rules from /data/<id>.csv and /data/<id>.geojson --
+# the dot forms match a different pattern, so there is no collision.
+csunesco_bp.add_url_rule(
+    '/data/<id>/series', 'data_source_series', data_source_series,
+    methods=['GET'])
+csunesco_bp.add_url_rule(
+    '/data/<id>/fields', 'data_source_fields', data_source_fields,
+    methods=['GET'])
+
+# Project-page builder (managers): one editor endpoint for every operation.
+csunesco_bp.add_url_rule(
+    '/project/<slug>/page', 'project_page_edit', project_page_edit,
+    methods=['GET', 'POST'])
+csunesco_bp.add_url_rule(
+    '/project/<slug>/page/preview', 'project_page_preview',
+    project_page_preview, methods=['GET'])
 
 
 def get_blueprints():

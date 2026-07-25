@@ -1,0 +1,31 @@
+{#
+  Block: one image or a gallery.
+
+  Every URL was validated https-only at save time. loading="lazy" and
+  referrerpolicy keep a remote image from being a performance or privacy
+  problem on a public page.
+
+  Vars: block, ctx.
+#}
+{% if block['items'] %}
+  <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}"
+           id="block-{{ block.id }}"
+           {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+    {% snippet "csunesco/blocks/_heading.html", block=block %}
+    <div class="cs-gallery cs-gallery-{{ block.layout }}"
+         {% if block.lightbox %}data-lightbox{% endif %}>
+      {% for item in block['items'] %}
+        <figure class="cs-gallery-item">
+          {% if item.link %}<a href="{{ item.link }}" class="cs-gallery-link">{% endif %}
+          <img src="{{ item.url }}" alt="{{ item.alt }}" loading="lazy"
+               referrerpolicy="no-referrer"
+               {% if block.lightbox %}data-full="{{ item.url }}"{% endif %}>
+          {% if item.link %}</a>{% endif %}
+          {% if item.caption %}
+            <figcaption class="cs-gallery-caption">{{ item.caption }}</figcaption>
+          {% endif %}
+        </figure>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}

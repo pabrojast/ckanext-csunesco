@@ -1,0 +1,219 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  The project-page editor.
+
+  ONE form holds every block. Each control is a real submit button carrying
+  `name="op"`, so add / move / delete / hide / save all work with JavaScript
+  disabled -- that is the primary path, not a fallback. Enhancements (drag
+  reorder, a formatting toolbar, live preview) attach to this same markup and
+  post to the same endpoint.
+
+  Field naming is `blocks[N][field]` (and `blocks[N][items][M][field]` for
+  repeatables). N only ORDERS the blocks; it is never a count, because a
+  client-side delete leaves gaps in the sequence.
+
+  Vars: project, page (dict), blocks (list), errors (dict), notice (str|None),
+        palette (list of BlockType), max_blocks (int).
+#}
+
+{% set can_add = blocks | length < max_blocks %}
+
+{% block subtitle %}{{ _("Edit page") }} - {{ project.title }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  <section class="cs-hero" aria-labelledby="cs-pb-title">
+    <h1 id="cs-pb-title">{{ _("Edit this project page") }}</h1>
+    <p>{{ project.title }}</p>
+  </section>
+
+  <div class="cs-pb-toolbar">
+    <p class="cs-pb-status">
+      {% if page.status == 'pending' %}
+        <span class="cs-status-badge cs-status-pending">{{ _("In review") }}</span>
+        {{ _("This page is waiting for a reviewer. Editing it now takes it back out of the queue.") }}
+      {% elif page.status == 'rejected' %}
+        <span class="cs-status-badge cs-status-rejected">{{ _("Changes requested") }}</span>
+        {% if page.rejection_reason %}{{ page.rejection_reason | striptags }}{% endif %}
+      {% elif page.published_blocks is not none %}
+        <span class="cs-status-badge cs-status-approved">{{ _("Published") }}</span>
+        {{ _("Your draft is separate: the public keeps seeing the published page until a new version is approved.") }}
+      {% else %}
+        <span class="cs-status-badge cs-status-draft">{{ _("Not published yet") }}</span>
+        {{ _("The public sees the standard layout until you publish this page.") }}
+      {% endif %}
+    </p>
+    <span class="cs-pb-toolbar-links">
+      <a class="cs-btn cs-btn-secondary cs-btn-sm"
+         href="{{ h.url_for('csunesco.project_page_preview', slug=project.slug) }}">
+        {{ _("Preview draft") }}
+      </a>
+      <a class="cs-btn cs-btn-secondary cs-btn-sm"
+         href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
+        {{ _("Back to the project") }}
+      </a>
+    </span>
+  </div>
+
+  {% if notice %}<p class="cs-hint" role="status">{{ notice }}</p>{% endif %}
+  {% if errors.message %}
+    <div class="cs-form-error" role="alert">{{ errors.message }}</div>
+  {% endif %}
+  {% if errors.blocks %}
+    <div class="cs-form-error" role="alert">
+      <ul>{% for message in errors.blocks %}<li>{{ message }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  <form method="post" class="cs-pb-form" id="cs-page-form"
+        action="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
+    {{ h.csrf_input() }}
+    {#
+      The op a JS-enhanced submit writes before submitting. A `disabled` button
+      contributes neither name nor value, so disable-on-submit would otherwise
+      swallow the operation entirely.
+    #}
+    <input type="hidden" name="op" id="cs-pb-op" value="save">
+
+    <ol class="cs-pb-list">
+      {% for block in blocks %}
+        {% set spec = h.csunesco_block_type(block.type) %}
+        {% if spec %}
+          <li class="cs-pb-block{% if block.hidden %} is-hidden{% endif %}"
+              id="block-{{ block.id }}">
+            <input type="hidden" name="blocks[{{ loop.index0 }}][type]" value="{{ block.type }}">
+            <input type="hidden" name="blocks[{{ loop.index0 }}][id]" value="{{ block.id }}">
+
+            <div class="cs-pb-head">
+              <span class="cs-pb-kind">
+                <span class="cs-pb-icon" aria-hidden="true">{{ spec.icon }}</span>
+                {{ _(spec.label) }}
+                {% if spec.builtin %}
+                  <span class="cs-pb-tag">{{ _("standard section") }}</span>
+                {% endif %}
+                {% if spec.requires_review %}
+                  <span class="cs-pb-tag cs-pb-tag-review">{{ _("reviewed") }}</span>
+                {% endif %}
+              </span>
+              <span class="cs-pb-ops">
+                <button type="submit" name="op" value="move_up:{{ loop.index0 }}"
+                        class="cs-btn cs-btn-secondary cs-btn-sm"
+                        {% if loop.first %}disabled{% endif %}
+                        aria-label="{{ _('Move up') }}">&uarr;</button>
+                <button type="submit" name="op" value="move_down:{{ loop.index0 }}"
+                        class="cs-btn cs-btn-secondary cs-btn-sm"
+                        {% if loop.last %}disabled{% endif %}
+                        aria-label="{{ _('Move down') }}">&darr;</button>
+                {% if not spec.builtin %}
+                  <button type="submit" name="op" value="delete:{{ loop.index0 }}"
+                          class="cs-btn cs-btn-danger cs-btn-sm"
+                          data-confirm-op="{{ _('Delete this block?') }}">
+                    {{ _("Delete") }}
+                  </button>
+                {% endif %}
+              </span>
+            </div>
+
+            <div class="cs-pb-body">
+              <p class="cs-hint">{{ _(spec.description) }}</p>
+
+              {% if spec.builtin %}
+                {#
+                  Built-in sections carry no payload: their content comes from
+                  the project itself. Only visibility and order are editable --
+                  and they can never be deleted, or the standard section would
+                  be unrecoverable from this screen.
+                #}
+                {% if spec.deprecated %}
+                  <p class="cs-hint">
+                    {{ _("This is the old description field. Add a Text block for new content.") }}
+                  </p>
+                {% endif %}
+              {% else %}
+                <div class="cs-field">
+                  <label for="b{{ loop.index0 }}-title">{{ _("Section title") }}</label>
+                  <input type="text" id="b{{ loop.index0 }}-title"
+                         name="blocks[{{ loop.index0 }}][title]"
+                         value="{{ block.title }}"
+                         placeholder="{{ _('Leave empty for no heading') }}">
+                </div>
+                {% snippet spec.editor_snippet, block=block, index=loop.index0,
+                           project=project %}
+                <div class="cs-field cs-pb-width">
+                  <label for="b{{ loop.index0 }}-width">{{ _("Width") }}</label>
+                  <select id="b{{ loop.index0 }}-width" name="blocks[{{ loop.index0 }}][width]">
+                    <option value="full" {% if block.width == 'full' %}selected{% endif %}>{{ _("Full width") }}</option>
+                    <option value="narrow" {% if block.width == 'narrow' %}selected{% endif %}>{{ _("Narrow (easier to read)") }}</option>
+                  </select>
+                </div>
+              {% endif %}
+
+              <label class="cs-pb-toggle">
+                <input type="checkbox" name="blocks[{{ loop.index0 }}][hidden]"
+                       value="on" {% if block.hidden %}checked{% endif %}>
+                {{ _("Hide this section from the public page") }}
+              </label>
+            </div>
+          </li>
+        {% endif %}
+      {% endfor %}
+    </ol>
+
+    <div class="cs-pb-actions">
+      <button type="submit" name="op" value="save" class="cs-btn cs-btn-secondary">
+        {{ _("Save draft") }}
+      </button>
+      <button type="submit" name="op" value="submit" class="cs-btn cs-btn-primary">
+        {{ _("Save and publish") }}
+      </button>
+      {#
+        Be honest up front about what "publish" will do. Trust is not a blanket
+        bypass: a trusted project auto-publishes only while its page embeds
+        nothing from an origin we do not control.
+      #}
+      {% set needs_review = h.csunesco_blocks_need_review(blocks) %}
+      <p class="cs-hint cs-pb-publish-hint">
+        {% if project.trusted and not needs_review %}
+          {{ _("This project is trusted, so the page goes live immediately.") }}
+        {% elif needs_review %}
+          {{ _("This page embeds external media (images, video or a map viewer), so it will be reviewed before it goes live.") }}
+        {% else %}
+          {{ _("The page will be reviewed before it goes live.") }}
+        {% endif %}
+      </p>
+    </div>
+
+    <section class="cs-pb-palette" aria-labelledby="cs-pb-add-title">
+      <h2 id="cs-pb-add-title" class="cs-section-title">{{ _("Add a section") }}</h2>
+      {% if can_add %}
+        <div class="cs-pb-palette-grid">
+          {% for spec in palette %}
+            {% set used = blocks | selectattr('type', 'equalto', spec.key) | list | length %}
+            <button type="submit" name="op" value="add:{{ spec.key }}"
+                    class="cs-pb-add"
+                    {% if used >= spec.max_instances %}disabled{% endif %}>
+              <span class="cs-pb-add-icon" aria-hidden="true">{{ spec.icon }}</span>
+              <span class="cs-pb-add-label">{{ _(spec.label) }}</span>
+              <span class="cs-pb-add-desc">{{ _(spec.description) }}</span>
+              {% if used >= spec.max_instances %}
+                <span class="cs-pb-add-limit">{{ _("Limit reached") }}</span>
+              {% endif %}
+            </button>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="cs-empty">
+          {{ _("This page has reached the maximum number of sections. Delete one to add another.") }}
+        </p>
+      {% endif %}
+    </section>
+  </form>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  {% asset 'csunesco/csunesco-js' %}
+  {% asset 'csunesco/cs-page-editor-js' %}
+{% endblock %}

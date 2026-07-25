@@ -101,6 +101,52 @@ def data_source_geojson(id):
     return response
 
 
+def _json_action(action_name, data_dict):
+    """Run a read action and return its result as a JSON response.
+
+    Upstream trouble collapses to a generic 502, exactly like the CSV/GeoJSON
+    proxy: a chart that cannot load must say so without leaking anything about
+    the upstream. Deliberately does NOT piggyback ``refresh_project_stats`` --
+    a page with six chart blocks would otherwise do six DB writes per view.
+    """
+    from ckanext.csunesco.logic import ofform
+    try:
+        result = tk.get_action(action_name)(_context(), data_dict)
+    except tk.ObjectNotFound:
+        return tk.abort(404, tk._('Data source not found'))
+    except tk.ValidationError as error:
+        return Response(json.dumps({'error': error.error_dict}),
+                        status=400, mimetype='application/json')
+    except ofform.OfformError:
+        return Response(
+            json.dumps({'error': 'The data source is temporarily unavailable.'}),
+            status=502, mimetype='application/json')
+    except Exception:
+        log.warning('csunesco: %s failed', action_name)
+        return Response(
+            json.dumps({'error': 'The data source is temporarily unavailable.'}),
+            status=502, mimetype='application/json')
+    response = Response(json.dumps(result), mimetype='application/json')
+    response.headers['Cache-Control'] = _CACHE_CONTROL
+    return response
+
+
+def data_source_series(id):
+    """Aggregated chart series for an approved data source (live, TTL-cached)."""
+    data_dict = {'id': id}
+    for key in ('mode', 'field', 'agg', 'group_by', 'bucket', 'range',
+                'start', 'end', 'project_id', 'max_series', 'max_categories'):
+        value = request.args.get(key)
+        if value is not None:
+            data_dict[key] = value
+    return _json_action('csunesco_data_source_series', data_dict)
+
+
+def data_source_fields(id):
+    """The chartable field list of an approved data source (editor picker)."""
+    return _json_action('csunesco_data_source_fields', {'id': id})
+
+
 # ---------------------------------------------------------------------------
 # Connect flow (project managers)
 # ---------------------------------------------------------------------------

@@ -1,0 +1,31 @@
+{#
+  Block: datasets published on IHP-WINS.
+
+  Resolved in the view (memoised per query) and read back through the helper.
+  Each package went through package_show / package_search, so anything the
+  reader may not see was already dropped.
+
+  Vars: block, ctx.
+#}
+{% set packages = h.csunesco_block_datasets(ctx, block) %}
+<section class="cs-section cs-block" id="block-{{ block.id }}"
+         {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+  {% snippet "csunesco/blocks/_heading.html", block=block %}
+  <ul class="cs-dataset-list">
+    {% for package in packages %}
+      <li class="cs-dataset-item">
+        <a class="cs-dataset-title" href="{{ h.url_for('dataset.read', id=package.name) }}">
+          {{ package.title or package.name }}
+        </a>
+        {% if block.show_description and package.notes %}
+          <p class="cs-dataset-notes">{{ h.markdown_extract(package.notes, 180) }}</p>
+        {% endif %}
+        {% if package.res_format or package.num_resources %}
+          <p class="cs-muted">{{ _("%(n)s resources", n=package.num_resources or 0) }}</p>
+        {% endif %}
+      </li>
+    {% else %}
+      <li class="cs-empty">{{ _("No datasets to show yet.") }}</li>
+    {% endfor %}
+  </ul>
+</section>

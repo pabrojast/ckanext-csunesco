@@ -22,3 +22,11 @@ COPY . /plugin
 # Editable install so entry points (csunesco=...:CsunescoPlugin) register and
 # setup.py's install_requires (bleach) is pulled in.
 RUN pip install -e /plugin
+
+# The upstream ckan/ckan-dev:2.10 start script runs "/usr/local/bin/ckan", but
+# the image installs the console script at /usr/bin/ckan -- so bringing this
+# image up as a SERVER (docker-compose.dev.yml) crash-loops with
+# "No such file or directory". The pytest harness never hit it because it runs
+# an explicit command. Symlink so the documented dev stack actually starts.
+RUN ln -sf "$(command -v ckan)" /usr/local/bin/ckan \
+    && ln -sf "$(command -v python3)" /usr/local/bin/python

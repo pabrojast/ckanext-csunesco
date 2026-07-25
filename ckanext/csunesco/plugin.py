@@ -113,6 +113,16 @@ class CsunescoPlugin(p.SingletonPlugin):
             # Data pipeline: entry point into Data Stories (None when disabled).
             'csunesco_data_stories_new_url':
                 helpers.csunesco_data_stories_new_url,
+            # Project pages: the block registry, read by the render dispatcher
+            # and the editor palette so the type list is never duplicated.
+            'csunesco_block_type': helpers.csunesco_block_type,
+            'csunesco_block_palette': helpers.csunesco_block_palette,
+            'csunesco_project_data_sources':
+                helpers.csunesco_project_data_sources,
+            'csunesco_blocks_need_review': helpers.csunesco_blocks_need_review,
+            'csunesco_block_content': helpers.csunesco_block_content,
+            'csunesco_block_datasets': helpers.csunesco_block_datasets,
+            'csunesco_video_embed_url': helpers.csunesco_video_embed_url,
         }
 
     # IClick

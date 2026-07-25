@@ -1,0 +1,16 @@
+{#
+  Block: rich text.
+
+  `html` was sanitized with sanitize_page_html BEFORE storage, which is what
+  makes `| safe` legitimate here.
+
+  Vars: block, ctx.
+#}
+{% if block.html %}
+  <section class="cs-section cs-block cs-block-text{% if block.width == 'narrow' %} cs-block-narrow{% endif %}"
+           id="block-{{ block.id }}"
+           {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+    {% snippet "csunesco/blocks/_heading.html", block=block %}
+    <div class="cs-rich-text">{{ block.html | safe }}</div>
+  </section>
+{% endif %}

@@ -1,0 +1,44 @@
+{#
+  Block: a chart of the app's observations.
+
+  The browser fetches an AGGREGATED series from /data/<id>/series -- a few KB of
+  dense arrays. The raw payload for a real form is ~1.6 MB, so it is never sent
+  here; the server buckets by time and caps the series count first.
+
+  Without JavaScript (or if the fetch fails) the block still offers the data:
+  the CSV link is inside the container, so it is what a reader sees rather than
+  an empty box.
+
+  Vars: block, ctx.
+#}
+{% set source = ctx.approved_sources.get(block.data_source_id) %}
+{% if source %}
+  <section class="cs-section cs-block" id="block-{{ block.id }}"
+           {% if block.title %}aria-labelledby="title-{{ block.id }}"{% endif %}>
+    {% snippet "csunesco/blocks/_heading.html", block=block %}
+    <figure class="cs-chart-card">
+      <div class="cs-chart" style="height: {{ block.height }}px;"
+           data-series-url="{{ h.url_for('csunesco.data_source_series', id=source.id) }}"
+           data-mode="{{ block.mode }}" data-field="{{ block.field }}"
+           data-agg="{{ block.agg }}" data-group-by="{{ block.group_by }}"
+           data-bucket="{{ block.bucket }}" data-range="{{ block.range }}"
+           data-type="{{ block.chart }}"
+           data-label-other="{{ _('Other') }}"
+           data-label-loading="{{ _('Loading chart…') }}"
+           data-label-empty="{{ _('No observations to chart yet.') }}"
+           data-label-error="{{ _('The chart could not be loaded.') }}">
+        <noscript>
+          <p class="cs-empty">{{ _("Charts need JavaScript. You can download the data instead.") }}</p>
+        </noscript>
+        <p class="cs-chart-fallback">
+          <a class="cs-link" href="{{ h.url_for('csunesco.data_source_csv', id=source.id) }}">
+            {{ _("Download the data (CSV)") }}
+          </a>
+        </p>
+      </div>
+    </figure>
+    {% if block.caption %}
+      <p class="cs-block-caption">{{ block.caption }}</p>
+    {% endif %}
+  </section>
+{% endif %}

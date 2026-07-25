@@ -1,0 +1,78 @@
+{#
+  Built-in block: connected CS Toolbox app data.
+
+  Per approved data source: an observation map (Leaflet, fed asynchronously from
+  the .geojson proxy) plus the dataset / CSV / GeoJSON links. Managers also see
+  their own pending and rejected rows with a status badge, and the entry points
+  to connect more data or start a data story.
+
+  The description was sanitized server-side before storage -> `| safe`.
+
+  Vars: block, ctx.
+#}
+<section class="cs-section" aria-labelledby="cs-data-title">
+  <div class="cs-section-header">
+    <h2 id="cs-data-title" class="cs-section-title">{{ _("Data") }}</h2>
+    {% if ctx.can_manage %}
+      <span class="cs-section-header-links">
+        <a class="cs-btn cs-btn-secondary cs-btn-sm"
+           href="{{ h.url_for('csunesco.data_connect', slug=ctx.project.slug) }}">
+          {{ _("Connect app data") }}
+        </a>
+        {% set stories_url = h.csunesco_data_stories_new_url() %}
+        {% if stories_url %}
+          <a class="cs-btn cs-btn-secondary cs-btn-sm" href="{{ stories_url }}">
+            {{ _("Create a data story") }}
+          </a>
+        {% endif %}
+      </span>
+    {% endif %}
+  </div>
+  {% set approved_sources = ctx.data_sources | selectattr('status', 'equalto', 'approved') | list %}
+  {% for ds in approved_sources %}
+    <article class="cs-data-source">
+      <h3 class="cs-data-source-title">{{ ds.title }}</h3>
+      {% if ds.description %}
+        {# description is sanitized server-side before storage -> safe. #}
+        <div class="cs-rich-text">{{ ds.description | safe }}</div>
+      {% endif %}
+      <div class="cs-map cs-data-map"
+           data-observations-url="{{ h.url_for('csunesco.data_source_geojson', id=ds.id) }}"
+           role="img" aria-label="{{ _('Map of the observations collected by this project') }}">
+        <div class="cs-map-skeleton" aria-hidden="true">
+          <span class="cs-map-skeleton-text">{{ _("Loading observations…") }}</span>
+        </div>
+        <p class="cs-map-fallback" hidden></p>
+      </div>
+      <p class="cs-data-links">
+        {% if ds.ckan_package_id %}
+          <a class="cs-link" href="{{ h.url_for('dataset.read', id=ds.ckan_package_id) }}">
+            {{ _("View dataset on IHP-WINS") }}
+          </a>
+        {% endif %}
+        <a class="cs-link" href="{{ h.url_for('csunesco.data_source_csv', id=ds.id) }}">
+          {{ _("Download CSV") }}
+        </a>
+        <a class="cs-link" href="{{ h.url_for('csunesco.data_source_geojson', id=ds.id) }}">
+          {{ _("GeoJSON") }}
+        </a>
+      </p>
+    </article>
+  {% endfor %}
+  {% if ctx.can_manage %}
+    {% for ds in ctx.data_sources if ds.status != 'approved' %}
+      <p class="cs-data-source-pending">
+        <span class="cs-status-badge cs-status-{{ ds.status }}">{{ ds.status }}</span>
+        {{ ds.title }}
+        {% if ds.status == 'rejected' and ds.rejection_reason %}
+          &mdash; {{ ds.rejection_reason | striptags }}
+        {% endif %}
+      </p>
+    {% endfor %}
+  {% endif %}
+  {% if not approved_sources %}
+    <p class="cs-empty">
+      {{ _("No datasets have been published for this project yet. Data collected in the CS Toolbox app appears here once approved.") }}
+    </p>
+  {% endif %}
+</section>

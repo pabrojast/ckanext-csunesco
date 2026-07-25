@@ -89,9 +89,10 @@ def admin_dashboard():
         log.warning('csunesco: admin pending list unavailable')
         data = {
             'project_requests': [], 'join_requests': [],
-            'content_requests': [], 'data_requests': [],
+            'content_requests': [], 'data_requests': [], 'page_requests': [],
             'counts': {'project_requests': 0, 'join_requests': 0,
-                       'content_requests': 0, 'data_requests': 0, 'total': 0},
+                       'content_requests': 0, 'data_requests': 0,
+                       'page_requests': 0, 'total': 0},
         }
 
     is_sysadmin = _is_sysadmin()
@@ -131,11 +132,13 @@ def admin_dashboard():
         'is_sysadmin': is_sysadmin,
         'can_review_projects': can_review_initiative,
         'can_review_data': can_review_initiative,
+        'can_review_pages': can_review_initiative,
         'admin_initiatives': admin_initiatives,
         'project_requests': data.get('project_requests', []),
         'join_requests': data.get('join_requests', []),
         'content_requests': data.get('content_requests', []),
         'data_requests': data.get('data_requests', []),
+        'page_requests': data.get('page_requests', []),
         'counts': data.get('counts', {}),
         'organizations': organizations,
         'default_owner_org': (
@@ -314,3 +317,23 @@ def data_source_reject(id):
     reason = sanitize_html((request.form.get('reason') or '').strip())
     return _decide('csunesco_data_source_reject', {'id': id, 'reason': reason},
                    'data', tk._('Data source rejected.'))
+
+
+def page_approve(project_id):
+    """Publish a project page that is awaiting review.
+
+    ``draft_hash`` comes back from the form: the action refuses the approval if
+    the manager changed the draft after this panel was rendered, so nobody can
+    publish a version they never read.
+    """
+    return _decide('csunesco_project_page_approve',
+                   {'project_id': project_id,
+                    'draft_hash': (request.form.get('draft_hash') or '').strip()},
+                   'pages', tk._('Project page published.'))
+
+
+def page_reject(project_id):
+    reason = sanitize_html((request.form.get('reason') or '').strip())
+    return _decide('csunesco_project_page_reject',
+                   {'project_id': project_id, 'reason': reason},
+                   'pages', tk._('Project page sent back to its author.'))

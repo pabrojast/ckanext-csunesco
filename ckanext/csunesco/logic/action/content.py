@@ -84,10 +84,9 @@ def _resolve_project(data_dict):
 
 def _can_manage_project(context, project_id):
     """Project-admin, initiative-admin OR sysadmin -- the write authorization,
-    enforced in logic."""
-    return (auth._is_sysadmin(context)
-            or auth._is_project_admin(context, project_id)
-            or auth._is_project_initiative_admin(context, project_id))
+    enforced in logic. Delegates to the shared composite in ``logic/auth`` so
+    content and project pages can never drift apart."""
+    return auth.can_manage_project(context, project_id)
 
 
 def _can_view_unapproved(context, content):

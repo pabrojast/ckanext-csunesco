@@ -33,6 +33,15 @@ workflow — see [`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
   `/citizen-science/news`, `/events`, `/publications` and `/maps`. Content
   pushed from the CS Toolbox app carries `source: 'app'` and **always** lands
   `pending` (sysadmin review), even though the app pushes with a sysadmin token.
+- **Project page builder** — a project admin composes the whole landing body
+  from ordered **blocks** (`cs_project_page`): the standard sections become
+  built-in blocks they can reorder or hide, and on top of those they add rich
+  text, **charts of the app's observations**, counters, image galleries, video,
+  observation maps, Terria scenes, content and dataset listings, and callouts.
+  The editor keeps a **draft** separate from what the public sees; publishing
+  queues the page for review (a *trusted* project publishes directly, unless the
+  page embeds external media). The registry in `logic/blocks.py` is the single
+  source of truth for block types — every layer derives from it.
 - **App-data pipeline** — a project admin (from the portal) or a project owner
   (from the CS Toolbox app) can publish a form's collected observations on
   IHP-WINS. The request is a `cs_data_source` row that **always** starts
@@ -90,6 +99,11 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | POST | `/citizen-science/admin/data/<id>/approve` · `/reject` | Moderate a data source (approve creates the CKAN dataset) | sysadmin **or** the source's initiative admin (org override is sysadmin-only) |
 | POST | `/citizen-science/admin/content/bulk-approve` | Approve a checkbox selection of content rows (≤100, per-row auth) | sysadmin **or** initiative admin (per row) |
 | POST | `/citizen-science/admin/data/bulk-approve` | Approve a checkbox selection of data sources (≤20, per-row auth; suggested/default org) | sysadmin **or** initiative admin (per row) |
+| GET·POST | `/citizen-science/project/<slug>/page` | Project-page editor (one endpoint for every block operation) | sysadmin, initiative admin **or** that project's admin |
+| GET | `/citizen-science/project/<slug>/page/preview` | Render the unpublished draft through the public template | same as the editor |
+| GET | `/citizen-science/data/<id>/series` | Aggregated chart series for an **approved** data source (TTL-cached) | public |
+| GET | `/citizen-science/data/<id>/fields` | Chartable field list of an **approved** data source | public |
+| POST | `/citizen-science/admin/page/<project_id>/approve` · `/reject` | Moderate a project page (approve requires the `draft_hash` shown in the panel) | sysadmin **or** the project's initiative admin |
 | POST | `/citizen-science/project/<slug>/trusted` | Toggle the project's trusted flag | sysadmin |
 
 All POST forms carry CKAN's CSRF token (`h.csrf_input()`); mutating routes use
@@ -111,6 +125,10 @@ enumerate accounts.
 | `csunesco_join_request_create` | authenticated |
 | `csunesco_content_create`, `csunesco_content_update` | sysadmin, initiative admin **or** project admin (an explicit `source: 'app'` forces `pending` even for sysadmins) |
 | `csunesco_data_source_list`, `csunesco_data_source_show` | public (read; approved only for non-privileged callers) |
+| `csunesco_data_source_series`, `csunesco_data_source_fields` | public (read; **approved** sources only — aggregated server-side) |
+| `csunesco_project_page_show` | public (read; the draft only for a manager/reviewer) |
+| `csunesco_project_page_update`, `csunesco_project_page_submit` | sysadmin, initiative admin **or** project admin |
+| `csunesco_project_page_approve`, `csunesco_project_page_reject` | sysadmin **or** the project's initiative admin |
 | `csunesco_data_source_create` | sysadmin, initiative admin **or** project admin — **always** creates `pending`; idempotent per `(project, form)` |
 | `csunesco_admin_pending_list` | sysadmin, any initiative admin **or** any project admin |
 | `csunesco_project_approve`, `csunesco_project_reject` | sysadmin **or** the project's initiative admin |
@@ -201,6 +219,47 @@ Four tabs:
    reverts the form to private in the app, the proxy starts returning 502 for
    that source.
 
+5. **Pages to review** (sysadmin or initiative admin) — project pages a manager
+   published. Each row links to a **Preview** of that exact draft and carries
+   its `draft_hash`: if the manager edits the page after the panel was rendered,
+   approving is refused rather than publishing a version nobody read. (Editing a
+   pending page also withdraws it from the queue, so this is the narrow race,
+   not the common path.) Rejecting sends it back with a reason and leaves the
+   currently published version untouched.
+
+### Project pages (block builder)
+
+The landing body is an ordered list of blocks stored per project in
+`cs_project_page` as two JSON documents: `draft_json` (what the manager edits)
+and `published_json` (what the public sees). A project that has never published
+a page renders `blocks.default_blocks()` — exactly the section order the landing
+had before it became block-driven, so there is **one** rendering path rather than
+a default template plus a custom one.
+
+- **Block types** live in `logic/blocks.py`, the single registry every layer
+  reads (renderer, editor, validator). Ten author blocks — text, chart, counters,
+  images, video, observation map, map viewer, news/events, datasets, highlight —
+  plus six built-in wrappers for the standard sections, which can be reordered
+  and hidden but never deleted.
+- **The JS-free path is the primary path.** Add / move / delete / hide / save /
+  publish are ordinary submit buttons carrying `op=…` to one endpoint; the
+  enhanced editor (formatting toolbar, chart field picker) posts to the same
+  place. Nothing needs JavaScript to work.
+- **Charts are aggregated server-side.** `csunesco_data_source_series` buckets
+  observations by an auto-chosen period, caps the series at 8 and rounds the
+  values, turning a ~1.6 MB dashboard payload into ~3 KB of dense arrays. The
+  labels are ready-made period keys, so no Chart.js date adapter is needed.
+  Chart.js 4.5.1 is **vendored**, not loaded from a CDN, and only shipped to
+  pages that actually chart something.
+- **Trust is not a blanket bypass.** A trusted project's page publishes
+  immediately only while it embeds nothing from an origin we do not control
+  (images, video, Terria) — mirroring why `content_initial_status` keeps
+  publications and maps out of the trusted fast path.
+- **Nothing stored is trusted at render time.** A block's `data_source_id` is
+  re-checked against *this* project's approved set on every render, and a Terria
+  URL is re-validated against the configured allowlist, so a source rejected
+  later (or JSON copied from another project) simply renders nothing.
+
 ### Trusted projects & bulk review (P2)
 
 - **Trusted flag** (sysadmin-only, toggled from the project landing page):
@@ -223,6 +282,8 @@ Four tabs:
   review queue (SMTP is already configured on the portal).
 - Auto-enqueue the data-source request when approving an app-originated
   project that already has published forms.
+- Image **uploads** for the gallery block (today its URLs are https links, the
+  same convention as the `media` field on content).
 
 ## Requirements
 

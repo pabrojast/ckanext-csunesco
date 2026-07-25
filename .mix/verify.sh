@@ -358,6 +358,151 @@ for needle in ('{% ckan_extends %}',
 print('   OK: behavioral test files parse + header nav wiring present')
 PYEOF
 
+# (d8) Project-page blocks: the registry + the aggregation must stay CKAN-FREE.
+# That is what lets their unit tests run here, outside the container.
+echo "-- AST checks (project pages: blocks/aggregate stay CKAN-free)"
+"${PY}" - <<'PYEOF'
+import ast
+import sys
+
+PURE = {
+    'ckanext/csunesco/logic/blocks.py': (
+        'normalize_block', 'normalize_blocks', 'blocks_from_form', 'apply_op',
+        'page_initial_status', 'blocks_requiring_review', 'default_blocks',
+        'blocks_from_json', 'blocks_to_json', 'parse_video', 'ensure_builtins'),
+    'ckanext/csunesco/logic/aggregate.py': (
+        'to_number', 'category_value', 'robust_range', 'detect_site_field',
+        'numeric_fields_with_data', 'categorical_field_options', 'value_counts',
+        'parse_iso_day', 'choose_bucket', 'bucket_key', 'bucket_labels',
+        'filter_rows_by_date', 'aggregate_numeric', 'aggregate_counts',
+        'aggregate_categories', 'round_series', 'preset_start'),
+}
+
+for path, required in PURE.items():
+    with open(path, 'r') as fh:
+        tree = ast.parse(fh.read(), filename=path)
+    funcs = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    for name in required:
+        if name not in funcs:
+            sys.exit('FAIL: %r not defined in %s' % (name, path))
+    # No CKAN import, direct or deferred: these modules are the ones a
+    # contributor can unit-test without a container, and that only holds while
+    # nothing in their import graph reaches ckan.
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            names = [node.module or '']
+        else:
+            continue
+        for name in names:
+            if name == 'ckan' or name.startswith('ckan.'):
+                sys.exit('FAIL: %s imports CKAN (%s) -- it must stay pure'
+                         % (path, name))
+
+# sanitize.py must expose BOTH allowlists as separate functions (a single
+# parameterised sanitizer invites passing the wide list to the news path).
+san_path = 'ckanext/csunesco/logic/sanitize.py'
+with open(san_path, 'r') as fh:
+    san_tree = ast.parse(fh.read(), filename=san_path)
+san_funcs = {n.name for n in ast.walk(san_tree) if isinstance(n, ast.FunctionDef)}
+for name in ('sanitize_html', 'sanitize_page_html'):
+    if name not in san_funcs:
+        sys.exit('FAIL: %r not defined in %s' % (name, san_path))
+
+print('   AST OK: blocks/aggregate present and CKAN-free; two sanitizers')
+PYEOF
+
+# (d8b) Every block type must have BOTH a render snippet and (unless it is a
+# built-in section) an editor snippet. A registry entry with no template is a
+# 500 on a public page; a template with no entry is dead code.
+echo "-- checks (project pages: registry <-> templates)"
+"${PY}" - <<'PYEOF'
+import ast
+import os
+import re
+import sys
+
+# Read the registry with AST, not a regex: the keyword arguments wrap across
+# lines and the descriptions contain parentheses, so any "match up to the
+# closing paren" pattern silently mis-reads which entries are built-ins.
+tree = ast.parse(open('ckanext/csunesco/logic/blocks.py').read())
+keys = set()
+builtin = set()
+for node in ast.walk(tree):
+    if not (isinstance(node, ast.Call)
+            and getattr(node.func, 'id', None) == 'BlockType'):
+        continue
+    if not node.args or not isinstance(node.args[0], ast.Constant):
+        sys.exit('FAIL: a BlockType() call has no literal key')
+    key = node.args[0].value
+    keys.add(key)
+    for keyword in node.keywords:
+        if keyword.arg == 'builtin' and getattr(keyword.value, 'value', False):
+            builtin.add(key)
+if not keys:
+    sys.exit('FAIL: no BlockType entries found in blocks.py')
+
+render_dir = 'ckanext/csunesco/templates/csunesco/blocks'
+edit_dir = os.path.join(render_dir, 'edit')
+rendered = {f[:-5] for f in os.listdir(render_dir) if f.endswith('.html')}
+edited = {f[:-5] for f in os.listdir(edit_dir)
+          if f.endswith('.html') and not f.startswith('_')}
+
+missing_render = sorted(keys - rendered)
+if missing_render:
+    sys.exit('FAIL: block types with no render snippet: %s' % missing_render)
+missing_edit = sorted((keys - builtin) - edited)
+if missing_edit:
+    sys.exit('FAIL: block types with no editor snippet: %s' % missing_edit)
+orphan_edit = sorted(edited - keys)
+if orphan_edit:
+    sys.exit('FAIL: editor snippets with no block type: %s' % orphan_edit)
+
+# The five queues must line up across db, the action and the view fallback.
+for path, needle in (
+        ('ckanext/csunesco/db.py', "'page_requests'"),
+        ('ckanext/csunesco/logic/action/admin.py', "'page_requests'"),
+        ('ckanext/csunesco/logic/views_admin.py', "'page_requests'"),
+        ('ckanext/csunesco/templates/csunesco/cs-admin-dashboard.html',
+         'cs-tabbtn-pages')):
+    if needle not in open(path).read():
+        sys.exit('FAIL: %r missing from %s (pending-count wiring)' %
+                 (needle, path))
+
+# Newstyle gettext binds its variables as KEYWORDS. A later "% {...}" reaches
+# a Markup object whose __mod__ never sees the mapping, so it raises KeyError
+# at render time -- invisible until that exact template runs. The repo has been
+# bitten by this before (commit 43fa6d3); keep it from coming back.
+bad = []
+for root, _dirs, files in os.walk('ckanext/csunesco/templates'):
+    for name in files:
+        if not name.endswith('.html'):
+            continue
+        path = os.path.join(root, name)
+        for number, line in enumerate(open(path), 1):
+            if re.search(r'_\(".*?"\)\s*%', line):
+                bad.append('%s:%d' % (path, number))
+if bad:
+    sys.exit('FAIL: newstyle gettext needs _("...", var=x), not a later %%: %s'
+             % ', '.join(bad))
+
+print('   OK: %d block types, all with templates; page queue wired everywhere'
+      % len(keys))
+PYEOF
+
+# (d9) Run the CKAN-free unit tests here when pytest is available. These are
+# the only tests that do NOT need the container, so running them in the fast
+# loop is free signal.
+if "${PY}" -c "import pytest" >/dev/null 2>&1; then
+  echo "-- pytest (CKAN-free: test_blocks.py + test_aggregate.py)"
+  "${PY}" -m pytest -q -p no:cacheprovider \
+    ckanext/csunesco/tests/test_blocks.py \
+    ckanext/csunesco/tests/test_aggregate.py
+else
+  echo "-- pytest not installed: skipping the CKAN-free unit tests"
+fi
+
 # (e) Structural checks: required files/dirs must exist.
 echo "-- structural checks (required files)"
 REQUIRED_FILES=(
@@ -382,6 +527,21 @@ REQUIRED_FILES=(
   "ckanext/csunesco/logic/views_admin.py"
   "ckanext/csunesco/logic/views_content.py"
   "ckanext/csunesco/logic/sanitize.py"
+  "ckanext/csunesco/logic/blocks.py"
+  "ckanext/csunesco/logic/page_render.py"
+  "ckanext/csunesco/logic/views_page.py"
+  "ckanext/csunesco/logic/action/page.py"
+  "ckanext/csunesco/templates/csunesco/project_page_form.html"
+  "ckanext/csunesco/templates/csunesco/snippets/block_render.html"
+  "ckanext/csunesco/assets/js/cs-charts.js"
+  "ckanext/csunesco/assets/js/cs-page-editor.js"
+  "ckanext/csunesco/assets/js/cs-page-view.js"
+  "ckanext/csunesco/assets/vendor/chart.umd.min.js"
+  "ckanext/csunesco/assets/vendor/LICENSE-chartjs.txt"
+  "ckanext/csunesco/logic/aggregate.py"
+  "ckanext/csunesco/tests/test_blocks.py"
+  "ckanext/csunesco/tests/test_aggregate.py"
+  "ckanext/csunesco/tests/fixtures/ofform_form3.json"
   "ckanext/csunesco/templates/csunesco/citizen-science.html"
   "ckanext/csunesco/templates/csunesco/register_citizen.html"
   "ckanext/csunesco/templates/csunesco/initiative.html"
