@@ -471,10 +471,15 @@ def csunesco_data_source_series(context, data_dict):
         out = aggregate.aggregate_categories(
             rows, field, top_n=_bounded(data_dict.get('max_categories'),
                                         aggregate.MAX_CATEGORIES, 2, 24))
+        # Aggregation is keyed by the stored value (stable); the chart shows
+        # the label the form itself uses, so a legend reads "Partly cloudy"
+        # rather than "partly_cloudy".
+        pretty = aggregate.option_labels(schema, field)
+        labels = [pretty.get(value, value) for value in out['labels']]
         result.update({
             'field': field,
             'field_label': aggregate.field_label(schema, field),
-            'labels': out['labels'],
+            'labels': labels,
             'series': aggregate.round_series(out['series']),
             'used_rows': out['used_rows'],
         })

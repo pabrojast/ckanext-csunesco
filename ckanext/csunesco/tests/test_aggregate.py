@@ -476,3 +476,23 @@ def test_aggregate_scalar_returns_none_when_nothing_matches():
     assert out['overall'] is None
     assert out['used_rows'] == 0
     assert ag.aggregate_scalar(None, 'ph')['overall'] is None
+
+
+def test_option_labels_maps_stored_values_to_form_labels():
+    """A legend must read "Partly cloudy", not "partly_cloudy" -- but the
+    aggregation stays keyed by the stored value, which is what is stable."""
+    schema = {'fields': [{'name': 'weather', 'type': 'single_select',
+                          'options': [{'value': 'partly_cloudy',
+                                       'label': 'Partly cloudy'},
+                                      {'value': 'sunny', 'label': 'Sunny'}]}]}
+    assert ag.option_labels(schema, 'weather') == {
+        'partly_cloudy': 'Partly cloudy', 'sunny': 'Sunny'}
+    # A free-text field has no options, and an unknown field is not an error.
+    assert ag.option_labels(schema, 'site') == {}
+    assert ag.option_labels({}, 'weather') == {}
+
+
+def test_option_labels_falls_back_to_the_value():
+    schema = {'fields': [{'name': 'k', 'type': 'single_select',
+                          'options': [{'value': 'a'}, {'label': 'no value'}]}]}
+    assert ag.option_labels(schema, 'k') == {'a': 'a'}

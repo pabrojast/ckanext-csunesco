@@ -341,6 +341,24 @@ def field_label(schema, name):
     return name
 
 
+def option_labels(schema, name):
+    """``{stored value: human label}`` for a choice field (empty when none).
+
+    Aggregation stays keyed by the STORED value so it is stable, but a reader
+    should never be shown "partly_cloudy" when the form that collected it says
+    "Partly cloudy".
+    """
+    for field in schema_fields(schema):
+        if field.get('name') != name:
+            continue
+        labels = {}
+        for option in field.get('options') or []:
+            if isinstance(option, dict) and option.get('value') is not None:
+                labels[option['value']] = option.get('label') or option['value']
+        return labels
+    return {}
+
+
 def _distinct_values(rows, field, ceiling=MAX_FACET + 1):
     """Distinct categorical values of ``field``, stopping early past ``ceiling``."""
     values = set()
