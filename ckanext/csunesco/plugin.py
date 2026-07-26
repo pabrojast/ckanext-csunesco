@@ -120,6 +120,7 @@ class CsunescoPlugin(p.SingletonPlugin):
             'csunesco_project_data_sources':
                 helpers.csunesco_project_data_sources,
             'csunesco_blocks_need_review': helpers.csunesco_blocks_need_review,
+            'csunesco_icon': helpers.csunesco_icon,
             'csunesco_format_number': helpers.csunesco_format_number,
             'csunesco_block_content': helpers.csunesco_block_content,
             'csunesco_block_datasets': helpers.csunesco_block_datasets,

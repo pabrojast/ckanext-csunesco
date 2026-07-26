@@ -182,6 +182,18 @@ def csunesco_block_type(key):
     return blocks.BLOCK_TYPES.get(key)
 
 
+def csunesco_icon(name, size=20):
+    """Inline SVG for an icon slug (see ``logic/icons.py``).
+
+    A helper rather than a Jinja macro because CKAN's template environment
+    does not export macros across imports, and rather than a snippet because
+    an editor page draws ~100 icons -- a dict lookup, not a template render.
+    """
+    from markupsafe import Markup
+    from ckanext.csunesco.logic import icons
+    return Markup(icons.svg(name, size))
+
+
 def csunesco_format_number(value):
     """Group a count for reading: 1605 -> "1,605" in the request's locale.
 

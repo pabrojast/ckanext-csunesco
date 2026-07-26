@@ -137,6 +137,24 @@ def admin_dashboard():
     except Exception:
         log.warning('csunesco: administered project list unavailable')
         my_projects = []
+    # The question a manager actually brings here is "is my page live?".
+    # One cheap read per administered project (the list is personal and
+    # short); any failure just leaves the chip off that card.
+    for project in my_projects:
+        if project.get('status') != 'approved':
+            continue
+        try:
+            page = tk.get_action('csunesco_project_page_show')(
+                context, {'project_id': project['id']})
+        except Exception:
+            continue
+        if page.get('status') == 'pending':
+            project['page_state'] = 'in_review'
+        elif page.get('published_blocks') is not None:
+            project['page_state'] = 'published'
+        else:
+            project['page_state'] = 'draft'
+
 
     return tk.render('csunesco/cs-admin-dashboard.html', extra_vars={
         'my_projects': my_projects,

@@ -488,7 +488,9 @@ def _n_builtin(raw, report=None):
 
 class BlockType(object):
     """One entry in the registry. ``label``/``description`` are English source
-    strings; templates translate them."""
+    strings; templates translate them. ``icon`` is a slug resolved by the
+    inline-SVG set in ``templates/csunesco/macros/icons.html`` (the verify
+    script asserts every slug has a glyph there)."""
 
     def __init__(self, key, label, icon, normalize, description=u'',
                  max_instances=1, requires_review=False, builtin=False,
@@ -518,66 +520,64 @@ class BlockType(object):
 
 _TYPES = [
     # --- author-added -----------------------------------------------------
-    BlockType('rich_text', u'Text', u'\U0001F4DD', _n_rich_text,
+    BlockType('rich_text', u'Text', u'text', _n_rich_text,
               u'A paragraph of formatted text.', max_instances=20),
-    BlockType('chart', u'Chart', u'\U0001F4CA', _n_chart,
+    BlockType('chart', u'Chart', u'chart', _n_chart,
               u'A chart of the observations your volunteers collected in the '
               u'app. Nothing shows until you pick which data to chart.',
               max_instances=6),
-    BlockType('data_chat', u'Ask the data', u'\U0001F4AC', _n_data_chat,
-              u'A box where visitors ask questions about your observations in '
-              u'plain language - "what is the average pH per site?" - and get '
-              u'a chart back. Every figure is calculated from your data, never '
-              u'written by the AI. Visitors need to be signed in to ask.',
+    BlockType('data_chat', u'Ask the data', u'chat', _n_data_chat,
+              u'Visitors ask about your observations in plain language and '
+              u'get a chart computed from the data. Sign-in required.',
               max_instances=1),
-    BlockType('stats', u'Your own counters', u'\U0001F522', _n_stats,
+    BlockType('stats', u'Your own counters', u'counters', _n_stats,
               u'Up to four big numbers you choose - typed in, or kept up to '
               u'date automatically from your data.', max_instances=3),
-    BlockType('image', u'Images', u'\U0001F5BC', _n_image,
+    BlockType('image', u'Images', u'image', _n_image,
               u'One image or a gallery.', max_instances=8,
               requires_review=True),
-    BlockType('video', u'Video', u'\U0001F3AC', _n_video,
+    BlockType('video', u'Video', u'video', _n_video,
               u'A YouTube or Vimeo video.', max_instances=4,
               requires_review=True),
-    BlockType('observation_map', u'Observation map', u'\U0001F4CD',
+    BlockType('observation_map', u'Observation map', u'pin',
               _n_observation_map,
               u'A map with a pin for every observation in one set of app data.',
               max_instances=4),
-    BlockType('terria_map', u'Interactive map', u'\U0001F5FA', _n_terria_map,
+    BlockType('terria_map', u'Interactive map', u'map', _n_terria_map,
               u'A map you built in the IHP-WINS map viewer and shared with its '
               u'Share button.', max_instances=2, requires_review=True),
-    BlockType('content_list', u'A list of news or events', u'\U0001F4F0',
+    BlockType('content_list', u'A list of news or events', u'news',
               _n_content_list,
               u'Pick exactly which news, events or publications to list, and '
               u'how many. (The standard "News, Events & More" section already '
               u'shows the most recent ones.)', max_instances=4),
-    BlockType('datasets_list', u'Datasets', u'\U0001F5C3', _n_datasets_list,
+    BlockType('datasets_list', u'Datasets', u'database', _n_datasets_list,
               u'A list of datasets published on IHP-WINS.', max_instances=2),
-    BlockType('callout', u'Highlight', u'\U0001F4A1', _n_callout,
+    BlockType('callout', u'Highlight', u'bulb', _n_callout,
               u'A highlighted note with an optional button.', max_instances=6),
 
     # --- built-in wrappers for the standard sections -----------------------
     # Addable=False: they exist on every page from the start and are toggled
     # with `hidden`, never added twice.
-    BlockType('builtin_at_a_glance', u'At a Glance', u'\U0001F4C8', _n_builtin,
+    BlockType('builtin_at_a_glance', u'At a Glance', u'gauge', _n_builtin,
               u'The four standard project counters, kept up to date for you.',
               builtin=True, addable=False),
-    BlockType('builtin_region_map', u'Project region', u'\U0001F30D',
+    BlockType('builtin_region_map', u'Project region', u'globe',
               _n_builtin, u'The region map (hidden when no region is set).',
               builtin=True, addable=False),
-    BlockType('builtin_about', u'About this project', u'\U0001F4C4',
+    BlockType('builtin_about', u'About this project', u'doc',
               _n_builtin,
               u'Description text from before this editor existed. It cannot be '
               u'edited here - move it into a text block to change it.',
               builtin=True, addable=False, deprecated=True),
-    BlockType('builtin_data', u'Data', u'\U0001F4BE', _n_builtin,
+    BlockType('builtin_data', u'Data', u'layers', _n_builtin,
               u'Every set of app data on this project, with its map and '
               u'download links.', builtin=True, addable=False),
-    BlockType('builtin_news_events', u'News, Events & More', u'\U0001F4F0',
+    BlockType('builtin_news_events', u'News, Events & More', u'news',
               _n_builtin,
               u'The six most recent items published for this project.',
               builtin=True, addable=False),
-    BlockType('builtin_join', u'Join this project', u'\U0001F91D', _n_builtin,
+    BlockType('builtin_join', u'Join this project', u'users', _n_builtin,
               u'The join button, QR code and share link.',
               builtin=True, addable=False),
 ]

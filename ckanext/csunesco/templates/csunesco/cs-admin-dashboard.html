@@ -24,10 +24,22 @@
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
-  <section class="cs-hero" aria-labelledby="cs-admin-title">
-    <h1 id="cs-admin-title">{{ _("Approval panel") }}</h1>
-    <p>{{ _("Review and decide on the items awaiting your approval.") }}</p>
-  </section>
+  {% set pending_total = counts.get('total', 0) %}
+  <header class="cs-wb-header">
+    <p class="cs-wb-eyebrow">{{ _("Citizen Science") }} · {{ _("Review") }}</p>
+    <h1 class="cs-wb-title" id="cs-admin-title">{{ _("Approval panel") }}</h1>
+    {% if pending_total %}
+      <span class="cs-wb-chip cs-wb-chip-work">
+        {{ h.csunesco_icon('alert', 14) }}
+        {{ h.csunesco_format_number(pending_total) }} {{ _("waiting for review") }}
+      </span>
+    {% else %}
+      <span class="cs-wb-chip cs-wb-chip-ok">
+        {{ h.csunesco_icon('check', 14) }} {{ _("Nothing waiting — all clear") }}
+      </span>
+    {% endif %}
+    <p class="cs-wb-sub">{{ _("Review and decide on the items awaiting your approval.") }}</p>
+  </header>
 
   {#
     "Your projects" -- not a review queue, so it sits ABOVE the tabs.
@@ -41,24 +53,37 @@
   #}
   {% if my_projects or admin_initiatives or is_sysadmin %}
     <section class="cs-section" aria-labelledby="cs-mine-title">
-      <h2 id="cs-mine-title" class="cs-section-title">{{ _("Your projects") }}</h2>
+      <h2 id="cs-mine-title" class="cs-wb-palette-title">{{ _("Your projects") }}</h2>
 
       {% if my_projects %}
-        <ul class="cs-mine-list">
+        <ul class="cs-wb-cards">
           {% for project in my_projects %}
-            <li class="cs-mine-item">
-              <a class="cs-link" href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
-                {{ project.title }}
-              </a>
-              {% if project.status != 'approved' %}
-                <span class="cs-status-badge cs-status-{{ project.status }}">
-                  {{ _("Awaiting review") if project.status == 'pending' else _("Rejected") }}
-                </span>
-              {% endif %}
-              {% if project.status == 'approved' %}
-                <a class="cs-mine-edit" href="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
-                  {{ _("Edit page") }}
+            <li class="cs-wb-card">
+              <p class="cs-wb-card-title">
+                <a href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
+                  {{ project.title }}
                 </a>
+              </p>
+              <p class="cs-wb-card-chips">
+                {% if project.status == 'pending' %}
+                  <span class="cs-wb-chip cs-wb-chip-work">{{ _("Awaiting review") }}</span>
+                {% elif project.status == 'rejected' %}
+                  <span class="cs-wb-chip cs-wb-chip-work">{{ _("Rejected") }}</span>
+                {% elif project.page_state == 'published' %}
+                  <span class="cs-wb-chip cs-wb-chip-ok">{{ h.csunesco_icon('check', 13) }} {{ _("Page published") }}</span>
+                {% elif project.page_state == 'in_review' %}
+                  <span class="cs-wb-chip cs-wb-chip-work">{{ h.csunesco_icon('alert', 13) }} {{ _("Page in review") }}</span>
+                {% elif project.page_state %}
+                  <span class="cs-wb-chip cs-wb-chip-quiet">{{ _("Page not published yet") }}</span>
+                {% endif %}
+              </p>
+              {% if project.status == 'approved' %}
+                <p class="cs-wb-card-actions">
+                  <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                     href="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
+                    {{ _("Edit page") }}
+                  </a>
+                </p>
               {% endif %}
             </li>
           {% endfor %}
@@ -86,7 +111,7 @@
       {% if is_sysadmin %}
         <p class="cs-mine-scope">
           <a class="cs-link" href="{{ h.url_for('csunesco.project_list') }}">
-            {{ _("Browse every project on the portal") }}
+            {{ _("Browse every project on the portal") }} {{ h.csunesco_icon('arrow-right', 14) }}
           </a>
         </p>
       {% endif %}
@@ -98,33 +123,33 @@
       {% if can_review_projects %}
         <button type="button" class="cs-tab" role="tab" id="cs-tabbtn-projects"
                 data-tab="projects" aria-controls="cs-tab-projects" aria-selected="false">
-          {{ _("Project requests") }}
-          <span class="cs-tab-count">{{ counts.get('project_requests', 0) }}</span>
-        </button>
+          {{ h.csunesco_icon('doc', 16) }}
+          <span class="cs-tab-label">{{ _("Project requests") }}</span>
+          <span class="cs-tab-count{% if counts.get('project_requests', 0) %} has-work{% endif %}">{{ counts.get('project_requests', 0) }}</span>        </button>
       {% endif %}
       <button type="button" class="cs-tab" role="tab" id="cs-tabbtn-joins"
               data-tab="joins" aria-controls="cs-tab-joins" aria-selected="false">
-        {{ _("Join requests") }}
-        <span class="cs-tab-count">{{ counts.get('join_requests', 0) }}</span>
-      </button>
+          {{ h.csunesco_icon('users', 16) }}
+          <span class="cs-tab-label">{{ _("Join requests") }}</span>
+          <span class="cs-tab-count{% if counts.get('join_requests', 0) %} has-work{% endif %}">{{ counts.get('join_requests', 0) }}</span>      </button>
       <button type="button" class="cs-tab" role="tab" id="cs-tabbtn-content"
               data-tab="content" aria-controls="cs-tab-content" aria-selected="false">
-        {{ _("Content to review") }}
-        <span class="cs-tab-count">{{ counts.get('content_requests', 0) }}</span>
-      </button>
+          {{ h.csunesco_icon('news', 16) }}
+          <span class="cs-tab-label">{{ _("Content to review") }}</span>
+          <span class="cs-tab-count{% if counts.get('content_requests', 0) %} has-work{% endif %}">{{ counts.get('content_requests', 0) }}</span>      </button>
       {% if can_review_data %}
         <button type="button" class="cs-tab" role="tab" id="cs-tabbtn-data"
                 data-tab="data" aria-controls="cs-tab-data" aria-selected="false">
-          {{ _("Data to review") }}
-          <span class="cs-tab-count">{{ counts.get('data_requests', 0) }}</span>
-        </button>
+          {{ h.csunesco_icon('database', 16) }}
+          <span class="cs-tab-label">{{ _("Data to review") }}</span>
+          <span class="cs-tab-count{% if counts.get('data_requests', 0) %} has-work{% endif %}">{{ counts.get('data_requests', 0) }}</span>        </button>
       {% endif %}
       {% if can_review_pages %}
         <button type="button" class="cs-tab" role="tab" id="cs-tabbtn-pages"
                 data-tab="pages" aria-controls="cs-tab-pages" aria-selected="false">
-          {{ _("Pages to review") }}
-          <span class="cs-tab-count">{{ counts.get('page_requests', 0) }}</span>
-        </button>
+          {{ h.csunesco_icon('layers', 16) }}
+          <span class="cs-tab-label">{{ _("Pages to review") }}</span>
+          <span class="cs-tab-count{% if counts.get('page_requests', 0) %} has-work{% endif %}">{{ counts.get('page_requests', 0) }}</span>        </button>
       {% endif %}
     </div>
 
@@ -172,7 +197,7 @@
             </tbody>
           </table>
         {% else %}
-          <p class="cs-empty">{{ _("No project requests are awaiting review.") }}</p>
+          <p class="cs-empty cs-wb-empty">{{ h.csunesco_icon('inbox', 22) }} {{ _("No project requests are awaiting review.") }}</p>
         {% endif %}
       </div>
     {% endif %}
@@ -214,7 +239,7 @@
           </tbody>
         </table>
       {% else %}
-        <p class="cs-empty">{{ _("No join requests are awaiting review.") }}</p>
+        <p class="cs-empty cs-wb-empty">{{ h.csunesco_icon('inbox', 22) }} {{ _("No join requests are awaiting review.") }}</p>
       {% endif %}
     </div>
 
@@ -309,7 +334,7 @@
           </button>
         {% endif %}
       {% else %}
-        <p class="cs-empty">{{ _("No content is awaiting review.") }}</p>
+        <p class="cs-empty cs-wb-empty">{{ h.csunesco_icon('inbox', 22) }} {{ _("No content is awaiting review.") }}</p>
       {% endif %}
     </div>
 
@@ -417,7 +442,7 @@
             {{ _("Approve selected") }}
           </button>
         {% else %}
-          <p class="cs-empty">{{ _("No data sources are awaiting review.") }}</p>
+          <p class="cs-empty cs-wb-empty">{{ h.csunesco_icon('inbox', 22) }} {{ _("No data sources are awaiting review.") }}</p>
         {% endif %}
       </div>
     {% endif %}
@@ -515,7 +540,7 @@
             </tbody>
           </table>
         {% else %}
-          <p class="cs-empty">{{ _("No project pages are awaiting review.") }}</p>
+          <p class="cs-empty cs-wb-empty">{{ h.csunesco_icon('inbox', 22) }} {{ _("No project pages are awaiting review.") }}</p>
         {% endif %}
       </div>
     {% endif %}

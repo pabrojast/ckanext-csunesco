@@ -2177,3 +2177,546 @@
   gap: 0.5rem;
   align-items: baseline;
 }
+
+/* ===========================================================================
+ * Workbench — the WORKING surfaces (approval panel + page editor).
+ *
+ * Design language: a scientific instrument. Quiet white cards on hairlines,
+ * one display face (IBM Plex Sans, vendored — no CDN, same rule as Chart.js),
+ * UNESCO blue reserved for actions and gold reserved for "work is waiting".
+ * Scoped under cs-wb-* so the public pages keep their own look untouched.
+ * ========================================================================= */
+
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('/csunesco/fonts/IBMPlexSans-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('/csunesco/fonts/IBMPlexSans-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --wb-card: #ffffff;
+  --wb-well: #f5f8fb;          /* the rail / quiet wells behind cards */
+  --wb-line: #dbe4ee;          /* hairline borders */
+  --wb-ink: #12283d;           /* headings */
+  --wb-ink-body: #33475b;
+  --wb-ink-muted: #5a6b7b;     /* 5.49:1 on white — already audited */
+  --wb-display: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* ---- Inline SVG icons (macros/icons.html) ------------------------------- */
+
+.cs-icon {
+  flex: 0 0 auto;
+  vertical-align: -0.2em;
+}
+
+/* ---- Compact workbench header (replaces the 130px marketing hero) ------- */
+
+.cs-wb-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.9rem;
+  padding: 1.1rem 0 0.9rem;
+  border-bottom: 1px solid var(--wb-line);
+  margin-bottom: 1.1rem;
+}
+
+.cs-wb-eyebrow {
+  display: block;
+  width: 100%;
+  margin: 0;
+  font-family: var(--wb-display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--unesco-blue);
+}
+
+.cs-wb-title {
+  margin: 0;
+  font-family: var(--wb-display);
+  font-size: 1.55rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--wb-ink);
+  text-wrap: balance;
+}
+
+.cs-wb-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* One quiet line under the title: what this screen is, or how much work
+   waits. Never a paragraph. */
+.cs-wb-sub {
+  width: 100%;
+  margin: 0;
+  color: var(--wb-ink-muted);
+  font-size: 0.92rem;
+}
+
+/* Status chips shared by both surfaces (page + queue states). */
+.cs-wb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.14rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--wb-line);
+  background: var(--wb-well);
+  font-family: var(--wb-display);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--wb-ink-body);
+  white-space: nowrap;
+}
+
+.cs-wb-chip-ok    { border-color: #bfe3d2; background: #f0faf5; color: #0f7a5b; }
+.cs-wb-chip-work  { border-color: #f0d39a; background: #fff8e8; color: #8a5a00; }
+.cs-wb-chip-quiet { color: var(--wb-ink-muted); }
+
+/* Ghost icon-button: the workbench's default control. Red is an OUTCOME
+   (hover on a destructive action), never a resting state. */
+.cs-wb-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0.3rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--wb-ink-muted);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.cs-wb-iconbtn:hover,
+.cs-wb-iconbtn:focus-visible {
+  border-color: var(--wb-line);
+  background: var(--wb-well);
+  color: var(--wb-ink);
+}
+
+.cs-wb-iconbtn:focus-visible {
+  outline: 2px solid var(--unesco-blue-light);
+  outline-offset: 1px;
+}
+
+.cs-wb-iconbtn[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cs-wb-iconbtn-danger:hover,
+.cs-wb-iconbtn-danger:focus-visible {
+  border-color: #f2c4c2;
+  background: #fdf0ef;
+  color: #b3261e;
+}
+
+/* ---- Editor: layout with the spine -------------------------------------- */
+/* One markup, two renderings: a chip row by default, a sticky numbered rail
+   at >=1100px. The rail is the signature of these surfaces: the number IS the
+   block's position on the page, so the index is the page's own map. */
+
+.cs-wb-layout { min-width: 0; }
+
+@media (min-width: 1100px) {
+  .cs-wb-layout.has-spine {
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  .cs-wb-layout.has-spine > .cs-pb-jump {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    margin: 0;
+    padding: 1rem;
+    background: var(--wb-well);
+    border: 1px solid var(--wb-line);
+    border-radius: 12px;
+  }
+
+  .cs-wb-layout.has-spine .cs-pb-jump-list {
+    display: block;
+    counter-reset: cs-spine;
+  }
+
+  .cs-wb-layout.has-spine .cs-pb-jump-list li {
+    counter-increment: cs-spine;
+  }
+
+  .cs-wb-layout.has-spine .cs-pb-jump-list a {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.38rem 0.5rem;
+    margin: 0 0 2px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 0.86rem;
+    color: var(--wb-ink-body);
+  }
+
+  /* The position number, from a CSS counter: always the truth, never stale. */
+  .cs-wb-layout.has-spine .cs-pb-jump-list a::before {
+    content: counter(cs-spine);
+    flex: 0 0 1.5rem;
+    font-family: var(--wb-display);
+    font-size: 0.74rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--wb-ink-muted);
+    text-align: right;
+  }
+
+  .cs-wb-layout.has-spine .cs-pb-jump-list a:hover,
+  .cs-wb-layout.has-spine .cs-pb-jump-list a:focus-visible {
+    background: #fff;
+    color: var(--unesco-blue-dark);
+  }
+
+  .cs-wb-layout.has-spine .cs-pb-jump-list a.is-off { color: var(--wb-ink-muted); }
+
+  .cs-wb-layout.has-spine .cs-pb-jump-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.cs-pb-jump-title {
+  font-family: var(--wb-display);
+}
+
+/* Status dots on the rail: gold = needs attention, hollow = hidden. The words
+   ride along visually hidden for screen readers. */
+.cs-spine-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.cs-spine-dot-attn { background: var(--admin-gold); }
+
+.cs-spine-dot-off {
+  background: transparent;
+  border: 1.5px solid #b6c2ce;
+}
+
+/* ---- Editor: block cards ------------------------------------------------- */
+
+.cs-pb-block {
+  border-color: var(--wb-line);
+  box-shadow: 0 1px 2px rgba(18, 40, 61, 0.05);
+}
+
+.cs-pb-summary {
+  background: #fff;
+  border-bottom: 0;
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+
+.cs-pb-details[open] > .cs-pb-summary { border-bottom: 1px solid var(--wb-line); }
+
+.cs-pb-summary:hover { background: var(--wb-well); }
+
+.cs-pb-kind {
+  font-family: var(--wb-display);
+  color: var(--wb-ink);
+}
+
+.cs-pb-icon { color: var(--unesco-blue); display: inline-flex; }
+
+.cs-pb-name { color: var(--wb-ink-muted); }
+
+.cs-pb-tag {
+  border-color: var(--wb-line);
+  background: var(--wb-well);
+  color: var(--wb-ink-muted);
+}
+
+/* Ops cluster: vertically CENTERED on the summary bar (it used to hang past
+   the row edge), ghost buttons, red only as a hover outcome on delete. */
+.cs-pb-ops {
+  top: 50%;
+  transform: translateY(-50%);
+  right: 0.6rem;
+}
+
+@media (max-width: 599px) {
+  .cs-pb-ops { transform: none; }
+}
+
+/* ---- Editor: sticky action bar ------------------------------------------ */
+
+.cs-pb-actions.cs-wb-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  align-items: center;
+  margin: calc(var(--space-unit) * 1.25) -0.5rem 0;
+  padding: 0.7rem 0.5rem;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(6px);
+  border-top: 1px solid var(--wb-line);
+}
+
+.cs-pb-actions.cs-wb-sticky .cs-pb-publish-hint {
+  margin: 0 0 0 auto;
+  font-size: 0.85rem;
+}
+
+/* ---- Editor: palette ----------------------------------------------------- */
+
+.cs-wb-palette-title {
+  margin: 0 0 0.75rem;
+  font-family: var(--wb-display);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--wb-ink-muted);
+}
+
+.cs-pb-palette { margin-top: calc(var(--space-unit) * 1.75); }
+
+.cs-pb-palette-grid {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-auto-rows: 1fr;          /* equal-height cards, whatever the copy */
+}
+
+.cs-pb-add {
+  border-color: var(--wb-line);
+  box-shadow: none;
+}
+
+.cs-pb-add:hover:not([aria-disabled="true"]),
+.cs-pb-add:focus-visible:not([aria-disabled="true"]) {
+  transform: translateY(-2px);
+  border-color: var(--unesco-blue-light);
+  box-shadow: 0 8px 18px rgba(0, 114, 188, 0.14);
+}
+
+.cs-pb-add[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.cs-pb-add-icon { color: var(--unesco-blue); }
+
+.cs-pb-add-label {
+  font-family: var(--wb-display);
+  font-weight: 600;
+  color: var(--wb-ink);
+}
+
+.cs-pb-add-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-pb-add:hover:not([aria-disabled="true"]),
+  .cs-pb-add:focus-visible:not([aria-disabled="true"]) { transform: none; }
+}
+
+/* ---- Admin panel --------------------------------------------------------- */
+
+/* Your-projects cards: the manager's home row. */
+.cs-wb-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 0.75rem;
+}
+
+.cs-wb-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  background: var(--wb-card);
+  border: 1px solid var(--wb-line);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(18, 40, 61, 0.05);
+}
+
+.cs-wb-card-title {
+  margin: 0;
+  font-family: var(--wb-display);
+  font-weight: 600;
+}
+
+.cs-wb-card-title a {
+  color: var(--wb-ink);
+  text-decoration: none;
+}
+
+.cs-wb-card-title a:hover,
+.cs-wb-card-title a:focus-visible { color: var(--unesco-blue-dark); }
+
+.cs-wb-card-chips {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.cs-wb-card-actions { margin: auto 0 0; }
+
+.cs-mine-scope { color: var(--wb-ink-muted); font-size: 0.9rem; }
+.cs-mine-scope .cs-icon { vertical-align: -0.25em; }
+
+/* Queue tabs as segments: gold only where work waits, blue when active. */
+.cs-admin .cs-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0;
+  border-bottom: 1px solid var(--wb-line);
+  padding-bottom: 0.75rem;
+}
+
+.cs-admin .cs-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--wb-line);
+  border-radius: 10px;
+  background: var(--wb-card);
+  font-family: var(--wb-display);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--wb-ink-body);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.cs-admin .cs-tab:hover { background: var(--wb-well); }
+
+.cs-admin .cs-tab:focus-visible {
+  outline: 2px solid var(--unesco-blue-light);
+  outline-offset: 1px;
+}
+
+.cs-admin .cs-tab[aria-selected="true"] {
+  background: var(--unesco-blue);
+  border-color: var(--unesco-blue);
+  color: #fff;
+}
+
+.cs-admin .cs-tab-count {
+  min-width: 1.5rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--wb-well);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--wb-ink-muted);
+}
+
+.cs-admin .cs-tab-count.has-work {
+  background: var(--admin-gold);
+  color: #402c00;
+}
+
+.cs-admin .cs-tab[aria-selected="true"] .cs-tab-count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.cs-admin .cs-tab[aria-selected="true"] .cs-tab-count.has-work {
+  background: var(--admin-gold);
+  color: #402c00;
+}
+
+/* Panels and their tables: one white card, hairline rows, calm hover. */
+.cs-admin .cs-tabpanel { margin-top: 1rem; }
+
+.cs-admin .cs-admin-table {
+  background: var(--wb-card);
+  border: 1px solid var(--wb-line);
+  border-radius: 12px;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(18, 40, 61, 0.05);
+}
+
+.cs-admin .cs-admin-table thead th {
+  padding: 0.6rem 0.9rem;
+  background: var(--wb-well);
+  border-bottom: 1px solid var(--wb-line);
+  font-family: var(--wb-display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--wb-ink-muted);
+  text-align: left;
+}
+
+.cs-admin .cs-admin-table tbody td {
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid #ecf1f7;
+  vertical-align: top;
+}
+
+.cs-admin .cs-admin-table tbody tr:last-child td { border-bottom: 0; }
+
+@media (min-width: 641px) {
+  .cs-admin .cs-admin-table tbody tr:hover td { background: var(--wb-well); }
+}
+
+/* Quiet empty state: a line with the inbox glyph, not a drop-zone. */
+.cs-admin .cs-wb-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 2.2rem 1rem;
+  background: transparent;
+  border: 0;
+  color: var(--wb-ink-muted);
+}
+
+.cs-admin .cs-wb-empty .cs-icon { color: #b6c2ce; }

@@ -1,7 +1,7 @@
 {% extends "csunesco/base.html" %}
 
 {#
-  The project-page editor.
+  The project-page editor — a workbench, not a brochure.
 
   ONE form holds every block. Each control is a real submit button carrying
   `name="op"`, so add / move / delete / hide / save all work with JavaScript
@@ -19,6 +19,11 @@
   painted -- which every operation depends on, since each one re-parses the
   whole list.
 
+  Layout: at >=1100px a sticky SPINE (the numbered section index) sits left of
+  the block list -- the number is the block's real position on the page, so
+  the index is the page's map, not decoration. Below 1100px the same markup
+  renders as a chip row. Plain anchors either way: works without JavaScript.
+
   Vars: project, page (dict), blocks (list), errors (dict), notice (str|None),
         drops_by_block (dict), attention_ids (set), open_ids (set),
         palette (list of BlockType), max_blocks (int).
@@ -31,46 +36,39 @@
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
-  <section class="cs-hero" aria-labelledby="cs-pb-title">
-    <h1 id="cs-pb-title">{{ _("Edit this project page") }}</h1>
-    <p>{{ project.title }}</p>
-  </section>
-
-  {#
-    The editor opens on six sections the manager never created. Say where they
-    came from before they wonder whether they broke something.
-  #}
-  <p class="cs-hint cs-pb-intro">
-    {{ _("Your page starts with the standard sections below. You can reorder them or hide them, but not delete them — their content comes from your project record. Add your own sections at the bottom, then publish when you are ready.") }}
-  </p>
-
-  <div class="cs-pb-toolbar">
-    <p class="cs-pb-status">
-      {% if page.status == 'pending' %}
-        <span class="cs-status-badge cs-status-pending">{{ _("In review") }}</span>
-        {{ _("This page is waiting for a reviewer. Editing it now takes it back out of the queue.") }}
-      {% elif page.status == 'rejected' %}
-        <span class="cs-status-badge cs-status-rejected">{{ _("Changes requested") }}</span>
-      {#
-        `page` is {} when the page could not be loaded, and in Jinja
-        `Undefined is not none` is True -- which announced "Published" for a
-        page that may never have existed. Ask for the key explicitly.
-      #}
-      {% elif page.get('published_blocks') is not none %}
-        <span class="cs-status-badge cs-status-approved">{{ _("Published") }}</span>
-        {{ _("Your draft is separate: the public keeps seeing the published page until a new version is approved.") }}
-      {% else %}
-        <span class="cs-status-badge cs-status-draft">{{ _("Not published yet") }}</span>
-        {{ _("The public sees the standard layout until you publish this page.") }}
-      {% endif %}
-    </p>
-    <span class="cs-pb-toolbar-links">
+  <header class="cs-wb-header">
+    <p class="cs-wb-eyebrow">{{ _("Citizen Science") }} · {{ _("Project page") }}</p>
+    <h1 class="cs-wb-title" id="cs-pb-title">{{ project.title }}</h1>
+    {% if page.status == 'pending' %}
+      <span class="cs-wb-chip cs-wb-chip-work">{{ h.csunesco_icon('alert', 14) }} {{ _("In review") }}</span>
+    {% elif page.status == 'rejected' %}
+      <span class="cs-wb-chip cs-wb-chip-work">{{ h.csunesco_icon('alert', 14) }} {{ _("Changes requested") }}</span>
+    {#
+      `page` is {} when the page could not be loaded, and in Jinja
+      `Undefined is not none` is True -- which announced "Published" for a
+      page that may never have existed. Ask for the key explicitly.
+    #}
+    {% elif page.get('published_blocks') is not none %}
+      <span class="cs-wb-chip cs-wb-chip-ok">{{ h.csunesco_icon('check', 14) }} {{ _("Published") }}</span>
+    {% else %}
+      <span class="cs-wb-chip cs-wb-chip-quiet">{{ _("Not published yet") }}</span>
+    {% endif %}
+    <span class="cs-wb-actions">
       <a class="cs-btn cs-btn-secondary cs-btn-sm"
          href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
         {{ _("Back to the project") }}
       </a>
     </span>
-  </div>
+    <p class="cs-wb-sub">
+      {% if page.status == 'pending' %}
+        {{ _("This page is waiting for a reviewer. Editing it now takes it back out of the queue.") }}
+      {% elif page.get('published_blocks') is not none %}
+        {{ _("Your draft is separate: the public keeps seeing the published page until a new version is approved.") }}
+      {% else %}
+        {{ _("The standard sections below come from your project record — reorder or hide them, add your own, then publish.") }}
+      {% endif %}
+    </p>
+  </header>
 
   {#
     Shown whenever a reason exists, NOT only while the page is still flagged
@@ -129,6 +127,39 @@
     </div>
   {% endif %}
 
+  <div class="cs-wb-layout{% if blocks | length > 3 %} has-spine{% endif %}">
+    {#
+      The spine: every section in page order. The NUMBER is the block's actual
+      position, so the index is the page's own map. Status travels as dots with
+      visually-hidden words, so the rail stays quiet but nothing is lost to a
+      screen reader.
+    #}
+    {% if blocks | length > 3 %}
+      <nav class="cs-pb-jump" aria-labelledby="cs-pb-jump-title">
+        <h2 id="cs-pb-jump-title" class="cs-pb-jump-title">{{ _("Sections on this page") }}</h2>
+        <ol class="cs-pb-jump-list">
+          {% for block in blocks %}
+            {% set spec = h.csunesco_block_type(block.type) %}
+            {% if spec %}
+              <li>
+                <a href="#block-{{ block.id }}"{% if block.hidden %} class="is-off"{% endif %}>
+                  {{ h.csunesco_icon(spec.icon, 16) }}
+                  <span class="cs-pb-jump-label">{{ block.title or _(spec.label) }}</span>
+                  {% if block.id in attention_ids %}
+                    <span class="cs-spine-dot cs-spine-dot-attn" aria-hidden="true"></span>
+                    <span class="cs-visually-hidden">{{ _("needs attention") }}</span>
+                  {% elif block.hidden %}
+                    <span class="cs-spine-dot cs-spine-dot-off" aria-hidden="true"></span>
+                    <span class="cs-visually-hidden">{{ _("hidden") }}</span>
+                  {% endif %}
+                </a>
+              </li>
+            {% endif %}
+          {% endfor %}
+        </ol>
+      </nav>
+    {% endif %}
+
   {#
     novalidate: the browser cannot validate a control it cannot show, so with
     blocks collapsed an invalid url/number field made Chrome refuse to submit
@@ -137,27 +168,6 @@
     re-parses and re-validates everything regardless, and reports what it threw
     away next to the field (blocks/edit/_drop.html).
   #}
-  {% if blocks | length > 3 %}
-    <nav class="cs-pb-jump" aria-labelledby="cs-pb-jump-title">
-      <h2 id="cs-pb-jump-title" class="cs-pb-jump-title">{{ _("Sections on this page") }}</h2>
-      <ol class="cs-pb-jump-list">
-        {% for block in blocks %}
-          {% set spec = h.csunesco_block_type(block.type) %}
-          {% if spec %}
-            <li>
-              <a href="#block-{{ block.id }}">
-                <span aria-hidden="true">{{ spec.icon }}</span>
-                {{ _(spec.label) }}{% if block.title %} — {{ block.title }}{% endif %}
-                {% if block.hidden %}<span class="cs-pb-tag cs-pb-tag-off">{{ _("hidden") }}</span>{% endif %}
-                {% if block.id in attention_ids %}<span class="cs-pb-tag cs-pb-tag-review">{{ _("needs attention") }}</span>{% endif %}
-              </a>
-            </li>
-          {% endif %}
-        {% endfor %}
-      </ol>
-    </nav>
-  {% endif %}
-
   <form method="post" class="cs-pb-form" id="cs-page-form" novalidate
         action="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
     {{ h.csrf_input() }}
@@ -208,20 +218,18 @@
             #}
             <span class="cs-pb-ops">
               <button type="submit" name="op" value="move_up:{{ loop.index0 }}"
-                      class="cs-btn cs-btn-secondary cs-btn-sm"
+                      class="cs-wb-iconbtn"
                       {% if loop.first %}aria-disabled="true"{% endif %}
-                      aria-label="{% if loop.first %}{{ _('Move up (already first)') }}{% else %}{{ _('Move up') }}{% endif %}: {{ _(spec.label) }}{% if block.title %} — {{ block.title }}{% endif %}">&uarr;</button>
+                      aria-label="{% if loop.first %}{{ _('Move up (already first)') }}{% else %}{{ _('Move up') }}{% endif %}: {{ _(spec.label) }}{% if block.title %} — {{ block.title }}{% endif %}">{{ h.csunesco_icon('up', 18) }}</button>
               <button type="submit" name="op" value="move_down:{{ loop.index0 }}"
-                      class="cs-btn cs-btn-secondary cs-btn-sm"
+                      class="cs-wb-iconbtn"
                       {% if loop.last %}aria-disabled="true"{% endif %}
-                      aria-label="{% if loop.last %}{{ _('Move down (already last)') }}{% else %}{{ _('Move down') }}{% endif %}: {{ _(spec.label) }}{% if block.title %} — {{ block.title }}{% endif %}">&darr;</button>
+                      aria-label="{% if loop.last %}{{ _('Move down (already last)') }}{% else %}{{ _('Move down') }}{% endif %}: {{ _(spec.label) }}{% if block.title %} — {{ block.title }}{% endif %}">{{ h.csunesco_icon('down', 18) }}</button>
               {% if not spec.builtin %}
                 <button type="submit" name="op" value="delete:{{ loop.index0 }}"
-                        class="cs-btn cs-btn-danger cs-btn-sm"
+                        class="cs-wb-iconbtn cs-wb-iconbtn-danger"
                         data-confirm-op="{{ _('Delete this block?') }}"
-                        aria-label="{{ _('Delete') }}: {{ _(spec.label) }}{% if block.title %} — {{ block.title }}{% endif %}">
-                  {{ _("Delete") }}
-                </button>
+                        aria-label="{{ _('Delete') }}: {{ _(spec.label) }}{% if block.title %} — {{ block.title }}{% endif %}">{{ h.csunesco_icon('trash', 18) }}</button>
               {% endif %}
             </span>
 
@@ -234,7 +242,7 @@
             <details class="cs-pb-details"{% if open_now %} open{% endif %}>
               <summary class="cs-pb-summary">
                 <h3 class="cs-pb-kind" id="kind-{{ block.id }}">
-                  <span class="cs-pb-icon" aria-hidden="true">{{ spec.icon }}</span>
+                  <span class="cs-pb-icon" aria-hidden="true">{{ h.csunesco_icon(spec.icon, 18) }}</span>
                   {{ _(spec.label) }}
                   {%- if block.title %} <span class="cs-pb-name">— {{ block.title }}</span>{% endif %}
                   {% if spec.builtin %}
@@ -314,9 +322,13 @@
       {% endfor %}
     </ol>
 
-    <div class="cs-pb-actions">
-      <button type="submit" name="op" value="save" class="cs-btn cs-btn-secondary">
-        {{ _("Save draft") }}
+    {#
+      Sticky: on a 13-block page the save buttons used to live mid-scroll.
+      Inside the form, so sticky costs nothing semantically.
+    #}
+    <div class="cs-pb-actions cs-wb-sticky">
+      <button type="submit" name="op" value="submit" class="cs-btn cs-btn-primary">
+        {{ _("Save and publish") }}
       </button>
       {#
         A submit, not a link: previewing has to SAVE first, or it would both
@@ -326,8 +338,8 @@
       <button type="submit" name="op" value="preview" class="cs-btn cs-btn-secondary">
         {{ _("Save and preview") }}
       </button>
-      <button type="submit" name="op" value="submit" class="cs-btn cs-btn-primary">
-        {{ _("Save and publish") }}
+      <button type="submit" name="op" value="save" class="cs-btn cs-btn-secondary">
+        {{ _("Save draft") }}
       </button>
       {#
         Be honest up front about what "publish" will do. Trust is not a blanket
@@ -347,19 +359,26 @@
     </div>
 
     <section class="cs-pb-palette" aria-labelledby="cs-pb-add-title">
-      <h2 id="cs-pb-add-title" class="cs-section-title">{{ _("Add a section") }}</h2>
+      <h2 id="cs-pb-add-title" class="cs-wb-palette-title">{{ _("Add a section") }}</h2>
       {% if can_add %}
         <div class="cs-pb-palette-grid">
           {% for spec in palette %}
             {% set used = blocks | selectattr('type', 'equalto', spec.key) | list | length %}
+            {% set full = used >= spec.max_instances %}
+            {#
+              aria-disabled, not disabled: the reason a card is unavailable is
+              written INSIDE it, and a disabled control is unreachable by
+              keyboard. Without JS a press still submits — the server treats an
+              over-limit add as a no-op, so nothing can go wrong.
+            #}
             <button type="submit" name="op" value="add:{{ spec.key }}"
                     class="cs-pb-add"
-                    {% if used >= spec.max_instances %}disabled{% endif %}>
-              <span class="cs-pb-add-icon" aria-hidden="true">{{ spec.icon }}</span>
+                    {% if full %}aria-disabled="true"{% endif %}>
+              <span class="cs-pb-add-icon" aria-hidden="true">{{ h.csunesco_icon(spec.icon, 22) }}</span>
               <span class="cs-pb-add-label">{{ _(spec.label) }}</span>
               <span class="cs-pb-add-desc">{{ _(spec.description) }}</span>
-              {% if used >= spec.max_instances %}
-                <span class="cs-pb-add-limit">{{ _("Limit reached") }}</span>
+              {% if full %}
+                <span class="cs-pb-add-limit">{{ _("Already on this page") }}</span>
               {% endif %}
             </button>
           {% endfor %}
@@ -371,6 +390,7 @@
       {% endif %}
     </section>
   </form>
+  </div>
 {% endblock %}
 
 {% block scripts %}

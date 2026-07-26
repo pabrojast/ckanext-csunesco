@@ -435,6 +435,7 @@ import sys
 tree = ast.parse(open('ckanext/csunesco/logic/blocks.py').read())
 keys = set()
 builtin = set()
+icons = set()
 for node in ast.walk(tree):
     if not (isinstance(node, ast.Call)
             and getattr(node.func, 'id', None) == 'BlockType'):
@@ -443,11 +444,29 @@ for node in ast.walk(tree):
         sys.exit('FAIL: a BlockType() call has no literal key')
     key = node.args[0].value
     keys.add(key)
+    # Third positional arg is the icon SLUG (resolved by macros/icons.html).
+    if len(node.args) > 2 and isinstance(node.args[2], ast.Constant):
+        icons.add(node.args[2].value)
     for keyword in node.keywords:
         if keyword.arg == 'builtin' and getattr(keyword.value, 'value', False):
             builtin.add(key)
 if not keys:
     sys.exit('FAIL: no BlockType entries found in blocks.py')
+
+# Every icon slug must have a glyph: an unknown name renders the neutral
+# fallback dot in silence, which is exactly the drift this prevents.
+icon_tree = ast.parse(open('ckanext/csunesco/logic/icons.py').read())
+glyphs = set()
+for node in ast.walk(icon_tree):
+    if isinstance(node, ast.Assign) and             getattr(node.targets[0], 'id', '') == 'ICONS':
+        glyphs = {key.value for key in node.value.keys}
+missing_icons = sorted(icons - glyphs)
+if missing_icons:
+    sys.exit('FAIL: registry icon slugs with no glyph in logic/icons.py: %s'
+             % missing_icons)
+for slug in ('up', 'down', 'trash', 'inbox', 'check', 'alert'):
+    if slug not in glyphs:
+        sys.exit('FAIL: UI glyph %r missing from logic/icons.py' % slug)
 
 render_dir = 'ckanext/csunesco/templates/csunesco/blocks'
 edit_dir = os.path.join(render_dir, 'edit')
