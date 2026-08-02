@@ -72,6 +72,54 @@ def _is_any_project_admin(context):
     return bool(db.admin_project_ids(user_obj.id))
 
 
+# --- Organization roles (org-scoped content) ---------------------------------
+
+def _is_org_editor(context, org_id):
+    """True when the acting user may author content FOR the organization:
+    a CKAN admin or editor of the org (the standard ``create_dataset``
+    capacity check). Sysadmins pass implicitly through CKAN's authz."""
+    if not org_id:
+        return False
+    user_obj = _user_obj(context)
+    if user_obj is None:
+        return False
+    import ckan.authz as authz
+    try:
+        return bool(authz.has_user_permission_for_group_or_org(
+            org_id, user_obj.name, 'create_dataset'))
+    except Exception:
+        return False
+
+
+def _is_org_member(context, org_id):
+    """True when the acting user belongs to the organization with ANY capacity
+    (admin/editor/member) -- the audience of its *private* content."""
+    if not org_id:
+        return False
+    user_obj = _user_obj(context)
+    if user_obj is None:
+        return False
+    import ckan.authz as authz
+    try:
+        return authz.users_role_for_group_or_org(
+            org_id, user_obj.name) is not None
+    except Exception:
+        return False
+
+
+def can_manage_content_scope(context, project_id, organization_id):
+    """THE write authorization for a content row, whatever its scope:
+    sysadmin, OR the composite project check (PM/ADM) for project content,
+    OR an org admin/editor for organization content."""
+    if _is_sysadmin(context):
+        return True
+    if project_id:
+        return can_manage_project(context, project_id)
+    if organization_id:
+        return _is_org_editor(context, organization_id)
+    return False
+
+
 # --- Initiative admin (ADM): admin-capacity member of an initiative group ----
 
 def _admin_initiative_groups(context):
@@ -249,11 +297,12 @@ def csunesco_admin_pending_list(context, data_dict):
 
 
 def csunesco_content_create(context, data_dict):
-    # Sysadmin, the target project's admin or its initiative admin. When the
-    # project is not resolvable from the auth payload we allow any authenticated
-    # user through and let the action re-check against the resolved project
-    # (defence in depth).
+    # Sysadmin, the target project's admin/initiative admin (project content)
+    # or an org admin/editor (organization content). When neither scope is
+    # resolvable from the auth payload we allow any authenticated user through
+    # and let the action re-check against the RESOLVED scope (defence in depth).
     project_id = (data_dict or {}).get('project_id')
+    owner_org = (data_dict or {}).get('owner_org')
     if project_id:
         if (_is_sysadmin(context)
                 or _is_project_admin(context, project_id)
@@ -262,6 +311,12 @@ def csunesco_content_create(context, data_dict):
         return {'success': False,
                 'msg': tk._('Only the project admin or the initiative admin '
                             'can add content')}
+    if owner_org:
+        if _is_sysadmin(context) or _is_org_editor(context, owner_org):
+            return {'success': True}
+        return {'success': False,
+                'msg': tk._('Only an admin or editor of the organization '
+                            'can add its content')}
     if context.get('user'):
         return {'success': True}
     return {'success': False,
@@ -270,14 +325,13 @@ def csunesco_content_create(context, data_dict):
 
 def csunesco_content_update(context, data_dict):
     project_id = (data_dict or {}).get('project_id')
-    if project_id:
-        if (_is_sysadmin(context)
-                or _is_project_admin(context, project_id)
-                or _is_project_initiative_admin(context, project_id)):
+    organization_id = (data_dict or {}).get('organization_id')
+    if project_id or organization_id:
+        if can_manage_content_scope(context, project_id, organization_id):
             return {'success': True}
         return {'success': False,
-                'msg': tk._('Only the project admin or the initiative admin '
-                            'can edit this content')}
+                'msg': tk._('Only the scope\'s managers can edit this '
+                            'content')}
     if context.get('user'):
         return {'success': True}
     return {'success': False,

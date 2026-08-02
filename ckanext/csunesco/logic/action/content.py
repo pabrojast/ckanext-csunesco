@@ -82,6 +82,57 @@ def _resolve_project(data_dict):
     return db.get_project(key)
 
 
+def _resolve_organization(data_dict):
+    """Resolve ``owner_org`` (id or name) to an ACTIVE CKAN organization."""
+    key = (data_dict.get('owner_org') or '').strip()
+    if not key:
+        return None
+    group = model.Group.get(key)
+    if (group is None or not group.is_organization
+            or group.state != 'active'):
+        return None
+    return group
+
+
+def _resolve_scope(data_dict):
+    """XOR owner scope: exactly ONE of (project, organization).
+
+    The app's outbox payload always references a project and never sends
+    ``owner_org``, so its path is byte-identical to before this existed.
+    """
+    wants_project = bool(data_dict.get('project_id')
+                         or data_dict.get('project')
+                         or data_dict.get('project_slug'))
+    wants_org = bool((data_dict.get('owner_org') or '').strip())
+    if wants_project and wants_org:
+        raise tk.ValidationError({'owner_org': [tk._(
+            'Provide either a project or an organization, not both')]})
+    if not wants_project and not wants_org:
+        raise tk.ValidationError({'project_id': [tk._(
+            'A project or an owner_org is required')]})
+    if wants_project:
+        project = _resolve_project(data_dict)
+        if project is None:
+            raise tk.ValidationError(
+                {'project_id': [tk._('Project not found')]})
+        return project, None
+    organization = _resolve_organization(data_dict)
+    if organization is None:
+        raise tk.ValidationError(
+            {'owner_org': [tk._('Organization not found')]})
+    return None, organization
+
+
+def _is_active_project_member(context, project_id):
+    """True when the acting user is an ACTIVE member (any role) of the
+    project -- the audience of its private content."""
+    user_id = current_user_id(context)
+    if not user_id:
+        return False
+    member = db.project_member(project_id, user_id)
+    return bool(member and member.status == 'active')
+
+
 def _can_manage_project(context, project_id):
     """Project-admin, initiative-admin OR sysadmin -- the write authorization,
     enforced in logic. Delegates to the shared composite in ``logic/auth`` so
@@ -90,7 +141,7 @@ def _can_manage_project(context, project_id):
 
 
 def _can_view_unapproved(context, content):
-    """Author / project-admin / initiative-admin / sysadmin may view
+    """Author / scope managers (PM, ADM, org editor) / sysadmin may view
     not-yet-approved content."""
     if auth._is_sysadmin(context):
         return True
@@ -99,8 +150,27 @@ def _can_view_unapproved(context, content):
         return False
     if content.created_by == user_id:
         return True
-    return (auth._is_project_admin(context, content.project_id)
-            or auth._is_project_initiative_admin(context, content.project_id))
+    if content.project_id:
+        return (auth._is_project_admin(context, content.project_id)
+                or auth._is_project_initiative_admin(
+                    context, content.project_id))
+    return auth._is_org_editor(context, content.organization_id)
+
+
+def _can_view_private(context, content):
+    """Private content is served only to the SCOPE's people: its managers
+    (same set that may view unapproved rows) or a member of the scope --
+    an active cs_project_member for project content, any org capacity for
+    organization content. One membership query at most."""
+    if _can_view_unapproved(context, content):
+        return True
+    user_id = current_user_id(context)
+    if not user_id:
+        return False
+    if content.project_id:
+        member = db.project_member(content.project_id, user_id)
+        return bool(member and member.status == 'active')
+    return auth._is_org_member(context, content.organization_id)
 
 
 def _merge_extras(content, **updates):
@@ -171,23 +241,29 @@ def _type_extras(data):
 
 
 def csunesco_content_create(context, data_dict):
-    """Create a news/event row for an APPROVED project (project-admin/sysadmin)."""
+    """Create a content row for an APPROVED project (PM/ADM/sysadmin) or for
+    a CKAN organization (org admin/editor or sysadmin) -- exactly one scope."""
     if not context.get('user'):
         raise tk.NotAuthorized(
             tk._('You must be logged in to add content'))
     tk.check_access('csunesco_content_create', context, data_dict)
 
     data_dict = data_dict or {}
-    project = _resolve_project(data_dict)
-    if project is None:
-        raise tk.ValidationError({'project_id': [tk._('Project not found')]})
-    if project.status != 'approved':
-        raise tk.ValidationError({'project_id': [tk._(
-            'Content can only be added to an approved project')]})
-    # Enforce write authorization on the RESOLVED project inside the logic.
-    if not _can_manage_project(context, project.id):
-        raise tk.NotAuthorized(tk._(
-            'Only the project admin or a sysadmin can add content'))
+    project, organization = _resolve_scope(data_dict)
+    if project is not None:
+        if project.status != 'approved':
+            raise tk.ValidationError({'project_id': [tk._(
+                'Content can only be added to an approved project')]})
+        # Enforce write authorization on the RESOLVED project inside the logic.
+        if not _can_manage_project(context, project.id):
+            raise tk.NotAuthorized(tk._(
+                'Only the project admin or a sysadmin can add content'))
+    else:
+        # Org content: sysadmin or an admin/editor of the organization.
+        if not auth.can_manage_content_scope(context, None, organization.id):
+            raise tk.NotAuthorized(tk._(
+                'Only an admin or editor of the organization can add its '
+                'content'))
 
     content_type = (data_dict.get('content_type') or '').strip()
     data = _validated_content(context, data_dict, content_type)
@@ -199,14 +275,20 @@ def csunesco_content_create(context, data_dict):
 
     content = db.CsContent()
     content.content_type = data['content_type']
-    content.project_id = project.id
+    content.project_id = project.id if project is not None else None
+    content.organization_id = (
+        organization.id if organization is not None else None)
     # Derived from the parent project -- NEVER trust a client-supplied value.
-    content.initiative_group = project.initiative_group
+    # Org content has NO initiative, which pins its moderation to sysadmins
+    # (_is_content_initiative_admin returns False on NULL).
+    content.initiative_group = (
+        project.initiative_group if project is not None else None)
     content.title = data['title']
     content.body = body
     content.media = data.get('media')                  # JSON string
     content.publish_date = data.get('publish_date')
     content.end_date = data.get('end_date')
+    content.visibility = data.get('visibility') or u'public'
     # Only a sysadmin may feature content; authors cannot self-promote.
     content.featured = bool(data.get('featured')) if is_sysadmin else False
     content.created_by = current_user_id(context)
@@ -214,10 +296,12 @@ def csunesco_content_create(context, data_dict):
     # Sysadmin portal-authored content publishes straight away; a TRUSTED
     # project's news/events skip review too (P2 policy toggle). Everything
     # else queues — including all app-pushed content in non-trusted projects
-    # (the service token is a sysadmin, but the real author is a member).
+    # (the service token is a sysadmin, but the real author is a member) and
+    # all org content by non-sysadmins (orgs have no trusted flag).
     content.status = content_initial_status(
         is_sysadmin, source, data['content_type'],
-        bool(getattr(project, 'trusted', False)))
+        bool(getattr(project, 'trusted', False)) if project is not None
+        else False)
     extras = {'excerpt': _excerpt(body)}
     extras.update({k: v for k, v in _type_extras(data).items() if v})
     if source == 'app':
@@ -244,12 +328,16 @@ def csunesco_content_update(context, data_dict):
     if content is None:
         raise tk.ObjectNotFound(tk._('Content not found'))
 
+    # The owning scope is IMMUTABLE (like the slug): incoming project/org
+    # references are ignored, authorization runs against the STORED scope.
     auth_dict = dict(data_dict)
     auth_dict['project_id'] = content.project_id
+    auth_dict['organization_id'] = content.organization_id
     tk.check_access('csunesco_content_update', context, auth_dict)
-    if not _can_manage_project(context, content.project_id):
+    if not auth.can_manage_content_scope(
+            context, content.project_id, content.organization_id):
         raise tk.NotAuthorized(tk._(
-            'Only the project admin or a sysadmin can edit this content'))
+            'Only the scope\'s managers or a sysadmin can edit this content'))
 
     content_type = (data_dict.get('content_type')
                     or content.content_type or '').strip()
@@ -264,6 +352,8 @@ def csunesco_content_update(context, data_dict):
     content.media = data.get('media')
     content.publish_date = data.get('publish_date')
     content.end_date = data.get('end_date')
+    if 'visibility' in data:
+        content.visibility = data.get('visibility') or u'public'
     # ``featured`` only changes when the caller EXPLICITLY sent the key: the
     # web editor omits it unless its (sysadmin-only) checkbox is rendered, so
     # a sysadmin editing a featured row no longer un-features it silently.
@@ -271,9 +361,11 @@ def csunesco_content_update(context, data_dict):
         content.featured = bool(data.get('featured'))
     # Slug is permanent (URL stability) -- deliberately not regenerated.
     # A non-sysadmin edit goes back through review, EXCEPT news/events of a
-    # trusted project (same policy as creation).
+    # trusted project (same policy as creation; org content has no trusted
+    # flag, so it always re-queues).
     if not is_sysadmin:
-        parent = db.get_project(content.project_id)
+        parent = (db.get_project(content.project_id)
+                  if content.project_id else None)
         content.status = content_initial_status(
             False, 'ckan', data['content_type'],
             bool(getattr(parent, 'trusted', False)))
@@ -410,6 +502,10 @@ def csunesco_content_list(context, data_dict):
         data_dict.get('project_id') or data_dict.get('project')
         or data_dict.get('project_slug')) else None
     project_id = project.id if project is not None else None
+    organization = (_resolve_organization({'owner_org':
+                                           data_dict.get('organization')})
+                    if data_dict.get('organization') else None)
+    organization_id = organization.id if organization is not None else None
     initiative = data_dict.get('initiative') or data_dict.get('initiative_group')
     featured = (tk.asbool(data_dict.get('featured'))
                 if data_dict.get('featured') is not None else None)
@@ -427,12 +523,32 @@ def csunesco_content_list(context, data_dict):
     # The privilege is per-project on purpose: with no project filter (the
     # public /news and /events indexes) every non-sysadmin stays pinned to
     # approved, so nothing leaks into a public listing.
-    privileged = auth._is_sysadmin(context) or (
-        project_id and auth.can_manage_project(context, project_id))
+    is_sysadmin = auth._is_sysadmin(context)
+    privileged = is_sysadmin or (
+        project_id and auth.can_manage_project(context, project_id)) or (
+        organization_id and auth._is_org_editor(context, organization_id))
     if privileged:
         status = data_dict.get('status')          # None -> all statuses
     else:
         status = 'approved'
+
+    # Visibility: one pass, no per-row checks. Sysadmins see everything.
+    # Scoped listings include the private rows of a scope the caller belongs
+    # to (managers count via ``privileged``; plain members via ONE membership
+    # query). Unscoped listings -- the public indexes -- are pinned to public,
+    # so private content can never leak into a global feed.
+    public_only = False
+    private_project_ids = None
+    private_org_ids = None
+    if not is_sysadmin:
+        public_only = True
+        if project_id and (privileged
+                           or _is_active_project_member(context, project_id)):
+            private_project_ids = [project_id]
+        if organization_id and (
+                privileged
+                or auth._is_org_member(context, organization_id)):
+            private_org_ids = [organization_id]
 
     summary = not tk.asbool(data_dict.get('include_body'))
     limit = _positive_int(data_dict.get('limit'),
@@ -442,12 +558,16 @@ def csunesco_content_list(context, data_dict):
     total, rows = db.list_content(
         content_type=content_type,
         project_id=project_id,
+        organization_id=organization_id,
         status=status,
         initiative_group=initiative,
         featured=featured,
         summary=summary,
         limit=limit,
         offset=offset,
+        public_only=public_only,
+        private_project_ids=private_project_ids,
+        private_org_ids=private_org_ids,
     )
     results = [db.content_dictize(row, summary=summary) for row in rows]
 
@@ -459,6 +579,7 @@ def csunesco_content_list(context, data_dict):
         'applied_filters': {
             'content_type': content_type,
             'project_id': project_id,
+            'organization': organization_id,
             'initiative': initiative,
             'status': status,
             'featured': featured,
@@ -483,6 +604,10 @@ def csunesco_content_show(context, data_dict):
         raise tk.ObjectNotFound(tk._('Content not found'))
     if (content.status != 'approved'
             and not _can_view_unapproved(context, content)):
+        raise tk.NotAuthorized(tk._('Not authorized to view this content'))
+    # Private content: approved or not, only the scope's people may read it.
+    if (content.visibility == 'private'
+            and not _can_view_private(context, content)):
         raise tk.NotAuthorized(tk._('Not authorized to view this content'))
     return db.content_dictize(content)
 

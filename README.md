@@ -98,6 +98,7 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | GET·POST | `/citizen-science/project/new` | Propose a project (request) | authenticated |
 | POST | `/citizen-science/project/<slug>/join` | Request to join a project | authenticated |
 | GET·POST | `/citizen-science/project/<slug>/content/new` | Add news/event to a project | sysadmin, initiative admin **or** that project's admin |
+| GET·POST | `/citizen-science/org/<org>/content/new` | Add news/event for an ORGANIZATION (no project) | sysadmin **or** an admin/editor of the org |
 | POST | `/citizen-science/admin/content/<id>/withdraw` | Unpublish approved content (optional reason) | sysadmin **or** the content's initiative admin |
 | POST | `/citizen-science/admin/content/<id>/delete` | Permanently delete a content row (frees its slug) | sysadmin |
 | GET·POST | `/citizen-science/content/<id>/edit` | Edit an existing content item | sysadmin, initiative admin **or** project admin |
@@ -144,7 +145,9 @@ enumerate accounts.
 | `csunesco_data_source_create` | sysadmin, initiative admin **or** project admin — **always** creates `pending`; idempotent per `(project, form)` |
 | `csunesco_admin_pending_list` | sysadmin, any initiative admin **or** any project admin |
 | `csunesco_project_approve`, `csunesco_project_reject` | sysadmin **or** the project's initiative admin |
+| `csunesco_content_create`, `csunesco_content_update` | project content: sysadmin, initiative admin or project admin. Org content (`owner_org`, XOR with the project): sysadmin or org admin/editor. `visibility` public/private; the owning scope is immutable on update |
 | `csunesco_content_approve`, `csunesco_content_reject` | sysadmin **or** the content's initiative admin — approve also RESTORES rejected/withdrawn rows |
+| — org-scoped content | has `initiative_group = NULL`, so approve/reject/withdraw collapse to **sysadmin-only** (no initiative admin exists for it) |
 | `csunesco_content_withdraw` | sysadmin **or** the content's initiative admin — unpublish an **approved** row (state-checked; audited via `reviewed_by`/`reviewed_at`, marks `withdrawn`) |
 | `csunesco_content_delete` | sysadmin — hard delete; the slug becomes reusable |
 | `csunesco_data_source_approve`, `csunesco_data_source_reject` | sysadmin **or** the source's initiative admin (approve creates/refreshes the CKAN dataset; `owner_org` override is sysadmin-only) |
@@ -243,7 +246,10 @@ Four tabs:
    (`reviewed_by`/`reviewed_at`) — it is the panel's lever to **Withdraw** a
    published row (with an optional reason; the row shows as *Withdrawn* and can
    be **Re-approved** later) and, for sysadmins, to **Delete** a row for good
-   (its slug becomes reusable).
+   (its slug becomes reusable). Content can be scoped to a **project or an
+   organization** (exactly one) and marked **public or private**: private
+   rows are only served to the scope's members/managers and never appear
+   in the global indexes or landing blocks.
 4. **Data to review** (sysadmin or initiative admin) — each row shows a live probe of the form's
    public data (reachable? observations, geolocated count, date range) and an
    "Open in the app" link (`ofform_app_url`), so nothing is approved blind.

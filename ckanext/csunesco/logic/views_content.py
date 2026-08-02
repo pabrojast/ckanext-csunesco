@@ -156,6 +156,7 @@ def _read_content_form():
         'publish_date': (form.get('publish_date') or '').strip(),
         'end_date': (form.get('end_date') or '').strip(),
         'media': [u.strip() for u in form.getlist('media') if u.strip()],
+        'visibility': (form.get('visibility') or 'public').strip(),
         'terria_url': (form.get('terria_url') or '').strip(),
         'doi': (form.get('doi') or '').strip(),
         'authors': (form.get('authors') or '').strip(),
@@ -169,11 +170,13 @@ def _read_content_form():
     return data
 
 
-def _render_content_form(mode, project, content, data, errors):
+def _render_content_form(mode, project, content, data, errors,
+                         organization=None):
     from ckanext.csunesco.logic import auth as cs_auth
     return tk.render('csunesco/content_form.html', extra_vars={
         'mode': mode,
         'project': project,
+        'organization': organization,
         'content': content,
         'data': data,
         'errors': errors,
@@ -241,6 +244,64 @@ def content_new(slug):
     return tk.redirect_to('csunesco.project_landing', slug=project['slug'])
 
 
+def org_content_new(org):
+    """GET the editor for a new ORG-scoped item; POST creates it.
+
+    Same thin contract as ``content_new``: resolve the organization, gate on
+    the composite scope authorization (cosmetic here -- the action re-checks),
+    and map ValidationError back to inline field errors.
+    """
+    if not tk.g.user:
+        return _not_authorized_response()
+
+    from ckanext.csunesco.logic import auth as cs_auth
+    context = _context()
+    try:
+        organization = tk.get_action('organization_show')(
+            context, {'id': org})
+    except (tk.ObjectNotFound, tk.NotAuthorized):
+        return tk.abort(404, tk._('Organization not found'))
+    except Exception:
+        log.warning('csunesco: content editor could not resolve organization')
+        return tk.abort(404, tk._('Organization not found'))
+
+    if not cs_auth.can_manage_content_scope(context, None, organization['id']):
+        return _not_authorized_response()
+
+    if request.method == 'GET':
+        return _render_content_form(
+            'new', None, None,
+            {'content_type': 'cs-news', 'media': [], 'visibility': 'public'},
+            {}, organization=organization)
+
+    data = _read_content_form()
+    data_dict = dict(data)
+    data_dict['owner_org'] = organization['id']
+    try:
+        content = tk.get_action('csunesco_content_create')(context, data_dict)
+    except tk.NotAuthorized:
+        return _not_authorized_response()
+    except tk.ValidationError as error:
+        return _render_content_form(
+            'new', None, None, data, error.error_dict or {},
+            organization=organization)
+    except Exception:
+        log.warning('csunesco: org content could not be created')
+        return _render_content_form(
+            'new', None, None, data, {'message': GENERIC_ERROR},
+            organization=organization)
+
+    if content.get('status') == 'approved':
+        tk.h.flash_success(tk._('Your content has been published.'))
+    else:
+        tk.h.flash_success(tk._(
+            'Your content has been submitted and is awaiting review.'))
+    detail = _detail_url(content)
+    if detail:
+        return tk.redirect_to(detail)
+    return tk.redirect_to('csunesco.cs_news_index')
+
+
 def content_edit(id):
     """GET the editor pre-filled for content ``id``; POST updates it."""
     if not tk.g.user:
@@ -257,19 +318,33 @@ def content_edit(id):
         log.warning('csunesco: content editor could not load content')
         return tk.abort(404, tk._('Content not found'))
 
-    if not tk.h.csunesco_can_manage_project(content.get('project_id')):
+    from ckanext.csunesco.logic import auth as cs_auth
+    if not cs_auth.can_manage_content_scope(
+            context, content.get('project_id'),
+            content.get('organization_id')):
         return _not_authorized_response()
 
-    try:
-        project = tk.get_action('csunesco_project_show')(
-            context, {'id': content['project_id']})
-    except Exception:
-        # Genuinely unexpected: can_manage_project just said yes about THIS
-        # project, so it exists and this user may read it. The editor still
-        # renders without it, but nobody should have to guess why.
-        log.warning('csunesco: project %s unavailable for the content editor',
-                    content.get('project_id'))
-        project = None
+    project = None
+    organization = None
+    if content.get('project_id'):
+        try:
+            project = tk.get_action('csunesco_project_show')(
+                context, {'id': content['project_id']})
+        except Exception:
+            # Genuinely unexpected: the scope check just said yes about THIS
+            # project, so it exists and this user may read it. The editor
+            # still renders without it, but nobody should have to guess why.
+            log.warning(
+                'csunesco: project %s unavailable for the content editor',
+                content.get('project_id'))
+    elif content.get('organization_id'):
+        try:
+            organization = tk.get_action('organization_show')(
+                context, {'id': content['organization_id']})
+        except Exception:
+            log.warning(
+                'csunesco: organization %s unavailable for the content editor',
+                content.get('organization_id'))
 
     if request.method == 'GET':
         data = {
@@ -279,12 +354,14 @@ def content_edit(id):
             'publish_date': content.get('publish_date') or '',
             'end_date': content.get('end_date') or '',
             'media': content.get('media') or [],
+            'visibility': content.get('visibility') or 'public',
             'featured': bool(content.get('featured')),
             'terria_url': content.get('terria_url') or '',
             'doi': content.get('doi') or '',
             'authors': content.get('authors') or '',
         }
-        return _render_content_form('edit', project, content, data, {})
+        return _render_content_form('edit', project, content, data, {},
+                                    organization=organization)
 
     # --- POST ---------------------------------------------------------------
     data = _read_content_form()
@@ -296,11 +373,13 @@ def content_edit(id):
         return _not_authorized_response()
     except tk.ValidationError as error:
         return _render_content_form(
-            'edit', project, content, data, error.error_dict or {})
+            'edit', project, content, data, error.error_dict or {},
+            organization=organization)
     except Exception:
         log.warning('csunesco: content could not be updated')
         return _render_content_form(
-            'edit', project, content, data, {'message': GENERIC_ERROR})
+            'edit', project, content, data, {'message': GENERIC_ERROR},
+            organization=organization)
 
     tk.h.flash_success(tk._('Your content has been saved.'))
     detail = _detail_url(updated)

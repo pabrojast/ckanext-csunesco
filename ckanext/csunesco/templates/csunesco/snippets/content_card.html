@@ -63,6 +63,11 @@
         <span class="cs-card-reason">{{ item.rejection_reason | striptags }}</span>
       {% endif %}
     {% endif %}
+    {% if item.visibility == 'private' %}
+      {# Only people inside the scope ever receive private rows, so this badge
+         is a reminder of the audience, not an access-control surface. #}
+      <span class="cs-status-badge cs-status-pending">{{ _("Private") }}</span>
+    {% endif %}
     <span class="cs-card-cta">{{ _("Read more") }} &rarr;</span>
   </a>
 </article>

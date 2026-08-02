@@ -98,7 +98,11 @@ cs_content_table = Table(
     # indexed lookup (never a scan). Globally unique across content types.
     Column('slug', types.UnicodeText, index=True, unique=True),
     Column('content_type', types.UnicodeText, index=True),
+    # Owning scope: EXACTLY ONE of project_id / organization_id (XOR enforced
+    # in the create action). Org content has initiative_group NULL, which is
+    # what pins its moderation to sysadmins.
     Column('project_id', types.UnicodeText, index=True),
+    Column('organization_id', types.UnicodeText, index=True),
     Column('initiative_group', types.UnicodeText, index=True),
     Column('title', types.UnicodeText),
     Column('body', types.Text),
@@ -106,6 +110,10 @@ cs_content_table = Table(
     Column('publish_date', types.DateTime),
     Column('end_date', types.DateTime),
     Column('status', types.UnicodeText, index=True, default=u'draft'),
+    # 'public' (default) or 'private': private content is only served to the
+    # scope's members/managers. Every SQL filter on this column must be
+    # NULL-safe (rows predating the column count as public).
+    Column('visibility', types.UnicodeText, default=u'public'),
     Column('featured', types.Boolean, default=False),
     Column('created_by', types.UnicodeText, index=True),
     # Moderation audit trail (same pair cs_project / cs_project_member carry):
@@ -124,6 +132,9 @@ cs_content_table = Table(
           'project_id', 'content_type', 'status', 'publish_date'),
     Index('ix_cs_content_type_status_date',
           'content_type', 'status', 'publish_date'),
+    # Org-scoped listings (organization pages / API organization filter).
+    Index('ix_cs_content_org_type_status_date',
+          'organization_id', 'content_type', 'status', 'publish_date'),
 )
 
 cs_project_stats_table = Table(
@@ -330,6 +341,8 @@ _AUTO_HEAL_COLUMNS = [
     ('cs_content', 'slug', 'TEXT'),
     ('cs_content', 'reviewed_by', 'TEXT'),
     ('cs_content', 'reviewed_at', 'TIMESTAMP'),
+    ('cs_content', 'organization_id', 'TEXT'),
+    ('cs_content', 'visibility', "TEXT DEFAULT 'public'"),
     ('cs_project_stats', 'member_states', 'INTEGER DEFAULT 0'),
     ('cs_citizen_scientist', 'country', 'TEXT'),
     ('cs_citizen_scientist', 'email_verified', 'BOOLEAN DEFAULT FALSE'),
@@ -862,7 +875,10 @@ def content_dictize(content, summary=False):
         'slug': content.slug,
         'content_type': content.content_type,
         'project_id': content.project_id,
+        'organization_id': content.organization_id,
         'initiative_group': content.initiative_group,
+        # Rows predating the column read as public.
+        'visibility': content.visibility or u'public',
         'title': content.title,
         'publish_date': _iso(content.publish_date),
         'end_date': _iso(content.end_date),
@@ -926,15 +942,29 @@ def get_content(id_or_slug):
     )
 
 
+def _public_visibility_clause():
+    """NULL-safe "not private": rows predating the column count as public.
+    A bare ``visibility != 'private'`` would silently EXCLUDE NULL rows."""
+    return sa.or_(CsContent.visibility.is_(None),
+                  CsContent.visibility != u'private')
+
+
 def list_content(content_type=None, project_id=None, status=None,
                  initiative_group=None, featured=None, summary=True,
-                 limit=20, offset=0):
+                 limit=20, offset=0, organization_id=None,
+                 public_only=False, private_project_ids=None,
+                 private_org_ids=None):
     """List content with server-side filtering + paging. Returns ``(total, rows)``.
 
     All filter values are bound query parameters (no SQL is built from strings).
     When ``summary`` is True the ``body`` column is deferred so it is never loaded
     for list rows -- keep the matching ``content_dictize(summary=True)`` on the
     action side so nothing accidentally reads it back.
+
+    Visibility (the ACTION decides, this layer only filters):
+    * ``public_only=True`` pins the NULL-safe "not private" clause;
+    * ``private_project_ids`` / ``private_org_ids`` widen a pinned query so the
+      caller's OWN scopes still include their private rows.
     """
     _ensure_mappers()
     query = Session.query(CsContent)
@@ -944,12 +974,22 @@ def list_content(content_type=None, project_id=None, status=None,
         query = query.filter(CsContent.content_type == content_type)
     if project_id:
         query = query.filter(CsContent.project_id == project_id)
+    if organization_id:
+        query = query.filter(CsContent.organization_id == organization_id)
     if status:
         query = query.filter(CsContent.status == status)
     if initiative_group:
         query = query.filter(CsContent.initiative_group == initiative_group)
     if featured is not None:
         query = query.filter(CsContent.featured == bool(featured))
+    if public_only:
+        clauses = [_public_visibility_clause()]
+        if private_project_ids:
+            clauses.append(CsContent.project_id.in_(list(private_project_ids)))
+        if private_org_ids:
+            clauses.append(
+                CsContent.organization_id.in_(list(private_org_ids)))
+        query = query.filter(sa.or_(*clauses))
     total = query.count()
     # COALESCE keeps rows without a publish_date (optional for news) in their
     # natural place by creation date. A bare ``publish_date DESC`` pins NULLs

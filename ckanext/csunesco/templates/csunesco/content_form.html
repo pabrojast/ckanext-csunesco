@@ -16,7 +16,9 @@
 #}
 
 {% set is_new = mode == 'new' %}
-{% if is_new %}
+{% if is_new and organization %}
+  {% set action_url = h.url_for('csunesco.org_content_new', org=organization.name) %}
+{% elif is_new %}
   {% set action_url = h.url_for('csunesco.content_new', slug=project.slug) %}
 {% else %}
   {% set action_url = h.url_for('csunesco.content_edit', id=content.id) %}
@@ -31,6 +33,8 @@
     <h1 id="cs-editor-title">{{ _("Add content") if is_new else _("Edit content") }}</h1>
     {% if project %}
       <p>{{ _("For project:") }} <strong>{{ project.title }}</strong></p>
+    {% elif organization %}
+      <p>{{ _("For organization:") }} <strong>{{ organization.title or organization.name }}</strong></p>
     {% endif %}
   </section>
 
@@ -181,6 +185,14 @@
         {% if errors.media %}
           <p class="cs-field-error" role="alert">{{ errors.media | join(', ') }}</p>
         {% endif %}
+      </div>
+
+      <div class="cs-field">
+        <label for="cs-content-visibility">{{ _("Visibility") }}</label>
+        <select id="cs-content-visibility" name="visibility">
+          <option value="public" {% if (data.visibility or 'public') != 'private' %}selected{% endif %}>{{ _("Public — visible to everyone") }}</option>
+          <option value="private" {% if data.visibility == 'private' %}selected{% endif %}>{{ _("Private — only members of this project/organization") }}</option>
+        </select>
       </div>
 
       {% if is_sysadmin %}

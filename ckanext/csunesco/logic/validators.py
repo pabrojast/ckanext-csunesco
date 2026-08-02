@@ -179,6 +179,19 @@ def csunesco_valid_content_type(value):
     return value
 
 
+CONTENT_VISIBILITIES = ('public', 'private')
+
+
+def csunesco_valid_visibility(value):
+    """Accept only 'public' / 'private'; missing defaults to 'public'."""
+    if not value:
+        return 'public'
+    value = str(value).strip().lower()
+    if value not in CONTENT_VISIBILITIES:
+        raise tk.Invalid(tk._('Visibility must be public or private'))
+    return value
+
+
 def terria_allowed_bases():
     """The configured Terria base URLs (normalized, no trailing slash)."""
     raw = tk.config.get(TERRIA_BASE_URL_OPTION) or ''
@@ -314,6 +327,7 @@ def get_validators():
         'csunesco_valid_country_list': csunesco_valid_country_list,
         'csunesco_valid_document_url': csunesco_valid_document_url,
         'csunesco_valid_content_type': csunesco_valid_content_type,
+        'csunesco_valid_visibility': csunesco_valid_visibility,
         'csunesco_valid_terria_url': csunesco_valid_terria_url,
         'csunesco_valid_iso_date': csunesco_valid_iso_date,
         'csunesco_end_after_start': csunesco_end_after_start,

@@ -61,6 +61,7 @@ def content_schema(content_type):
         'publish_date': [ignore_missing, v.csunesco_valid_iso_date],
         'end_date': [ignore_missing, v.csunesco_valid_iso_date],
         'featured': [ignore_missing, boolean_validator],
+        'visibility': [ignore_missing, v.csunesco_valid_visibility],
         'terria_url': [
             ignore_missing, unicode_safe, v.csunesco_valid_terria_url],
         'doi': [ignore_missing, unicode_safe],

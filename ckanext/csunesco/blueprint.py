@@ -212,6 +212,12 @@ def content_new(slug):
     return views_content.content_new(slug)
 
 
+def org_content_new(org):
+    """Content editor for an ORGANIZATION (GET form / POST create)."""
+    from ckanext.csunesco.logic import views_content
+    return views_content.org_content_new(org)
+
+
 # ---------------------------------------------------------------------------
 # App-data pipeline -- live proxy, connect flow and its admin decisions.
 # ---------------------------------------------------------------------------
@@ -410,9 +416,12 @@ csunesco_bp.add_url_rule('/maps', 'cs_maps_index', cs_maps_index,
 csunesco_bp.add_url_rule('/maps/<slug>', 'cs_maps_show', cs_maps_show,
                          methods=['GET'])
 
-# Content editor (create under a project / edit an existing item).
+# Content editor (create under a project or an org / edit an existing item).
 csunesco_bp.add_url_rule(
     '/project/<slug>/content/new', 'content_new', content_new,
+    methods=['GET', 'POST'])
+csunesco_bp.add_url_rule(
+    '/org/<org>/content/new', 'org_content_new', org_content_new,
     methods=['GET', 'POST'])
 csunesco_bp.add_url_rule('/content/<id>/edit', 'content_edit', content_edit,
                          methods=['GET', 'POST'])

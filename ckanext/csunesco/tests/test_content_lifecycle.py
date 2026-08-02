@@ -270,3 +270,152 @@ def test_auto_heal_adds_the_new_audit_columns():
     columns = {c['name'] for c in inspector.get_columns('cs_content')}
     assert {'reviewed_by', 'reviewed_at'} <= columns
     engine.dispose()
+
+
+# --------------------------------------------------------------------------- #
+# Org-scoped content + visibility (increment 2)                                #
+# --------------------------------------------------------------------------- #
+
+def _org(session, name='wwf', title='WWF'):
+    import ckan.model as model
+    group = model.Group(name=name, title=title, is_organization=True)
+    session.add(group)
+    session.commit()
+    return group
+
+
+def _member(session, project_id, user_id, status='active'):
+    member = db.CsProjectMember()
+    member.project_id = project_id
+    member.user_id = user_id
+    member.role = 'scientist'
+    member.status = status
+    session.add(member)
+    session.commit()
+    return member
+
+
+def test_scope_is_xor(actions, session):
+    _approved_project(session)
+    _org(session)
+    with pytest.raises(tk.ValidationError):
+        actions.csunesco_content_create(
+            _ctx('u1'), {'content_type': 'cs-news', 'title': 'No scope',
+                         'body': '<p>x</p>'})
+    with pytest.raises(tk.ValidationError):
+        actions.csunesco_content_create(
+            _ctx('u1'), {'project_slug': 'river-x', 'owner_org': 'wwf',
+                         'content_type': 'cs-news', 'title': 'Both scopes',
+                         'body': '<p>x</p>'})
+
+
+def test_org_content_queues_and_has_no_initiative(actions, session,
+                                                  monkeypatch):
+    org = _org(session)
+    monkeypatch.setattr(cs_auth, '_is_org_editor',
+                        lambda context, org_id: True)
+    out = actions.csunesco_content_create(
+        _ctx('editor-1'),
+        {'owner_org': 'wwf', 'content_type': 'cs-news',
+         'title': 'Org news', 'body': '<p>x</p>'})
+    # A non-sysadmin org editor queues; the row belongs to the org and has NO
+    # initiative -- which is exactly what pins its moderation to sysadmins.
+    assert out['status'] == 'pending'
+    assert out['organization_id'] == org.id
+    assert out['project_id'] is None
+    assert out['initiative_group'] is None
+
+    # The sysadmin-only guarantee: even an ADM of every initiative is NOT an
+    # initiative admin of org content (NULL initiative_group).
+    monkeypatch.setattr(cs_auth, '_admin_initiative_groups',
+                        lambda context: {'riverwatch', 'be-resilient'})
+    assert cs_auth._is_content_initiative_admin(_ctx('adm-1'),
+                                                out['id']) is False
+
+
+def test_update_keeps_scope_immutable(actions, session, monkeypatch):
+    org = _org(session)
+    _approved_project(session)
+    monkeypatch.setattr(cs_auth, '_is_org_editor',
+                        lambda context, org_id: True)
+    created = actions.csunesco_content_create(
+        _ctx('editor-1'),
+        {'owner_org': 'wwf', 'content_type': 'cs-news',
+         'title': 'Org news stays org', 'body': '<p>x</p>'})
+    out = actions.csunesco_content_update(
+        _ctx('editor-1'),
+        {'id': created['id'], 'content_type': 'cs-news',
+         'title': 'Edited', 'body': '<p>y</p>',
+         'project_slug': 'river-x'})   # ignored: scope is immutable
+    assert out['organization_id'] == org.id
+    assert out['project_id'] is None
+
+
+def test_private_content_only_for_scope_members(actions, session,
+                                                monkeypatch):
+    project = _approved_project(session)
+    monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: True)
+    created = actions.csunesco_content_create(
+        _ctx('root'),
+        {'project_slug': 'river-x', 'content_type': 'cs-news',
+         'title': 'Members only', 'body': '<p>secret</p>',
+         'visibility': 'private'})
+    assert created['status'] == 'approved'
+    assert created['visibility'] == 'private'
+
+    # Outsider (not sysadmin, not manager, not member): show refuses.
+    monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: False)
+    monkeypatch.setattr(cs_auth, 'can_manage_project',
+                        lambda context, project_id: False)
+    monkeypatch.setattr(cs_auth, '_is_project_admin',
+                        lambda context, project_id: False)
+    monkeypatch.setattr(cs_auth, '_is_project_initiative_admin',
+                        lambda context, project_id: False)
+    with pytest.raises(tk.NotAuthorized):
+        actions.csunesco_content_show(_ctx('outsider'), {'id': created['id']})
+
+    # An ACTIVE project member reads it.
+    _member(session, project.id, 'member-1')
+    out = actions.csunesco_content_show(_ctx('member-1'), {'id': created['id']})
+    assert out['title'] == 'Members only'
+
+    # Public (unscoped) listings never include it...
+    listing = actions.csunesco_content_list(_ctx('outsider'), {})
+    assert all(r['id'] != created['id'] for r in listing['results'])
+    # ...a member listing THE project does...
+    listing = actions.csunesco_content_list(
+        _ctx('member-1'), {'project_id': project.id})
+    assert any(r['id'] == created['id'] for r in listing['results'])
+    # ...and an outsider listing the project does not.
+    listing = actions.csunesco_content_list(
+        _ctx('outsider'), {'project_id': project.id})
+    assert all(r['id'] != created['id'] for r in listing['results'])
+
+
+def test_null_visibility_counts_as_public(actions, session, monkeypatch):
+    """Rows predating the column (visibility NULL) must stay public: a bare
+    ``visibility != 'private'`` filter would silently drop them."""
+    row = db.CsContent()
+    row.content_type = 'cs-news'
+    row.project_id = 'p-legacy'
+    row.title = 'Legacy row'
+    row.status = 'approved'
+    row.visibility = None
+    row.slug = db.unique_content_slug('Legacy row')
+    session.add(row)
+    session.commit()
+
+    listing = actions.csunesco_content_list(_ctx('anon'), {})
+    assert any(r['id'] == row.id for r in listing['results'])
+    assert listing['results'][0]['visibility'] in ('public', 'private')
+
+
+def test_auto_heal_adds_org_and_visibility_columns():
+    engine = sa.create_engine('sqlite://')
+    with engine.begin() as conn:
+        conn.execute(sa.text('CREATE TABLE cs_content (id TEXT PRIMARY KEY)'))
+    db._ensure_columns(engine)
+    inspector = sa.inspect(engine)
+    columns = {c['name'] for c in inspector.get_columns('cs_content')}
+    assert {'organization_id', 'visibility'} <= columns
+    engine.dispose()
