@@ -1,0 +1,55 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  Combined content index (/citizen-science/content): every published item --
+  news, events, publications and maps -- in one paginated grid, filterable by
+  a row of type chips (?type=cs-news …). The active chip is preserved across
+  pagination. All output is autoescaped.
+
+  Vars: items, count, page, total_pages, selected_type, type_choices.
+#}
+
+{% block subtitle %}{{ _("Citizen Science Content") }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  <section class="cs-hero" aria-labelledby="cs-content-title">
+    <h1 id="cs-content-title">{{ _("News, events & resources") }}</h1>
+    <p>{{ _("Everything published by community-led monitoring projects across UNESCO initiatives.") }}</p>
+  </section>
+
+  <section class="cs-section" aria-labelledby="cs-content-results-title">
+    <nav class="cs-content-chips" aria-label="{{ _('Filter by type') }}">
+      {% if selected_type %}
+        <a class="cs-page" href="{{ h.url_for('csunesco.cs_content_index') }}">{{ _("All") }}</a>
+      {% else %}
+        <span class="cs-page cs-page-current" aria-current="true">{{ _("All") }}</span>
+      {% endif %}
+      {% for choice in type_choices %}
+        {% if selected_type == choice.value %}
+          <span class="cs-page cs-page-current" aria-current="true">{{ _(choice.label) }}</span>
+        {% else %}
+          <a class="cs-page" href="{{ h.url_for('csunesco.cs_content_index', type=choice.value) }}">{{ _(choice.label) }}</a>
+        {% endif %}
+      {% endfor %}
+    </nav>
+
+    <h2 id="cs-content-results-title" class="cs-section-title">
+      {{ _("Latest") }} <span class="cs-results-count">({{ count }})</span>
+    </h2>
+    <div class="cs-content-grid">
+      {% for item in items %}
+        {% snippet "csunesco/snippets/content_card.html", item=item %}
+      {% else %}
+        <p class="cs-empty">{{ _("Nothing has been published yet.") }}</p>
+      {% endfor %}
+    </div>
+
+    {% if selected_type %}
+      {% snippet "csunesco/snippets/pagination.html", endpoint='csunesco.cs_content_index', page=page, total_pages=total_pages, params={'type': selected_type} %}
+    {% else %}
+      {% snippet "csunesco/snippets/pagination.html", endpoint='csunesco.cs_content_index', page=page, total_pages=total_pages %}
+    {% endif %}
+  </section>
+{% endblock %}

@@ -26,6 +26,7 @@
           <time datetime="{{ content.publish_date }}">{{ content.publish_date[:10] }}</time>
         </p>
       {% endif %}
+      {% snippet "csunesco/snippets/content_meta.html", content=content %}
       {% if can_manage %}
         {% snippet "csunesco/snippets/content_manage_bar.html", content=content %}
       {% endif %}

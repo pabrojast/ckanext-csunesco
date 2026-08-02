@@ -2720,3 +2720,54 @@
 }
 
 .cs-admin .cs-wb-empty .cs-icon { color: #b6c2ce; }
+
+/* --- Content increments: covers, meta, combined index, pagination ---------- */
+
+.cs-card-image {
+  display: block;
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 0.6rem;
+}
+
+.cs-content-owner {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: #6c757d;
+}
+
+.cs-content-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.3rem 0 0;
+  font-size: 0.9rem;
+}
+
+.cs-content-chips {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.cs-pagination-prevnext {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  justify-content: center;
+  list-style: none;
+  padding: 0;
+}
+
+.cs-page-disabled {
+  opacity: 0.45;
+}
+
+.cs-admin-subtitle {
+  margin: 1.4rem 0 0.6rem;
+  font-size: 1.05rem;
+}

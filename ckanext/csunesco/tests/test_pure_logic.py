@@ -809,3 +809,23 @@ def test_no_orphan_auth_functions():
     auth = pytest.importorskip('ckanext.csunesco.logic.auth')
     orphans = sorted(set(auth.get_auth_functions()) - set(actions.get_actions()))
     assert not orphans, 'auth sin acción (¿typo?): %s' % orphans
+
+
+# --------------------------------------------------------------------------- #
+# csunesco_content_image: portada de card desde media[] (heurística pura)      #
+# --------------------------------------------------------------------------- #
+
+def test_content_image_picks_first_image_url():
+    from ckanext.csunesco.logic.helpers import csunesco_content_image
+    assert csunesco_content_image(None) is None
+    assert csunesco_content_image([]) is None
+    # La primera URL de IMAGEN gana, aunque no sea la primera de la lista.
+    media = ['https://example.org/report.pdf',
+             'https://example.org/photo.JPG?w=800',
+             'https://example.org/other.png']
+    assert csunesco_content_image(media) == 'https://example.org/photo.JPG?w=800'
+    # El querystring no engaña a la heurística (extensión sobre el PATH).
+    assert csunesco_content_image(
+        ['https://example.org/doc.pdf?name=x.png']) is None
+    # Entradas basura se ignoran sin reventar.
+    assert csunesco_content_image([None, 42, '  ', 'not a url']) is None

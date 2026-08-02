@@ -107,7 +107,60 @@ def _content_show(content_type, slug):
     if content.get('content_type') != content_type:
         return tk.abort(404, tk._('Content not found'))
 
+    # Decorate the owning scope for the shared meta line (fail-soft: the
+    # detail page must render even if the owner lookup hiccups).
+    try:
+        if content.get('project_id'):
+            project = tk.get_action('csunesco_project_show')(
+                _context(), {'id': content['project_id']})
+            content['owner_kind'] = 'project'
+            content['owner_title'] = project.get('title')
+            content['owner_url'] = tk.h.url_for(
+                'csunesco.project_landing', slug=project.get('slug'))
+        elif content.get('organization_id'):
+            organization = tk.get_action('organization_show')(
+                _context(), {'id': content['organization_id']})
+            content['owner_kind'] = 'organization'
+            content['owner_title'] = (organization.get('title')
+                                      or organization.get('name'))
+            content['owner_url'] = tk.h.url_for(
+                'organization.read', id=organization.get('name'))
+    except Exception:
+        log.warning('csunesco: content owner unavailable for the detail page')
+
     return tk.render(detail_template, extra_vars={'content': content})
+
+
+def cs_content_index():
+    """Combined index of ALL content types, with a type chip filter (?type=)."""
+    page = _positive_int(request.args.get('page'), 1)
+    selected = (request.args.get('type') or '').strip()
+    if selected and selected not in _TYPE_VIEW:
+        return tk.abort(404, tk._('Unknown content type'))
+    data_dict = {
+        'limit': CONTENT_PER_PAGE,
+        'offset': (page - 1) * CONTENT_PER_PAGE,
+        'include_project': True,
+    }
+    if selected:
+        data_dict['content_type'] = selected
+    try:
+        listing = tk.get_action('csunesco_content_list')(
+            _context(), data_dict)
+    except Exception:
+        log.warning('csunesco: combined content list unavailable')
+        listing = {'results': [], 'count': 0}
+
+    count = listing.get('count', 0)
+    total_pages = max(1, (count + CONTENT_PER_PAGE - 1) // CONTENT_PER_PAGE)
+    return tk.render('csunesco/cs-content_list.html', extra_vars={
+        'items': listing.get('results', []),
+        'count': count,
+        'page': page,
+        'total_pages': total_pages,
+        'selected_type': selected,
+        'type_choices': _CONTENT_TYPE_CHOICES,
+    })
 
 
 def cs_news_index():

@@ -1,0 +1,26 @@
+{#
+  Shared meta line for the four content detail pages: the owning scope
+  (project or organization) as a link, the visibility badge for private rows,
+  and the app author when the item was pushed from the CS Toolbox app.
+
+  Args: content (full dict from csunesco_content_show, optionally decorated
+  by the view with owner_title/owner_url/owner_kind).
+#}
+<p class="cs-content-meta">
+  {% if content.owner_url and content.owner_title %}
+    {% if content.owner_kind == 'organization' %}
+      {{ _("From organization:") }}
+    {% else %}
+      {{ _("From project:") }}
+    {% endif %}
+    <a class="cs-link" href="{{ content.owner_url }}">{{ content.owner_title }}</a>
+  {% endif %}
+  {% if content.visibility == 'private' %}
+    <span class="cs-status-badge cs-status-pending">{{ _("Private") }}</span>
+  {% endif %}
+  {% if content.app_author %}
+    <span class="cs-muted">
+      {{ _("By %(name)s via the CS Toolbox app", name=content.app_author | striptags) }}
+    </span>
+  {% endif %}
+</p>

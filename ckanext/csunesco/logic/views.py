@@ -138,10 +138,28 @@ def initiative_index(name):
         log.warning('csunesco: initiative project list unavailable')
         listing = {'results': [], 'count': 0}
 
+    # The initiative's own pulse (fail-soft; the action pins anonymous
+    # visitors to approved + public rows): latest news + upcoming events.
+    news = []
+    events = []
+    try:
+        news = tk.get_action('csunesco_content_list')(
+            _context(), {'initiative': name, 'content_type': 'cs-news',
+                         'limit': 3, 'include_project': True}
+        ).get('results', [])
+        events = tk.get_action('csunesco_content_list')(
+            _context(), {'initiative': name, 'upcoming': True,
+                         'limit': 3, 'include_project': True}
+        ).get('results', [])
+    except Exception:
+        log.warning('csunesco: initiative content unavailable')
+
     return tk.render('csunesco/initiative.html', extra_vars={
         'initiative': initiative,
         'projects': _decorate_projects(listing.get('results', [])),
         'project_count': listing.get('count', 0),
+        'news': news,
+        'events': events,
     })
 
 

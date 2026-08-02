@@ -29,6 +29,7 @@
           {% endif %}
         </p>
       {% endif %}
+      {% snippet "csunesco/snippets/content_meta.html", content=content %}
       {% if can_manage %}
         {% snippet "csunesco/snippets/content_manage_bar.html", content=content %}
       {% endif %}

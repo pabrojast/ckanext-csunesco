@@ -36,4 +36,36 @@
       {% endfor %}
     </div>
   </section>
+
+  {% if news %}
+    <section class="cs-section" aria-labelledby="cs-init-news-title">
+      <div class="cs-section-header">
+        <h2 id="cs-init-news-title" class="cs-section-title">{{ _("Latest news") }}</h2>
+        <a class="cs-link" href="{{ h.url_for('csunesco.cs_news_index') }}">
+          {{ _("All news") }} &rarr;
+        </a>
+      </div>
+      <div class="cs-content-grid">
+        {% for item in news %}
+          {% snippet "csunesco/snippets/content_card.html", item=item %}
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {% if events %}
+    <section class="cs-section" aria-labelledby="cs-init-events-title">
+      <div class="cs-section-header">
+        <h2 id="cs-init-events-title" class="cs-section-title">{{ _("Upcoming events") }}</h2>
+        <a class="cs-link" href="{{ h.url_for('csunesco.cs_events_index') }}">
+          {{ _("All events") }} &rarr;
+        </a>
+      </div>
+      <div class="cs-content-grid">
+        {% for item in events %}
+          {% snippet "csunesco/snippets/content_card.html", item=item %}
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
 {% endblock %}

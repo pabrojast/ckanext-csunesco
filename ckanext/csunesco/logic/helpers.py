@@ -194,6 +194,31 @@ def csunesco_icon(name, size=20):
     return Markup(icons.svg(name, size))
 
 
+IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif')
+
+
+def csunesco_content_image(media):
+    """First image URL in a content row's ``media`` list, or None.
+
+    Pure heuristic by path extension (querystring ignored) -- good enough for
+    a card cover without fetching anything. Unit-tested.
+    """
+    try:
+        from urllib.parse import urlparse
+    except ImportError:  # pragma: no cover - py2 leftover guard
+        from urlparse import urlparse
+    for url in (media or []):
+        if not isinstance(url, str) or not url.strip():
+            continue
+        try:
+            path = urlparse(url).path.lower()
+        except Exception:
+            continue
+        if path.endswith(IMAGE_EXTENSIONS):
+            return url
+    return None
+
+
 def csunesco_format_number(value):
     """Group a count for reading: 1605 -> "1,605" in the request's locale.
 

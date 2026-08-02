@@ -86,6 +86,7 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | GET | `/citizen-science/projects` | Filterable project listing | public |
 | GET | `/citizen-science/project/<slug>` | Project landing page | public (approved) |
 | GET | `/citizen-science/project/<slug>/geojson` | Async region GeoJSON for the map | public |
+| GET | `/citizen-science/content` | Combined index of ALL content types with a type-chip filter (`?type=`) | public (approved) |
 | GET | `/citizen-science/news` · `/news/<slug>` | News index / detail | public (approved) |
 | GET | `/citizen-science/events` · `/events/<slug>` | Events index / detail | public (approved) |
 | GET | `/citizen-science/publications` · `/publications/<slug>` | Publications index / detail | public (approved) |

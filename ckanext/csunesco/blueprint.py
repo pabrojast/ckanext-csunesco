@@ -158,6 +158,12 @@ def data_source_bulk_approve():
 # Increment 5, Part B -- public news/events + content editor.
 # ---------------------------------------------------------------------------
 
+def cs_content_index():
+    """Combined content index (all types, chip filter)."""
+    from ckanext.csunesco.logic import views_content
+    return views_content.cs_content_index()
+
+
 def cs_news_index():
     """Public paginated news index."""
     from ckanext.csunesco.logic import views_content
@@ -397,6 +403,8 @@ csunesco_bp.add_url_rule(
     methods=['POST'])
 
 # Public news + events.
+csunesco_bp.add_url_rule('/content', 'cs_content_index', cs_content_index,
+                         methods=['GET'])
 csunesco_bp.add_url_rule('/news', 'cs_news_index', cs_news_index,
                          methods=['GET'])
 csunesco_bp.add_url_rule('/news/<slug>', 'cs_news_show', cs_news_show,

@@ -20,6 +20,10 @@
 {% set is_event = item.content_type == 'cs-event' %}
 <article class="cs-content-card cs-content-card--{{ meta[3] }}">
   <a class="cs-content-card-link" href="{{ h.url_for(meta[2], slug=item.slug) }}">
+    {% set cover = h.csunesco_content_image(item.media) %}
+    {% if cover %}
+      <img class="cs-card-image" src="{{ cover }}" alt="" loading="lazy">
+    {% endif %}
     <span class="cs-content-type" aria-hidden="true">{{ meta[0] }}</span>
     <span class="cs-content-type-label">
       {{ meta[1] }}
@@ -38,6 +42,9 @@
     {% endif %}
     {% if item.excerpt %}
       <p class="cs-content-excerpt">{{ item.excerpt }}</p>
+    {% endif %}
+    {% if item.project_title or item.organization_title %}
+      <p class="cs-content-owner cs-muted">{{ item.project_title or item.organization_title }}</p>
     {% endif %}
     {#
       Manager-only. The label is TRANSLATED rather than printing the raw column

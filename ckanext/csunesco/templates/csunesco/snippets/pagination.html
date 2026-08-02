@@ -1,0 +1,38 @@
+{#
+  Prev/next pagination (replaces the full page-number list, which grew without
+  bound). Args:
+    endpoint    -- flask endpoint for page links (e.g. 'csunesco.cs_news_index')
+    page        -- current 1-based page
+    total_pages -- total page count
+    params      -- optional dict of extra query args to preserve (e.g. {'type': ...})
+#}
+{% set params = params or {} %}
+{% if total_pages > 1 %}
+  <nav class="cs-pagination" aria-label="{{ _('Pagination') }}">
+    <ul class="cs-pagination-list cs-pagination-prevnext">
+      <li>
+        {% if page > 1 %}
+          <a class="cs-page" href="{{ h.url_for(endpoint, page=page - 1, **params) }}">
+            &larr; {{ _("Previous") }}
+          </a>
+        {% else %}
+          <span class="cs-page cs-page-disabled" aria-disabled="true">&larr; {{ _("Previous") }}</span>
+        {% endif %}
+      </li>
+      <li>
+        <span class="cs-page cs-page-current" aria-current="page">
+          {{ _("Page %(page)s of %(total)s", page=page, total=total_pages) }}
+        </span>
+      </li>
+      <li>
+        {% if page < total_pages %}
+          <a class="cs-page" href="{{ h.url_for(endpoint, page=page + 1, **params) }}">
+            {{ _("Next") }} &rarr;
+          </a>
+        {% else %}
+          <span class="cs-page cs-page-disabled" aria-disabled="true">{{ _("Next") }} &rarr;</span>
+        {% endif %}
+      </li>
+    </ul>
+  </nav>
+{% endif %}
