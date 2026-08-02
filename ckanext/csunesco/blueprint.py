@@ -124,6 +124,18 @@ def content_reject(id):
     return views_admin.content_reject(id)
 
 
+def content_withdraw(id):
+    """POST: withdraw (unpublish) approved content with an optional reason."""
+    from ckanext.csunesco.logic import views_admin
+    return views_admin.content_withdraw(id)
+
+
+def content_delete(id):
+    """POST: permanently delete a content row (sysadmin-only)."""
+    from ckanext.csunesco.logic import views_admin
+    return views_admin.content_delete(id)
+
+
 def content_bulk_approve():
     """POST: approve a checkbox selection of content rows (best-effort)."""
     from ckanext.csunesco.logic import views_admin
@@ -347,6 +359,12 @@ csunesco_bp.add_url_rule(
     '/admin/content/<id>/approve', 'content_approve', content_approve,
     methods=['POST'])
 csunesco_bp.add_url_rule(
+    '/admin/content/<id>/withdraw', 'content_withdraw', content_withdraw,
+    methods=['POST'])
+csunesco.add_url_rule(
+    '/admin/content/<id>/delete', 'content_delete', content_delete,
+    methods=['POST'])
+csunesco.add_url_rule(
     '/admin/content/<id>/reject', 'content_reject', content_reject,
     methods=['POST'])
 csunesco_bp.add_url_rule(

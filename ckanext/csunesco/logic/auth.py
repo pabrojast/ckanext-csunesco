@@ -302,6 +302,26 @@ def csunesco_content_reject(context, data_dict):
                         'content')}
 
 
+def csunesco_content_withdraw(context, data_dict):
+    # Same moderators as reject: sysadmin or the item's initiative admin.
+    # Content with no initiative_group collapses to sysadmin-only because
+    # _is_content_initiative_admin returns False on NULL.
+    content_id = (data_dict or {}).get('id')
+    if _is_sysadmin(context) or _is_content_initiative_admin(context, content_id):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only sysadmins or the initiative admin can withdraw '
+                        'content')}
+
+
+def csunesco_content_delete(context, data_dict):
+    # Hard delete is the nuclear option: sysadmin only (trusted_set pattern).
+    if _is_sysadmin(context):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only sysadmins can delete content')}
+
+
 @tk.auth_allow_anonymous_access
 def csunesco_content_list(context, data_dict):
     # Public read; the action pins non-sysadmins to approved content.
@@ -508,6 +528,8 @@ def get_auth_functions():
         'csunesco_content_update': csunesco_content_update,
         'csunesco_content_approve': csunesco_content_approve,
         'csunesco_content_reject': csunesco_content_reject,
+        'csunesco_content_withdraw': csunesco_content_withdraw,
+        'csunesco_content_delete': csunesco_content_delete,
         'csunesco_content_list': csunesco_content_list,
         'csunesco_content_show': csunesco_content_show,
         'csunesco_data_source_create': csunesco_data_source_create,

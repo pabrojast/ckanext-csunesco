@@ -149,21 +149,28 @@ def cs_maps_show(slug):
 def _read_content_form():
     """Read the editor POST into an action ``data_dict`` (echo-friendly)."""
     form = request.form
-    return {
+    data = {
         'title': (form.get('title') or '').strip(),
         'content_type': (form.get('content_type') or '').strip(),
         'body': (form.get('body') or '').strip(),
         'publish_date': (form.get('publish_date') or '').strip(),
         'end_date': (form.get('end_date') or '').strip(),
         'media': [u.strip() for u in form.getlist('media') if u.strip()],
-        'featured': bool(form.get('featured')),
         'terria_url': (form.get('terria_url') or '').strip(),
         'doi': (form.get('doi') or '').strip(),
         'authors': (form.get('authors') or '').strip(),
     }
+    # ``featured`` travels ONLY when its (sysadmin-only) checkbox was actually
+    # rendered -- the hidden ``featured_present`` marker says so. Sending the
+    # key unconditionally made every sysadmin edit silently un-feature the row
+    # (an absent checkbox reads as False).
+    if form.get('featured_present'):
+        data['featured'] = bool(form.get('featured'))
+    return data
 
 
 def _render_content_form(mode, project, content, data, errors):
+    from ckanext.csunesco.logic import auth as cs_auth
     return tk.render('csunesco/content_form.html', extra_vars={
         'mode': mode,
         'project': project,
@@ -171,6 +178,8 @@ def _render_content_form(mode, project, content, data, errors):
         'data': data,
         'errors': errors,
         'content_type_choices': _CONTENT_TYPE_CHOICES,
+        # Gates the featured checkbox (cosmetic; the action re-checks).
+        'is_sysadmin': cs_auth._is_sysadmin(_context()),
     })
 
 

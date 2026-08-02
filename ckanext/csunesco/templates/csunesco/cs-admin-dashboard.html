@@ -336,6 +336,85 @@
       {% else %}
         <p class="cs-empty cs-wb-empty">{{ h.csunesco_icon('inbox', 22) }} {{ _("No content is awaiting review.") }}</p>
       {% endif %}
+
+      {# Recently moderated: the only surface from which a PUBLISHED row can be
+         withdrawn, a rejection undone, or (sysadmin) a row hard-deleted. #}
+      {% if content_moderated %}
+        <h3 class="cs-admin-subtitle">{{ _("Recently moderated") }}</h3>
+        <table class="cs-admin-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ _("Title") }}</th>
+              <th scope="col">{{ _("Type") }}</th>
+              <th scope="col">{{ _("Project") }}</th>
+              <th scope="col">{{ _("Status") }}</th>
+              <th scope="col">{{ _("Reviewed") }}</th>
+              <th scope="col">{{ _("Actions") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in content_moderated %}
+              <tr>
+                <td data-label="{{ _('Title') }}">
+                  <strong>{{ c.title }}</strong>
+                  {% if c.rejection_reason %}<br><span class="cs-muted">{{ c.rejection_reason | truncate(100) }}</span>{% endif %}
+                </td>
+                <td data-label="{{ _('Type') }}">
+                  {{ {'cs-event': _("Event"), 'cs-publication': _("Publication"), 'cs-map': _("Map")}.get(c.content_type, _("News")) }}
+                </td>
+                <td data-label="{{ _('Project') }}">{{ c.project_title or c.project_id }}</td>
+                <td data-label="{{ _('Status') }}">
+                  {% if c.status == 'approved' %}
+                    <span class="cs-status-badge cs-status-approved">{{ _("Published") }}</span>
+                  {% elif c.withdrawn %}
+                    <span class="cs-status-badge cs-status-rejected">{{ _("Withdrawn") }}</span>
+                  {% else %}
+                    <span class="cs-status-badge cs-status-rejected">{{ _("Rejected") }}</span>
+                  {% endif %}
+                </td>
+                <td data-label="{{ _('Reviewed') }}">
+                  {% if c.reviewed_at %}{{ h.render_datetime(c.reviewed_at, with_hours=True) }}{% else %}—{% endif %}
+                  {% if c.reviewed_by %}<br><span class="cs-muted">{{ h.linked_user(c.reviewed_by, maxlength=24) }}</span>{% endif %}
+                </td>
+                <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
+                  {% if is_sysadmin or (c.initiative_group and c.initiative_group in admin_initiatives) %}
+                    {% if c.status == 'approved' %}
+                      <form method="post" class="cs-reject-form"
+                            action="{{ h.url_for('csunesco.content_withdraw', id=c.id) }}"
+                            data-confirm="{{ _('Withdraw this content from the portal?') }}">
+                        {{ h.csrf_input() }}
+                        <label class="cs-visually-hidden" for="reason-w-{{ c.id }}">{{ _("Reason") }}</label>
+                        <input type="text" id="reason-w-{{ c.id }}" name="reason"
+                               class="cs-reject-reason" placeholder="{{ _('Reason (optional)') }}">
+                        <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Withdraw") }}</button>
+                      </form>
+                    {% else %}
+                      <form method="post"
+                            action="{{ h.url_for('csunesco.content_approve', id=c.id) }}"
+                            data-confirm="{{ _('Restore and publish this content?') }}">
+                        {{ h.csrf_input() }}
+                        <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Re-approve") }}</button>
+                      </form>
+                    {% endif %}
+                  {% endif %}
+                  {% if is_sysadmin %}
+                    <form method="post"
+                          action="{{ h.url_for('csunesco.content_delete', id=c.id) }}"
+                          data-confirm="{{ _('Permanently delete this content? This cannot be undone.') }}">
+                      {{ h.csrf_input() }}
+                      <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Delete") }}</button>
+                    </form>
+                  {% endif %}
+                  {% if c.slug %}
+                    <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                       href="{{ h.url_for(show_endpoints.get(c.content_type, 'csunesco.cs_news_show'), slug=c.slug) }}">{{ _("View") }}</a>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
     </div>
 
     {# ---- Data to review (sysadmin / initiative admin) ----------------- #}

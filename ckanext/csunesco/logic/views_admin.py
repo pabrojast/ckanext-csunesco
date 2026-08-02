@@ -167,6 +167,7 @@ def admin_dashboard():
         'project_requests': data.get('project_requests', []),
         'join_requests': data.get('join_requests', []),
         'content_requests': data.get('content_requests', []),
+        'content_moderated': data.get('content_moderated', []),
         'data_requests': data.get('data_requests', []),
         'page_requests': data.get('page_requests', []),
         'counts': data.get('counts', {}),
@@ -260,6 +261,18 @@ def content_reject(id):
     reason = sanitize_html((request.form.get('reason') or '').strip())
     return _decide('csunesco_content_reject', {'id': id, 'reason': reason},
                    'content', tk._('Content rejected.'))
+
+
+def content_withdraw(id):
+    reason = sanitize_html((request.form.get('reason') or '').strip())
+    return _decide('csunesco_content_withdraw', {'id': id, 'reason': reason},
+                   'content', tk._('Content withdrawn from the portal.'))
+
+
+def content_delete(id):
+    return _decide('csunesco_content_delete', {'id': id}, 'content',
+                   tk._('Content permanently deleted.'),
+                   gone_message=tk._('That content was already gone.'))
 
 
 # Tope defensivo de filas por request de bulk-approve (el panel pagina de a 20).

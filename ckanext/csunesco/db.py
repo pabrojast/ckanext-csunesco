@@ -108,6 +108,11 @@ cs_content_table = Table(
     Column('status', types.UnicodeText, index=True, default=u'draft'),
     Column('featured', types.Boolean, default=False),
     Column('created_by', types.UnicodeText, index=True),
+    # Moderation audit trail (same pair cs_project / cs_project_member carry):
+    # who approved/rejected/withdrew the row last, and when. The rejection
+    # reason itself stays in ``extras`` (compat with every existing reader).
+    Column('reviewed_by', types.UnicodeText),
+    Column('reviewed_at', types.DateTime),
     Column('extras', types.Text, default=u'{}'),
     Column('created', types.DateTime, default=_utcnow),
     Column('modified', types.DateTime, default=_utcnow),
@@ -323,6 +328,8 @@ _AUTO_HEAL_COLUMNS = [
     ('cs_content', 'featured', 'BOOLEAN DEFAULT FALSE'),
     ('cs_content', 'extras', "TEXT DEFAULT '{}'"),
     ('cs_content', 'slug', 'TEXT'),
+    ('cs_content', 'reviewed_by', 'TEXT'),
+    ('cs_content', 'reviewed_at', 'TIMESTAMP'),
     ('cs_project_stats', 'member_states', 'INTEGER DEFAULT 0'),
     ('cs_citizen_scientist', 'country', 'TEXT'),
     ('cs_citizen_scientist', 'email_verified', 'BOOLEAN DEFAULT FALSE'),
@@ -862,6 +869,8 @@ def content_dictize(content, summary=False):
         'status': content.status,
         'featured': bool(content.featured),
         'created_by': content.created_by,
+        'reviewed_by': content.reviewed_by,
+        'reviewed_at': _iso(content.reviewed_at),
         'created': _iso(content.created),
         'modified': _iso(content.modified),
     }
@@ -942,9 +951,16 @@ def list_content(content_type=None, project_id=None, status=None,
     if featured is not None:
         query = query.filter(CsContent.featured == bool(featured))
     total = query.count()
+    # COALESCE keeps rows without a publish_date (optional for news) in their
+    # natural place by creation date. A bare ``publish_date DESC`` pins NULLs
+    # FIRST on PostgreSQL, so an undated news item sat on top of /news forever.
+    # ``id`` is a stable tie-breaker for paging.
     rows = (
-        query.order_by(CsContent.publish_date.desc(),
-                       CsContent.created.desc())
+        query.order_by(
+            sa.func.coalesce(CsContent.publish_date,
+                             CsContent.created).desc(),
+            CsContent.created.desc(),
+            CsContent.id)
         .limit(limit)
         .offset(offset)
         .all()
@@ -1172,6 +1188,46 @@ def pending_content(project_ids=None, limit=20, offset=0):
     total = query.count()
     rows = (
         query.order_by(CsContent.created.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    results = []
+    for content, title, slug in rows:
+        item = content_dictize(content, summary=True)
+        item['project_title'] = title
+        item['project_slug'] = slug
+        results.append(item)
+    return total, results
+
+
+def moderated_content(project_ids=None, limit=20, offset=0):
+    """Recently moderated content (approved OR rejected) in scope.
+
+    The review panel's "recently moderated" list: it is the only surface from
+    which an already-published row can be withdrawn (or a rejected one
+    re-approved), so it mirrors :func:`pending_content` -- same scoping by
+    ``project_ids``, summarized rows decorated with project title/slug --
+    ordered by the moderation moment (``reviewed_at``; rows moderated before
+    that column existed fall back to ``modified``).
+    """
+    _ensure_mappers()
+    query = (
+        Session.query(CsContent, CsProject.title, CsProject.slug)
+        .outerjoin(CsProject, CsProject.id == CsContent.project_id)
+        .options(defer(CsContent.body))
+        .filter(CsContent.status.in_((u'approved', u'rejected')))
+    )
+    if project_ids is not None:
+        if not project_ids:
+            return 0, []
+        query = query.filter(CsContent.project_id.in_(project_ids))
+    total = query.count()
+    rows = (
+        query.order_by(
+            sa.func.coalesce(CsContent.reviewed_at,
+                             CsContent.modified).desc(),
+            CsContent.id)
         .limit(limit)
         .offset(offset)
         .all()

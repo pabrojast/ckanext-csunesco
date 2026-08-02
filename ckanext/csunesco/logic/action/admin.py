@@ -125,6 +125,8 @@ def csunesco_admin_pending_list(context, data_dict):
             context, None, limit, offset)
         _content_count, content_requests = _pending_content(
             context, None, limit, offset)
+        _mod_count, content_moderated = db.moderated_content(
+            None, limit, offset)
         _data_count, data_requests = db.pending_data_sources(limit, offset)
         _page_count, page_requests = db.pending_pages(limit, offset)
     else:
@@ -148,11 +150,17 @@ def csunesco_admin_pending_list(context, data_dict):
             context, scope, limit, offset)
         _content_count, content_requests = _pending_content(
             context, scope, limit, offset)
+        _mod_count, content_moderated = db.moderated_content(
+            scope, limit, offset)
 
     return {
         'project_requests': project_requests,
         'join_requests': join_requests,
         'content_requests': content_requests,
+        # Recently moderated content (approved/rejected) in the same scope:
+        # the only surface from which a published row can be withdrawn or a
+        # rejected one restored. Additive key -- existing consumers unaffected.
+        'content_moderated': content_moderated,
         'data_requests': data_requests,
         'page_requests': page_requests,
         # Identical numbers to the header badge (single cached source).

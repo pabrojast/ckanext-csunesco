@@ -264,7 +264,10 @@ def csunesco_content_update(context, data_dict):
     content.media = data.get('media')
     content.publish_date = data.get('publish_date')
     content.end_date = data.get('end_date')
-    if is_sysadmin:
+    # ``featured`` only changes when the caller EXPLICITLY sent the key: the
+    # web editor omits it unless its (sysadmin-only) checkbox is rendered, so
+    # a sysadmin editing a featured row no longer un-features it silently.
+    if is_sysadmin and 'featured' in data:
         content.featured = bool(data.get('featured'))
     # Slug is permanent (URL stability) -- deliberately not regenerated.
     # A non-sysadmin edit goes back through review, EXCEPT news/events of a
@@ -281,30 +284,49 @@ def csunesco_content_update(context, data_dict):
     return db.content_dictize(content)
 
 
+def _stamp_review(context, content):
+    """Record who moderated the row and when (audit trail)."""
+    content.reviewed_by = current_user_id(context)
+    content.reviewed_at = _utcnow()
+
+
 def csunesco_content_approve(context, data_dict):
-    """Approve pending content (sysadmin only); optional ``featured`` toggle."""
+    """Approve content (sysadmin / initiative admin).
+
+    Accepts ``pending`` rows (the normal queue) AND ``rejected`` ones -- the
+    "undo" for a wrong rejection or a withdrawal, reachable from the panel's
+    recently-moderated list. Optional ``featured`` toggle.
+    """
     tk.check_access('csunesco_content_approve', context, data_dict)
     data_dict = data_dict or {}
     content = db.get_content(data_dict.get('id'))
     if content is None:
         raise tk.ObjectNotFound(tk._('Content not found'))
-    if content.status != 'pending':
+    if content.status not in ('pending', 'rejected'):
         raise tk.ValidationError({'status': [tk._(
-            'Only pending content can be approved (current status: %s)'
-        ) % content.status]})
+            'Only pending or rejected content can be approved '
+            '(current status: %s)') % content.status]})
 
     content.status = 'approved'
     if 'featured' in data_dict:
         content.featured = tk.asbool(data_dict.get('featured'))
     content.extras = json.dumps(
-        _merge_extras(content, rejection_reason=None))
+        _merge_extras(content, rejection_reason=None, withdrawn=None))
+    _stamp_review(context, content)
     content.modified = _utcnow()
     model.Session.commit()
     return db.content_dictize(content)
 
 
 def csunesco_content_reject(context, data_dict):
-    """Reject content (sysadmin only), storing a SANITIZED reason in extras."""
+    """Reject content (sysadmin / initiative admin).
+
+    The SANITIZED ``reason`` is stored in ``extras`` (NOT a native column, on
+    purpose: every existing reader -- cards, panel, dictize merge -- already
+    consumes it from there and nothing filters by it). Deliberately accepts any
+    starting status for backwards compatibility; the explicit, state-checked
+    way to unpublish an approved row is ``csunesco_content_withdraw``.
+    """
     tk.check_access('csunesco_content_reject', context, data_dict)
     data_dict = data_dict or {}
     content = db.get_content(data_dict.get('id'))
@@ -315,9 +337,57 @@ def csunesco_content_reject(context, data_dict):
     content.status = 'rejected'
     content.extras = json.dumps(
         _merge_extras(content, rejection_reason=reason))
+    _stamp_review(context, content)
     content.modified = _utcnow()
     model.Session.commit()
     return db.content_dictize(content)
+
+
+def csunesco_content_withdraw(context, data_dict):
+    """Withdraw (unpublish) an APPROVED row -- sysadmin / initiative admin.
+
+    The intentional counterpart to approve: it demands the row actually be
+    published (a state check ``csunesco_content_reject`` deliberately lacks),
+    marks ``extras.withdrawn`` so the panel can tell a withdrawal from a plain
+    rejection, and keeps the row restorable via approve.
+    """
+    tk.check_access('csunesco_content_withdraw', context, data_dict)
+    data_dict = data_dict or {}
+    content = db.get_content(data_dict.get('id'))
+    if content is None:
+        raise tk.ObjectNotFound(tk._('Content not found'))
+    if content.status != 'approved':
+        raise tk.ValidationError({'status': [tk._(
+            'Only approved content can be withdrawn (current status: %s)'
+        ) % content.status]})
+
+    reason = sanitize_html((data_dict.get('reason') or '').strip()) or None
+    content.status = 'rejected'
+    content.extras = json.dumps(
+        _merge_extras(content, rejection_reason=reason, withdrawn=True))
+    _stamp_review(context, content)
+    content.modified = _utcnow()
+    model.Session.commit()
+    return db.content_dictize(content)
+
+
+def csunesco_content_delete(context, data_dict):
+    """Hard-delete a content row (SYSADMIN only).
+
+    The one true removal: the row disappears and its slug becomes reusable
+    (the unique index lives on the row). Everyday moderation should withdraw
+    instead -- delete is for content that must not remain in the database at
+    all (legal/privacy).
+    """
+    tk.check_access('csunesco_content_delete', context, data_dict)
+    data_dict = data_dict or {}
+    content = db.get_content(data_dict.get('id'))
+    if content is None:
+        raise tk.ObjectNotFound(tk._('Content not found'))
+    content_id = content.id
+    model.Session.delete(content)
+    model.Session.commit()
+    return {'id': content_id, 'deleted': True}
 
 
 @tk.side_effect_free
@@ -423,6 +493,8 @@ def get_actions():
         'csunesco_content_update': csunesco_content_update,
         'csunesco_content_approve': csunesco_content_approve,
         'csunesco_content_reject': csunesco_content_reject,
+        'csunesco_content_withdraw': csunesco_content_withdraw,
+        'csunesco_content_delete': csunesco_content_delete,
         'csunesco_content_list': csunesco_content_list,
         'csunesco_content_show': csunesco_content_show,
     }

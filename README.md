@@ -98,6 +98,8 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | GET·POST | `/citizen-science/project/new` | Propose a project (request) | authenticated |
 | POST | `/citizen-science/project/<slug>/join` | Request to join a project | authenticated |
 | GET·POST | `/citizen-science/project/<slug>/content/new` | Add news/event to a project | sysadmin, initiative admin **or** that project's admin |
+| POST | `/citizen-science/admin/content/<id>/withdraw` | Unpublish approved content (optional reason) | sysadmin **or** the content's initiative admin |
+| POST | `/citizen-science/admin/content/<id>/delete` | Permanently delete a content row (frees its slug) | sysadmin |
 | GET·POST | `/citizen-science/content/<id>/edit` | Edit an existing content item | sysadmin, initiative admin **or** project admin |
 | GET·POST | `/citizen-science/project/<slug>/data/connect` | Connect a CS Toolbox form's data (request, lands pending) | sysadmin, initiative admin **or** that project's admin |
 | GET | `/citizen-science/admin` | Approval panel (pending projects/joins/content/data) | sysadmin, any initiative admin **or** any project admin |
@@ -142,7 +144,9 @@ enumerate accounts.
 | `csunesco_data_source_create` | sysadmin, initiative admin **or** project admin — **always** creates `pending`; idempotent per `(project, form)` |
 | `csunesco_admin_pending_list` | sysadmin, any initiative admin **or** any project admin |
 | `csunesco_project_approve`, `csunesco_project_reject` | sysadmin **or** the project's initiative admin |
-| `csunesco_content_approve`, `csunesco_content_reject` | sysadmin **or** the content's initiative admin |
+| `csunesco_content_approve`, `csunesco_content_reject` | sysadmin **or** the content's initiative admin — approve also RESTORES rejected/withdrawn rows |
+| `csunesco_content_withdraw` | sysadmin **or** the content's initiative admin — unpublish an **approved** row (state-checked; audited via `reviewed_by`/`reviewed_at`, marks `withdrawn`) |
+| `csunesco_content_delete` | sysadmin — hard delete; the slug becomes reusable |
 | `csunesco_data_source_approve`, `csunesco_data_source_reject` | sysadmin **or** the source's initiative admin (approve creates/refreshes the CKAN dataset; `owner_org` override is sysadmin-only) |
 | `csunesco_join_approve`, `csunesco_join_reject` | sysadmin, initiative admin **or** project admin (decision + reviewer audited) |
 | `csunesco_project_trusted_set` | sysadmin — toggles unreviewed news/events for one project |
@@ -234,7 +238,12 @@ Four tabs:
    so a manager listing **their** project also gets its pending and rejected
    rows, badged, with the rejection reason. (The public indexes pass no project
    filter, so they stay approved-only.) Editing a rejected item sends it back
-   through review, which closes the loop.
+   through review, which closes the loop. Below the pending queue, **Recently
+   moderated** lists approved/rejected rows with their reviewer and timestamp
+   (`reviewed_by`/`reviewed_at`) — it is the panel's lever to **Withdraw** a
+   published row (with an optional reason; the row shows as *Withdrawn* and can
+   be **Re-approved** later) and, for sysadmins, to **Delete** a row for good
+   (its slug becomes reusable).
 4. **Data to review** (sysadmin or initiative admin) — each row shows a live probe of the form's
    public data (reachable? observations, geolocated count, date range) and an
    "Open in the app" link (`ofform_app_url`), so nothing is approved blind.

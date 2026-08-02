@@ -183,6 +183,20 @@
         {% endif %}
       </div>
 
+      {% if is_sysadmin %}
+        {# featured travels ONLY when this block renders: the hidden marker
+           tells the view the checkbox existed, so an unchecked box means an
+           explicit False instead of "key silently defaulting to False". #}
+        <div class="cs-field">
+          <label class="cs-checkbox-label">
+            <input type="hidden" name="featured_present" value="1">
+            <input type="checkbox" name="featured" value="1"
+                   {% if (data.featured if data.featured is defined else (content and content.featured)) %}checked{% endif %}>
+            {{ _("Featured (highlighted on the hub)") }}
+          </label>
+        </div>
+      {% endif %}
+
       <div class="cs-form-actions">
         <button type="submit" id="cs-content-submit" class="cs-btn cs-btn-primary">
           <span class="cs-btn-label">{{ _("Save") }}</span>
