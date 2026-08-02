@@ -114,6 +114,10 @@ cs_content_table = Table(
     # scope's members/managers. Every SQL filter on this column must be
     # NULL-safe (rows predating the column count as public).
     Column('visibility', types.UnicodeText, default=u'public'),
+    # Authoring surface: 'ckan' (portal editor) or 'app' (pushed by the CS
+    # Toolbox app). Mirrored in extras for old consumers; the native column
+    # makes it filterable.
+    Column('source', types.UnicodeText, default=u'ckan'),
     Column('featured', types.Boolean, default=False),
     Column('created_by', types.UnicodeText, index=True),
     # Moderation audit trail (same pair cs_project / cs_project_member carry):
@@ -343,6 +347,7 @@ _AUTO_HEAL_COLUMNS = [
     ('cs_content', 'reviewed_at', 'TIMESTAMP'),
     ('cs_content', 'organization_id', 'TEXT'),
     ('cs_content', 'visibility', "TEXT DEFAULT 'public'"),
+    ('cs_content', 'source', "TEXT DEFAULT 'ckan'"),
     ('cs_project_stats', 'member_states', 'INTEGER DEFAULT 0'),
     ('cs_citizen_scientist', 'country', 'TEXT'),
     ('cs_citizen_scientist', 'email_verified', 'BOOLEAN DEFAULT FALSE'),
@@ -374,6 +379,15 @@ def _ensure_columns(engine):
         try:
             with engine.begin() as conn:
                 conn.execute(sa.text(alter_sql))
+                # One-shot backfill for the promoted ``source`` column: rows
+                # pushed by the app before the column existed carry the flag
+                # only inside the extras JSON (written by our own json.dumps,
+                # so the literal below is stable). Runs ONLY in the same
+                # transaction that just created the column.
+                if (table_name, column_name) == ('cs_content', 'source'):
+                    conn.execute(sa.text(
+                        "UPDATE cs_content SET source = 'app' "
+                        "WHERE extras LIKE '%\"source\": \"app\"%'"))
             log.info("ckanext-csunesco: added missing column %s.%s",
                      table_name, column_name)
         except Exception:
@@ -879,6 +893,7 @@ def content_dictize(content, summary=False):
         'initiative_group': content.initiative_group,
         # Rows predating the column read as public.
         'visibility': content.visibility or u'public',
+        'source': content.source or u'ckan',
         'title': content.title,
         'publish_date': _iso(content.publish_date),
         'end_date': _iso(content.end_date),
@@ -949,11 +964,30 @@ def _public_visibility_clause():
                   CsContent.visibility != u'private')
 
 
+def _escape_like(value):
+    """Escape LIKE wildcards so user text matches literally (escape char \\)."""
+    return (value.replace(u'\\', u'\\\\')
+                 .replace(u'%', u'\\%')
+                 .replace(u'_', u'\\_'))
+
+
+# Sortable fields -> order expression factory. ``publish_date`` uses the same
+# COALESCE as the default order so undated rows keep their timeline slot.
+_CONTENT_SORT_FIELDS = {
+    'publish_date': lambda: sa.func.coalesce(CsContent.publish_date,
+                                             CsContent.created),
+    'created': lambda: CsContent.created,
+    'title': lambda: sa.func.lower(CsContent.title),
+}
+
+
 def list_content(content_type=None, project_id=None, status=None,
                  initiative_group=None, featured=None, summary=True,
                  limit=20, offset=0, organization_id=None,
                  public_only=False, private_project_ids=None,
-                 private_org_ids=None):
+                 private_org_ids=None, q=None, date_from=None, date_to=None,
+                 upcoming=False, created_by=None, source=None,
+                 project_ids=None, sort=None):
     """List content with server-side filtering + paging. Returns ``(total, rows)``.
 
     All filter values are bound query parameters (no SQL is built from strings).
@@ -965,6 +999,9 @@ def list_content(content_type=None, project_id=None, status=None,
     * ``public_only=True`` pins the NULL-safe "not private" clause;
     * ``private_project_ids`` / ``private_org_ids`` widen a pinned query so the
       caller's OWN scopes still include their private rows.
+
+    ``sort`` is a validated ``(field, direction)`` pair from
+    ``parse_content_sort`` -- never raw client input.
     """
     _ensure_mappers()
     query = Session.query(CsContent)
@@ -974,6 +1011,8 @@ def list_content(content_type=None, project_id=None, status=None,
         query = query.filter(CsContent.content_type == content_type)
     if project_id:
         query = query.filter(CsContent.project_id == project_id)
+    if project_ids:
+        query = query.filter(CsContent.project_id.in_(list(project_ids)))
     if organization_id:
         query = query.filter(CsContent.organization_id == organization_id)
     if status:
@@ -982,6 +1021,28 @@ def list_content(content_type=None, project_id=None, status=None,
         query = query.filter(CsContent.initiative_group == initiative_group)
     if featured is not None:
         query = query.filter(CsContent.featured == bool(featured))
+    if q:
+        needle = u'%' + _escape_like(q) + u'%'
+        query = query.filter(sa.or_(
+            CsContent.title.ilike(needle, escape=u'\\'),
+            CsContent.body.ilike(needle, escape=u'\\')))
+    effective_date = sa.func.coalesce(CsContent.publish_date,
+                                      CsContent.created)
+    if date_from is not None:
+        query = query.filter(effective_date >= date_from)
+    if date_to is not None:
+        query = query.filter(effective_date <= date_to)
+    if upcoming:
+        query = query.filter(CsContent.end_date >= _utcnow())
+    if created_by:
+        query = query.filter(CsContent.created_by == created_by)
+    if source:
+        if source == u'ckan':
+            # NULL-safe: rows predating the column are portal-authored.
+            query = query.filter(sa.or_(CsContent.source.is_(None),
+                                        CsContent.source == u'ckan'))
+        else:
+            query = query.filter(CsContent.source == source)
     if public_only:
         clauses = [_public_visibility_clause()]
         if private_project_ids:
@@ -995,17 +1056,82 @@ def list_content(content_type=None, project_id=None, status=None,
     # natural place by creation date. A bare ``publish_date DESC`` pins NULLs
     # FIRST on PostgreSQL, so an undated news item sat on top of /news forever.
     # ``id`` is a stable tie-breaker for paging.
-    rows = (
-        query.order_by(
+    if sort:
+        field, direction = sort
+        expr = _CONTENT_SORT_FIELDS[field]()
+        primary = expr.asc() if direction == 'asc' else expr.desc()
+        order = (primary, CsContent.created.desc(), CsContent.id)
+    else:
+        order = (
             sa.func.coalesce(CsContent.publish_date,
                              CsContent.created).desc(),
             CsContent.created.desc(),
             CsContent.id)
+    rows = (
+        query.order_by(*order)
         .limit(limit)
         .offset(offset)
         .all()
     )
     return total, rows
+
+
+def resolve_project_ids(keys):
+    """Resolve a mixed list of project ids/slugs to ids in ONE query.
+
+    Unknown keys are silently dropped (an unknown project simply matches no
+    content). Returns a list of distinct ids.
+    """
+    _ensure_mappers()
+    keys = [k for k in (keys or []) if k]
+    if not keys:
+        return []
+    rows = (
+        Session.query(CsProject.id)
+        .filter(sa.or_(CsProject.id.in_(keys), CsProject.slug.in_(keys)))
+        .all()
+    )
+    return sorted({row[0] for row in rows})
+
+
+def decorate_content_rows(results):
+    """Attach owner names to summarized content dicts, in ≤2 batched queries.
+
+    Adds ``project_title``/``project_slug`` for project rows and
+    ``organization_title``/``organization_name`` for org rows. Mutates and
+    returns ``results``.
+    """
+    _ensure_mappers()
+    project_ids = {r.get('project_id') for r in results if r.get('project_id')}
+    org_ids = {r.get('organization_id')
+               for r in results if r.get('organization_id')}
+    projects = {}
+    if project_ids:
+        projects = {
+            pid: (title, slug)
+            for pid, title, slug in Session.query(
+                CsProject.id, CsProject.title, CsProject.slug)
+            .filter(CsProject.id.in_(project_ids)).all()
+        }
+    organizations = {}
+    if org_ids:
+        from ckan.model.group import group_table
+        organizations = {
+            gid: (title, name)
+            for gid, title, name in Session.query(
+                group_table.c.id, group_table.c.title, group_table.c.name)
+            .filter(group_table.c.id.in_(org_ids)).all()
+        }
+    for row in results:
+        if row.get('project_id') in projects:
+            title, slug = projects[row['project_id']]
+            row['project_title'] = title
+            row['project_slug'] = slug
+        if row.get('organization_id') in organizations:
+            title, name = organizations[row['organization_id']]
+            row['organization_title'] = title
+            row['organization_name'] = name
+    return results
 
 
 # ---------------------------------------------------------------------------

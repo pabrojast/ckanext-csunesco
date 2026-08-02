@@ -33,6 +33,9 @@ from ckanext.csunesco.logic.action import current_user_id
 DEFAULT_LIST_LIMIT = 20
 MAX_LIST_LIMIT = 100
 
+# Cap for the multi-project filter (the app's "news from MY projects" feed).
+MAX_PROJECT_IDS = 50
+
 # Plain-text teaser length stored alongside each row so summaries never load the
 # full body.
 EXCERPT_LENGTH = 240
@@ -197,6 +200,33 @@ def _validated_content(context, data_dict, content_type):
     return data
 
 
+# Sortable fields for csunesco_content_list (kept in sync with the db layer).
+CONTENT_SORT_FIELDS = ('publish_date', 'created', 'title')
+CONTENT_SORT_DIRECTIONS = ('asc', 'desc')
+
+
+def parse_content_sort(value):
+    """Parse a ``sort`` param ("field" or "field dir") against the allowlist.
+
+    Pure helper (unit-tested): returns ``(field, direction)`` or None for
+    empty input. Raises ``ValueError`` on anything outside the allowlist --
+    the action maps that to a ValidationError. Never feeds raw client input
+    to the ORM.
+    """
+    if not value or not str(value).strip():
+        return None
+    parts = str(value).strip().lower().split()
+    if len(parts) > 2:
+        raise ValueError('sort must be "field" or "field direction"')
+    field = parts[0]
+    direction = parts[1] if len(parts) == 2 else 'desc'
+    if field not in CONTENT_SORT_FIELDS:
+        raise ValueError('unknown sort field: %s' % field)
+    if direction not in CONTENT_SORT_DIRECTIONS:
+        raise ValueError('unknown sort direction: %s' % direction)
+    return field, direction
+
+
 def content_initial_status(is_sysadmin, source, content_type, trusted):
     """Moderation status a content row lands in (pure helper, unit-tested).
 
@@ -289,6 +319,8 @@ def csunesco_content_create(context, data_dict):
     content.publish_date = data.get('publish_date')
     content.end_date = data.get('end_date')
     content.visibility = data.get('visibility') or u'public'
+    # Native column (filterable); mirrored in extras below for old consumers.
+    content.source = source
     # Only a sysadmin may feature content; authors cannot self-promote.
     content.featured = bool(data.get('featured')) if is_sysadmin else False
     content.created_by = current_user_id(context)
@@ -510,6 +542,54 @@ def csunesco_content_list(context, data_dict):
     featured = (tk.asbool(data_dict.get('featured'))
                 if data_dict.get('featured') is not None else None)
 
+    # --- Additive filters ----------------------------------------------------
+    q = (data_dict.get('q') or '').strip() or None
+
+    from ckanext.csunesco.logic import validators as v
+    try:
+        date_from = v.csunesco_valid_iso_date(data_dict.get('date_from'))
+        date_to = v.csunesco_valid_iso_date(data_dict.get('date_to'))
+    except tk.Invalid as err:
+        raise tk.ValidationError({'date_from': [err.error]})
+
+    upcoming = tk.asbool(data_dict.get('upcoming') or False)
+    if upcoming:
+        if content_type and content_type != 'cs-event':
+            raise tk.ValidationError({'upcoming': [tk._(
+                'upcoming only applies to events (content_type=cs-event)')]})
+        content_type = 'cs-event'
+
+    created_by = (data_dict.get('created_by') or '').strip() or None
+    if created_by:
+        user = model.User.get(created_by)
+        created_by = user.id if user is not None else created_by
+
+    source_filter = (data_dict.get('source') or '').strip().lower() or None
+    if source_filter and source_filter not in CONTENT_SOURCES:
+        raise tk.ValidationError({'source': [tk._(
+            'Source must be one of: %s') % ', '.join(sorted(CONTENT_SOURCES))]})
+
+    raw_project_ids = data_dict.get('project_ids')
+    project_ids = None
+    if raw_project_ids:
+        if isinstance(raw_project_ids, str):
+            keys = [k.strip() for k in raw_project_ids.split(',') if k.strip()]
+        elif isinstance(raw_project_ids, (list, tuple)):
+            keys = [str(k).strip() for k in raw_project_ids if str(k).strip()]
+        else:
+            raise tk.ValidationError({'project_ids': [tk._(
+                'project_ids must be a list or a comma-separated string')]})
+        if len(keys) > MAX_PROJECT_IDS:
+            raise tk.ValidationError({'project_ids': [tk._(
+                'project_ids accepts at most %d projects') % MAX_PROJECT_IDS]})
+        # Unknown keys resolve to nothing (and match nothing) on purpose.
+        project_ids = db.resolve_project_ids(keys) or ['__none__']
+
+    try:
+        sort = parse_content_sort(data_dict.get('sort'))
+    except ValueError as err:
+        raise tk.ValidationError({'sort': [str(err)]})
+
     # Same scoping rule as ``csunesco_data_source_list``: a manager listing
     # THEIR OWN project also sees its unapproved rows.
     #
@@ -524,7 +604,13 @@ def csunesco_content_list(context, data_dict):
     # public /news and /events indexes) every non-sysadmin stays pinned to
     # approved, so nothing leaks into a public listing.
     is_sysadmin = auth._is_sysadmin(context)
-    privileged = is_sysadmin or (
+    # An initiative admin filtering by THEIR OWN initiative is privileged too:
+    # without this an ADM could not pull their initiative's pending rows by
+    # API (only via the panel action).
+    is_initiative_admin = bool(
+        initiative
+        and initiative in auth._admin_initiative_groups(context))
+    privileged = is_sysadmin or is_initiative_admin or (
         project_id and auth.can_manage_project(context, project_id)) or (
         organization_id and auth._is_org_editor(context, organization_id))
     if privileged:
@@ -568,8 +654,18 @@ def csunesco_content_list(context, data_dict):
         public_only=public_only,
         private_project_ids=private_project_ids,
         private_org_ids=private_org_ids,
+        q=q,
+        date_from=date_from,
+        date_to=date_to,
+        upcoming=upcoming,
+        created_by=created_by,
+        source=source_filter,
+        project_ids=project_ids,
+        sort=sort,
     )
     results = [db.content_dictize(row, summary=summary) for row in rows]
+    if tk.asbool(data_dict.get('include_project') or False):
+        db.decorate_content_rows(results)
 
     return {
         'count': total,
@@ -583,6 +679,14 @@ def csunesco_content_list(context, data_dict):
             'initiative': initiative,
             'status': status,
             'featured': featured,
+            'q': q,
+            'date_from': date_from.isoformat() if date_from else None,
+            'date_to': date_to.isoformat() if date_to else None,
+            'upcoming': upcoming or None,
+            'created_by': created_by,
+            'source': source_filter,
+            'project_ids': project_ids,
+            'sort': ' '.join(sort) if sort else None,
         },
     }
 

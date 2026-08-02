@@ -132,6 +132,7 @@ enumerate accounts.
 | --- | --- |
 | `csunesco_project_list`, `csunesco_project_show`, `csunesco_project_stats_show`, `csunesco_aggregate_stats` | public (read; approved only for non-sysadmins) |
 | `csunesco_content_list`, `csunesco_content_show` | public (read; approved only — **except** a manager reading their own project, who also sees its pending/rejected rows) |
+| — `csunesco_content_list` filters (all optional, additive) | `content_type` · `project_id`/`project`/`project_slug` · `project_ids` (list or CSV of ids/slugs, ≤50 — the "news from my projects" feed) · `organization` (id/name) · `initiative` · `status` (privileged callers only: sysadmin, the scope's managers, or an **initiative admin filtering their own initiative**) · `featured` · `q` (title+body, wildcards escaped) · `date_from`/`date_to` (over `COALESCE(publish_date, created)`) · `upcoming` (events only) · `created_by` · `source` (`app`/`ckan`, NULL-safe) · `sort` (`publish_date`\|`created`\|`title` × `asc`\|`desc`) · `include_project` (batch-decorates owner title/slug) · `include_body` · `limit`/`offset` |
 | `csunesco_project_request_create` | authenticated |
 | `csunesco_join_request_create` | authenticated |
 | `csunesco_my_projects` | authenticated (the projects **you** administer, whatever your role) |

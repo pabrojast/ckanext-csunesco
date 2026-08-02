@@ -76,7 +76,7 @@ fi
 # --------------------------------------------------------------------------- #
 echo "-- behavioral pytest (db_behavior + pure_logic + initiative_admin + blocks + aggregate + chat + data_chat + admin_bulk)"
 if ! docker run --rm "${IMAGE}" bash -lc \
-  'cd /plugin && python -m pytest ckanext/csunesco/tests/test_db_behavior.py ckanext/csunesco/tests/test_pure_logic.py ckanext/csunesco/tests/test_initiative_admin.py ckanext/csunesco/tests/test_blocks.py ckanext/csunesco/tests/test_aggregate.py ckanext/csunesco/tests/test_chat.py ckanext/csunesco/tests/test_data_chat.py ckanext/csunesco/tests/test_admin_bulk.py ckanext/csunesco/tests/test_content_lifecycle.py -q -p no:ckan'
+  'cd /plugin && python -m pytest ckanext/csunesco/tests/test_db_behavior.py ckanext/csunesco/tests/test_pure_logic.py ckanext/csunesco/tests/test_initiative_admin.py ckanext/csunesco/tests/test_blocks.py ckanext/csunesco/tests/test_aggregate.py ckanext/csunesco/tests/test_chat.py ckanext/csunesco/tests/test_data_chat.py ckanext/csunesco/tests/test_admin_bulk.py ckanext/csunesco/tests/test_content_lifecycle.py ckanext/csunesco/tests/test_content_list_filters.py -q -p no:ckan'
 then
   echo "FAIL: behavioral pytest failed"
   exit 1
