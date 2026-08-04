@@ -5,7 +5,9 @@
 # Builds the Dockerfile.test image (real CKAN 2.10 with the plugin installed)
 # and runs BOTH verification layers inside it:
 #   1. a plugin-LOAD smoke check -- instantiate CsunescoPlugin and assert its
-#      IActions / ITemplateHelpers / IValidators registries are non-empty,
+#      IActions / ITemplateHelpers / IValidators registries are non-empty and
+#      that get_blueprint() imports and builds (a broken blueprint module
+#      crashes every CKAN worker at boot),
 #   2. the BEHAVIORAL pytest files (test_db_behavior.py + test_pure_logic.py).
 #
 # Prints a clear PASS/FAIL summary and exits non-zero on the first failure.
@@ -60,8 +62,18 @@ for name in ("csunesco_project_request_create", "csunesco_join_approve",
              "csunesco_content_withdraw", "csunesco_content_delete"):
     assert name in actions, "missing action %r" % name
 
-print("actions=%d helpers=%d validators=%d auth=%d"
-      % (len(actions), len(helpers), len(validators), len(auth)))
+# IBlueprint: the module import happens inside get_blueprint(), so a NameError
+# or bad route registration there would otherwise only surface at CKAN boot.
+blueprint = plugin.get_blueprint()
+blueprints = blueprint if isinstance(blueprint, list) else [blueprint]
+assert blueprints and all(bp is not None for bp in blueprints), \
+    "get_blueprint() returned nothing"
+assert any(bp.deferred_functions for bp in blueprints), \
+    "blueprint has no registered routes"
+
+print("actions=%d helpers=%d validators=%d auth=%d blueprints=%d"
+      % (len(actions), len(helpers), len(validators), len(auth),
+         len(blueprints)))
 print("PLUGIN OK")
 sys.exit(0)
 PY

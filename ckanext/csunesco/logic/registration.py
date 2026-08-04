@@ -132,6 +132,9 @@ def create_citizen_scientist(context, data, verification_token=None):
         raise
     except Exception:
         # Any unexpected error (DB, mailer, ...) -> still generic, never leaked.
+        # Roll back first: a DB error leaves the session in an aborted
+        # transaction and the error page itself would 500 on the next query.
+        model.Session.rollback()
         log.warning('csunesco: unexpected error creating citizen scientist')
         raise ValidationError({'message': GENERIC_ERROR})
 
@@ -177,8 +180,14 @@ def _send_verification_email(recipient_name, recipient_email, token):
         log.warning('csunesco: mailer unavailable; verification email skipped')
         return False
 
-    verify_url = tk.url_for('csunesco.verify_citizen', token=token,
-                            _external=True)
+    try:
+        verify_url = tk.url_for('csunesco.verify_citizen', token=token,
+                                _external=True)
+    except Exception:
+        # BuildError / malformed ckan.site_url must not abort a registration
+        # that already created the account.
+        log.warning('csunesco: could not build verification URL; email skipped')
+        return False
     hours = constants.VERIFICATION_TOKEN_TTL_HOURS
     subject = tk._('Verify your UNESCO Citizen Science account')
     body = tk._(
@@ -201,6 +210,13 @@ def _send_verification_email(recipient_name, recipient_email, token):
         return True
     except MailerException:
         log.warning('csunesco: verification email could not be sent')
+        return False
+    except Exception as e:
+        # CKAN's mailer leaks raw smtplib errors: its ``finally: quit()`` on a
+        # dead connection raises SMTPServerDisconnected, replacing the
+        # MailerException in flight. Best-effort means catching everything.
+        log.warning('csunesco: verification email failed: %s',
+                    type(e).__name__)
         return False
 
 

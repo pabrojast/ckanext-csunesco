@@ -373,10 +373,10 @@ csunesco_bp.add_url_rule(
 csunesco_bp.add_url_rule(
     '/admin/content/<id>/withdraw', 'content_withdraw', content_withdraw,
     methods=['POST'])
-csunesco.add_url_rule(
+csunesco_bp.add_url_rule(
     '/admin/content/<id>/delete', 'content_delete', content_delete,
     methods=['POST'])
-csunesco.add_url_rule(
+csunesco_bp.add_url_rule(
     '/admin/content/<id>/reject', 'content_reject', content_reject,
     methods=['POST'])
 csunesco_bp.add_url_rule(
