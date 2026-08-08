@@ -127,6 +127,7 @@ def csunesco_project_request_create(context, data_dict):
     # SANITIZE before storing so no unsafe markup is ever persisted.
     project.short_description = _sanitize_html(data.get('short_description'))
     project.project_document_url = data.get('project_document_url')
+    project.image_url = data.get('image_url')
     project.status = 'pending'
     project.created_by = current_user_id(context)
     project.created = now

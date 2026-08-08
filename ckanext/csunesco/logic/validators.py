@@ -167,6 +167,37 @@ def csunesco_valid_document_url(value):
     return value
 
 
+# Charset allowed in an image URL/path. Deliberately excludes quotes,
+# parentheses, backslashes and whitespace so a stored value can never break
+# out of a CSS ``url('...')`` or an HTML attribute, wherever templates
+# interpolate it (Jinja's HTML-escaping does not protect the CSS context).
+_IMAGE_URL_SAFE_RE = re.compile(r'^[A-Za-z0-9/_:.,~%&=?#+-]*$')
+
+
+def csunesco_valid_image_url(value):
+    """Accept an https image URL or an internal ``/path`` (charset-restricted).
+
+    Plain http is rejected -- it would be mixed content on the https portal.
+    Internal paths (bundled assets like ``/csunesco/images/...``) must start
+    with a single ``/`` (``//host`` is scheme-relative and refused).
+    """
+    if value in (None, ''):
+        return value
+    url = str(value).strip()
+    if not _IMAGE_URL_SAFE_RE.match(url):
+        raise tk.Invalid(tk._('Image URL contains unsupported characters'))
+    if url.startswith('/'):
+        if url.startswith('//'):
+            raise tk.Invalid(tk._(
+                'Image URL must be https or an internal path'))
+        return url
+    parsed = urlparse(url)
+    if parsed.scheme != 'https' or not parsed.netloc:
+        raise tk.Invalid(tk._(
+            'Image URL must be https or an internal path'))
+    return url
+
+
 # ---------------------------------------------------------------------------
 # Content validators (Increment 5 -- news / events)
 # ---------------------------------------------------------------------------
@@ -326,6 +357,7 @@ def get_validators():
         'csunesco_valid_geojson': csunesco_valid_geojson,
         'csunesco_valid_country_list': csunesco_valid_country_list,
         'csunesco_valid_document_url': csunesco_valid_document_url,
+        'csunesco_valid_image_url': csunesco_valid_image_url,
         'csunesco_valid_content_type': csunesco_valid_content_type,
         'csunesco_valid_visibility': csunesco_valid_visibility,
         'csunesco_valid_terria_url': csunesco_valid_terria_url,

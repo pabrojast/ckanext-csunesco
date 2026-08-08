@@ -187,6 +187,39 @@ def test_document_url_rejects_other_schemes(url):
 
 
 # ---------------------------------------------------------------------------
+# csunesco_valid_image_url (https or internal path, charset-restricted)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('url', [
+    'https://example.org/banner.jpg',
+    'https://example.org/img.jpg?w=1600&fit=cover',
+    '/csunesco/images/project-ghana.jpg',
+])
+def test_image_url_accepts_https_and_internal(url):
+    assert v.csunesco_valid_image_url(url) == url
+
+
+def test_image_url_passes_empty_through():
+    assert v.csunesco_valid_image_url('') == ''
+    assert v.csunesco_valid_image_url(None) is None
+
+
+@pytest.mark.parametrize('url', [
+    'http://example.org/banner.jpg',       # mixed content
+    '//evil.example/banner.jpg',           # scheme-relative
+    'javascript:alert(1)',
+    'data:image/png;base64,x',
+    'https://example.org/a\'.jpg',         # quote breaks url('...')
+    'https://example.org/a).jpg',          # paren breaks url(...)
+    'https://example.org/a b.jpg',         # whitespace
+    'relative/path.jpg',                   # neither https nor /path
+])
+def test_image_url_rejects_unsafe(url):
+    with pytest.raises(tk.Invalid):
+        v.csunesco_valid_image_url(url)
+
+
+# ---------------------------------------------------------------------------
 # csunesco_valid_content_type
 # ---------------------------------------------------------------------------
 

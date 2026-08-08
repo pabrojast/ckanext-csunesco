@@ -55,6 +55,81 @@ def stats_refresh():
                 result['sites_monitored']))
 
 
+@csunesco.command('seed-legacy-projects')
+@click.option('--force', is_flag=True,
+              help='Re-impose the seed values on fields an admin already '
+                   'filled in (never touches status, trusted, landing '
+                   'content or extras).')
+def seed_legacy_projects(force):
+    """Idempotently create/refresh the legacy CS Toolbox projects.
+
+    Creates each ``constants.LEGACY_PROJECTS`` entry as an APPROVED project
+    (bundled banner image + description from the retired
+    cstoolbox.quartex.co.za site). Existing projects only get EMPTY fields
+    filled in, so later admin edits survive a re-run; ``--force`` overwrites
+    the seed-managed fields (``db.LEGACY_SEED_FIELDS``) instead. Each item is
+    wrapped in its own try/except so one failure never aborts the whole run.
+    """
+    import datetime
+    import json
+
+    import ckan.model as model
+    from ckan.logic import get_action
+
+    from ckanext.csunesco import constants, db
+    from ckanext.csunesco.logic import validators
+
+    db.ensure_mappers()
+    site_user = get_action('get_site_user')({'ignore_auth': True}, {})
+    site_user_obj = model.User.get(site_user['name'])
+    site_user_id = site_user_obj.id if site_user_obj else None
+
+    # One query up front; unknown countries are dropped per item (warned),
+    # never fatal -- an un-seeded member-states group must not block projects.
+    valid_states = validators._member_state_names(model)
+
+    for seed in constants.LEGACY_PROJECTS:
+        slug = seed['slug']
+        try:
+            countries = [c for c in seed.get('countries', [])
+                         if c in valid_states]
+            dropped = sorted(set(seed.get('countries', [])) - set(countries))
+            if dropped:
+                click.echo('warning: %s: unknown member state(s): %s'
+                           % (slug, ', '.join(dropped)))
+            fields = dict(seed, countries=json.dumps(countries))
+
+            now = datetime.datetime.utcnow()
+            project = db.get_project(slug)
+            if project is None:
+                project = db.CsProject()
+                project.id = db.make_uuid()
+                project.slug = slug
+                project.status = 'approved'
+                project.created_by = site_user_id
+                project.reviewed_by = site_user_id
+                project.reviewed_at = now
+                project.created = now
+                project.modified = now
+                db.merge_legacy_fields(project, fields, force=True)
+                model.Session.add(project)
+                db.ensure_stats(project.id)
+                model.Session.commit()
+                click.echo('created: %s (%s)' % (slug, project.title))
+                continue
+
+            changed = db.merge_legacy_fields(project, fields, force=force)
+            if changed:
+                project.modified = now
+                model.Session.commit()
+                click.echo('updated: %s (%s)' % (slug, ', '.join(changed)))
+            else:
+                click.echo('skipped: %s (already up to date)' % slug)
+        except Exception as exc:
+            model.Session.rollback()
+            click.echo('failed:  %s (%s)' % (slug, type(exc).__name__))
+
+
 @csunesco.command('seed-initiatives')
 def seed_initiatives():
     """Idempotently create/sync the Citizen Science initiative groups.

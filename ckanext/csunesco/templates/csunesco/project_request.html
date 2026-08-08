@@ -146,6 +146,19 @@
           {% endif %}
         </div>
 
+        {# ---- Cover image URL ------------------------------------------ #}
+        <div class="cs-field">
+          <label for="cs-image-url">{{ _("Cover image URL") }}</label>
+          <input type="url" id="cs-image-url" name="image_url"
+                 value="{{ data.image_url or '' }}"
+                 {% if errors.image_url %}aria-invalid="true"{% endif %}
+                 aria-describedby="cs-image-url-hint{% if errors.image_url %} cs-image-url-error{% endif %}">
+          <p id="cs-image-url-hint" class="cs-hint">{{ _("Optional. An https image shown as the project's banner and card cover.") }}</p>
+          {% if errors.image_url %}
+            <p id="cs-image-url-error" class="cs-field-error" role="alert">{{ errors.image_url | join(', ') }}</p>
+          {% endif %}
+        </div>
+
         <div class="cs-form-actions">
           <button type="submit" id="cs-req-submit" class="cs-btn cs-btn-primary">
             <span class="cs-btn-label">{{ _("Submit for review") }}</span>

@@ -11,6 +11,12 @@
 #}
 <article class="cs-project-card">
   <a class="cs-project-card-link" href="{{ h.csunesco_project_url(project.slug) }}">
+    {% if project.image_url %}
+      <span class="cs-project-card-media" aria-hidden="true">
+        <img class="cs-project-card-img" src="{{ project.image_url }}"
+             alt="" loading="lazy">
+      </span>
+    {% endif %}
     {% if project.initiative_title %}
       <span class="cs-project-card-initiative">{{ project.initiative_title }}</span>
     {% endif %}

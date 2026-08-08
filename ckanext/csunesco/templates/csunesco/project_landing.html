@@ -35,7 +35,12 @@
     </p>
   {% endif %}
 
-  <section class="cs-hero cs-project-hero" aria-labelledby="cs-project-title">
+  {# image_url is charset-restricted by csunesco_valid_image_url (no quotes/
+     parens/whitespace), so it is safe inside the CSS url('...') below. #}
+  <section class="cs-hero cs-project-hero" aria-labelledby="cs-project-title"
+           {%- if project.image_url %}
+           style="--cs-project-hero-img: url('{{ project.image_url }}')"
+           {%- endif %}>
     {% if project.initiative_title %}
       <p class="cs-project-hero-initiative">{{ project.initiative_title }}</p>
     {% endif %}

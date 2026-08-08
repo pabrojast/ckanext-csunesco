@@ -314,6 +314,7 @@ def _read_project_form():
         'short_description': (form.get('short_description') or '').strip(),
         'project_document_url':
             (form.get('project_document_url') or '').strip(),
+        'image_url': (form.get('image_url') or '').strip(),
     }
 
 

@@ -48,7 +48,9 @@
   -webkit-text-fill-color: #fff;
 }
 
-/* Project landing hero: illustrated river/region banner + contrast overlay. */
+/* Project landing hero: illustrated river/region banner + contrast overlay.
+   A project with its own cover image overrides the shared illustration via
+   the --cs-project-hero-img custom property (set inline by the template). */
 .cs-project-hero {
   position: relative;
   overflow: hidden;
@@ -58,7 +60,8 @@
   justify-content: center;
   padding: calc(var(--space-unit) * 2.5) calc(var(--space-unit) * 1.5);
   background: var(--unesco-blue-dark)
-    url('/csunesco/images/project-hero.png') center / cover no-repeat;
+    var(--cs-project-hero-img, url('/csunesco/images/project-hero.png'))
+    center / cover no-repeat;
 }
 
 .cs-project-hero::before {
@@ -424,6 +427,22 @@
   margin-top: 0.75rem;
   color: var(--unesco-blue);
   font-weight: 600;
+}
+
+/* Full-bleed cover image at the top of a project card: the negative margins
+   cancel the link's padding; the card's overflow:hidden keeps the radius. */
+.cs-project-card-media {
+  display: block;
+  margin: calc(var(--space-unit) * -1.25)
+    calc(var(--space-unit) * -1.25)
+    var(--space-unit);
+}
+
+.cs-project-card-img {
+  display: block;
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
 }
 
 .cs-project-card-initiative {

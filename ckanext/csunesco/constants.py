@@ -20,6 +20,111 @@ CS_INITIATIVES = [
 # CKAN group type used for the initiative groups above.
 CS_INITIATIVE_GROUP_TYPE = 'group'
 
+# The regional projects of the retired CS Toolbox site
+# (cstoolbox.quartex.co.za), seeded as regular APPROVED ``cs_project`` rows by
+# ``ckan csunesco seed-legacy-projects``. Banner images were downloaded from
+# that site once and shipped in ``public/csunesco/images/`` -- the site is
+# being decommissioned, so nothing may hotlink it. ``countries`` entries must
+# be member-state group names (children of the ``member-states`` group); the
+# seeder drops unknown ones with a warning instead of failing.
+LEGACY_PROJECTS = [
+    {
+        'slug': 'cape-winelands',
+        'title': 'Cape Winelands Biosphere Reserve',
+        'initiative_group': 'be-resilient',
+        'countries': ['south-africa'],
+        'biosphere_reserve': 'Cape Winelands Biosphere Reserve',
+        'short_description': (
+            'Cape Winelands Biosphere Reserve is an active participant in '
+            'the Be Resilient programme, working to monitor and protect '
+            'vital ecosystems through collaboration with local communities, '
+            'scientists and policymakers.'),
+        'image_url': '/csunesco/images/project-cape-winelands.jpg',
+    },
+    {
+        'slug': 'kruger-to-canyons',
+        'title': 'Kruger2Canyons Biosphere Reserve',
+        'initiative_group': 'be-resilient',
+        'countries': ['south-africa'],
+        'biosphere_reserve': 'Kruger to Canyons Biosphere Region',
+        'short_description': (
+            'The Freshwater Monitoring Citizen Science Project assesses and '
+            'enhances the health of freshwater ecosystems in the Kruger to '
+            'Canyons Biosphere Region. Launched in 2022 under the '
+            'Flemish-funded UNESCO Be Resilient project, it involves '
+            'community-based citizen scientists in water monitoring across '
+            'several important river systems.'),
+        'image_url': '/csunesco/images/project-kruger-to-canyons.jpg',
+    },
+    {
+        'slug': 'marico',
+        'title': 'Marico Biosphere Reserve',
+        'initiative_group': 'be-resilient',
+        'countries': ['south-africa'],
+        'biosphere_reserve': 'Marico Biosphere Reserve',
+        'short_description': (
+            'Marico Biosphere Reserve is an active participant in the '
+            'Be Resilient programme, working to monitor and protect vital '
+            'ecosystems through collaboration with local communities, '
+            'scientists and policymakers.'),
+        'image_url': '/csunesco/images/project-marico.jpg',
+    },
+    {
+        'slug': 'vhembe',
+        'title': 'Vhembe Biosphere Reserve',
+        'initiative_group': 'be-resilient',
+        'countries': ['south-africa'],
+        'biosphere_reserve': 'Vhembe Biosphere Reserve',
+        'short_description': (
+            'Vhembe Biosphere Reserve is an active participant in the '
+            'Be Resilient programme, working to monitor and protect vital '
+            'ecosystems through collaboration with local communities, '
+            'scientists and policymakers.'),
+        'image_url': '/csunesco/images/project-vhembe.jpg',
+    },
+    {
+        'slug': 'cuba',
+        'title': 'Cuba',
+        'initiative_group': 'islandwatch',
+        'countries': ['cuba'],
+        'biosphere_reserve': '',
+        'short_description': (
+            'As part of the IslandWatch initiative and the Flemish-funded '
+            'Be Resilient SIDS project, this Citizen Science initiative '
+            'improves water resource management with a climate-focused '
+            'approach and strengthens response capacity to hydroclimatic '
+            "risks in Cuba's Biosphere Reserves."),
+        'image_url': '/csunesco/images/project-cuba.jpg',
+    },
+    {
+        'slug': 'seychelles',
+        'title': 'Seychelles',
+        'initiative_group': 'islandwatch',
+        'countries': ['seychelles'],
+        'biosphere_reserve': '',
+        'short_description': (
+            'The NGO Gaea, in coordination with UNESCO, leads a Citizen '
+            'Science initiative under the IslandWatch programme, engaging '
+            'governmental institutions, schools and citizen scientists to '
+            'collect critical water-quality indicators across the '
+            'Seychelles.'),
+        'image_url': '/csunesco/images/project-seychelles.jpg',
+    },
+    {
+        'slug': 'ghana',
+        'title': 'Ghana',
+        'initiative_group': 'riverwatch',
+        'countries': ['ghana'],
+        'biosphere_reserve': '',
+        'short_description': (
+            "A UNESCO project to strengthen Ghana's resilience against "
+            'floods and droughts, engaging youth in disaster risk reduction '
+            'and climate adaptation with the support of the Government of '
+            'Japan.'),
+        'image_url': '/csunesco/images/project-ghana.jpg',
+    },
+]
+
 # Google reCAPTCHA v3 server-side verification endpoint. reCAPTCHA is OPTIONAL:
 # it is only enforced when BOTH ``ckan.recaptcha.publickey`` and
 # ``ckan.recaptcha.privatekey`` are configured (see logic/registration.py).

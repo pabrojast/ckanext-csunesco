@@ -60,6 +60,9 @@ cs_project_table = Table(
     Column('biosphere_reserve', types.UnicodeText),
     Column('region_geojson', types.Text),
     Column('project_document_url', types.UnicodeText),
+    # Cover/banner image: an https URL or an internal /path (charset-restricted
+    # by the validator so it is safe inside CSS url('...') and src attributes).
+    Column('image_url', types.UnicodeText),
     Column('landing_content', types.Text),
     Column('organization_id', types.UnicodeText, index=True),
     Column('status', types.UnicodeText, index=True, default=u'pending'),
@@ -333,6 +336,7 @@ def ensure_mappers():
 # Tuples are (table_name, column_name, column_sql_type).
 _AUTO_HEAL_COLUMNS = [
     ('cs_project', 'biosphere_reserve', 'TEXT'),
+    ('cs_project', 'image_url', 'TEXT'),
     ('cs_project', 'reviewed_by', 'TEXT'),
     ('cs_project', 'reviewed_at', 'TIMESTAMP'),
     ('cs_project', 'rejection_reason', 'TEXT'),
@@ -591,6 +595,42 @@ def unique_slug(base):
     return candidate
 
 
+# Fields managed by ``ckan csunesco seed-legacy-projects`` (see cli.py). Kept
+# next to the model so the merge rule and the columns stay in one file. The
+# seeder must NEVER touch status/trusted/landing_content/extras.
+LEGACY_SEED_FIELDS = (
+    'title', 'short_description', 'initiative_group', 'countries',
+    'biosphere_reserve', 'image_url',
+)
+
+
+def _seed_value_empty(value):
+    # '[]' counts as empty: ``countries`` stores a JSON list as text.
+    return value in (None, '', '[]')
+
+
+def merge_legacy_fields(project, seed, force=False):
+    """Copy seed values onto a project, filling only EMPTY fields.
+
+    With ``force`` every managed field is re-imposed. Empty seed values never
+    blank an existing field either way. Returns the list of field names that
+    changed (in ``LEGACY_SEED_FIELDS`` order), so callers know whether to
+    bump ``modified`` and what to report.
+    """
+    changed = []
+    for field in LEGACY_SEED_FIELDS:
+        new = seed.get(field)
+        if _seed_value_empty(new):
+            continue
+        current = getattr(project, field, None)
+        if current == new:
+            continue
+        if force or _seed_value_empty(current):
+            setattr(project, field, new)
+            changed.append(field)
+    return changed
+
+
 def get_project(id_or_slug):
     """Fetch a ``CsProject`` by primary key OR slug (None if not found)."""
     _ensure_mappers()
@@ -821,6 +861,7 @@ def project_dictize(project):
         'biosphere_reserve': project.biosphere_reserve,
         'region_geojson': project.region_geojson,
         'project_document_url': project.project_document_url,
+        'image_url': getattr(project, 'image_url', None),
         'landing_content': project.landing_content,
         'organization_id': project.organization_id,
         'status': project.status,

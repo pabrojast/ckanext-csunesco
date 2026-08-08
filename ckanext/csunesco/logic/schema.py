@@ -32,6 +32,8 @@ def project_request_schema():
         'short_description': [ignore_missing, unicode_safe],
         'project_document_url': [
             ignore_missing, unicode_safe, v.csunesco_valid_document_url],
+        'image_url': [
+            ignore_missing, unicode_safe, v.csunesco_valid_image_url],
     }
 
 

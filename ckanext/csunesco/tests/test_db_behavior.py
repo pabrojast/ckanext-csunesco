@@ -195,6 +195,80 @@ def test_project_dictize_none_returns_none():
     assert db.project_dictize(None) is None
 
 
+def test_project_dictize_includes_image_url(session):
+    project = db.CsProject()
+    project.slug = 'img-proj'
+    project.title = 'Img'
+    project.image_url = '/csunesco/images/project-ghana.jpg'
+    session.add(project)
+    session.commit()
+
+    result = db.project_dictize(db.get_project('img-proj'))
+    assert result['image_url'] == '/csunesco/images/project-ghana.jpg'
+
+
+# ---------------------------------------------------------------------------
+# merge_legacy_fields (the seed-legacy-projects merge rule)
+# ---------------------------------------------------------------------------
+
+def _seed_fields(**overrides):
+    seed = {
+        'title': 'Ghana',
+        'short_description': 'Seed description.',
+        'initiative_group': 'riverwatch',
+        'countries': json.dumps(['ghana']),
+        'biosphere_reserve': '',
+        'image_url': '/csunesco/images/project-ghana.jpg',
+    }
+    seed.update(overrides)
+    return seed
+
+
+def test_merge_legacy_fields_fills_only_empty():
+    project = db.CsProject()
+    project.title = 'Custom title set by an admin'
+    project.countries = '[]'      # JSON-empty counts as empty -> filled
+    changed = db.merge_legacy_fields(project, _seed_fields())
+    assert 'title' not in changed                    # non-empty -> kept
+    assert project.title == 'Custom title set by an admin'
+    assert 'countries' in changed
+    assert project.countries == json.dumps(['ghana'])
+    assert project.image_url == '/csunesco/images/project-ghana.jpg'
+
+
+def test_merge_legacy_fields_force_overwrites_but_never_blanks():
+    project = db.CsProject()
+    project.title = 'Custom title'
+    project.biosphere_reserve = 'Admin-set reserve'
+    changed = db.merge_legacy_fields(project, _seed_fields(), force=True)
+    assert 'title' in changed
+    assert project.title == 'Ghana'
+    # An EMPTY seed value must not blank an admin-set field, even with force.
+    assert project.biosphere_reserve == 'Admin-set reserve'
+    assert 'biosphere_reserve' not in changed
+
+
+def test_merge_legacy_fields_idempotent():
+    project = db.CsProject()
+    assert db.merge_legacy_fields(project, _seed_fields(), force=True)
+    # Second run: nothing changes either way.
+    assert db.merge_legacy_fields(project, _seed_fields()) == []
+    assert db.merge_legacy_fields(project, _seed_fields(), force=True) == []
+
+
+def test_merge_legacy_fields_never_touches_unmanaged_fields():
+    project = db.CsProject()
+    project.status = 'approved'
+    project.trusted = True
+    project.landing_content = '<p>legacy</p>'
+    seed = dict(_seed_fields(), status='pending', trusted=False,
+                landing_content='<p>evil</p>', extras='{"x": 1}')
+    db.merge_legacy_fields(project, seed, force=True)
+    assert project.status == 'approved'
+    assert project.trusted is True
+    assert project.landing_content == '<p>legacy</p>'
+
+
 def test_content_dictize_summary_vs_full(session):
     content = db.CsContent()
     content.slug = 'n1'
