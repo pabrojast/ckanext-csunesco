@@ -1651,6 +1651,13 @@ def page_dictize(page, include_draft=False):
     return result
 
 
+# Sentinel key for THE site (hub) page row in ``cs_project_page``. It reuses
+# the whole draft/published/hash lifecycle with zero schema change; the
+# dedicated ``csunesco_site_page_*`` actions are the only writers. Collision
+# with a real project id is impossible (``make_uuid`` never yields this).
+SITE_PAGE_ID = u'__site__'
+
+
 def get_project_page(project_id):
     """Fetch a ``CsProjectPage`` by project id (None when the row is absent)."""
     _ensure_mappers()
@@ -1716,6 +1723,10 @@ def pending_pages(limit=20, offset=0, initiative_groups=None):
         )
         .outerjoin(CsProject, CsProject.id == CsProjectPage.project_id)
         .filter(CsProjectPage.status == 'pending')
+        # Defensive: the site page never enters 'pending' by design (its
+        # publish is sysadmin-direct), but if a bug ever left it there the
+        # outerjoin would list it with a NULL title in the review tab.
+        .filter(CsProjectPage.project_id != SITE_PAGE_ID)
     )
     if initiative_groups is not None:
         if not initiative_groups:
@@ -1755,6 +1766,8 @@ def _count_pending_pages(initiative_groups=None):
     query = (
         Session.query(CsProjectPage.project_id)
         .filter(CsProjectPage.status == 'pending')
+        # Same defensive exclusion as pending_pages().
+        .filter(CsProjectPage.project_id != SITE_PAGE_ID)
     )
     if initiative_groups is not None:
         if not initiative_groups:

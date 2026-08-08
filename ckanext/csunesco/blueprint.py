@@ -276,6 +276,18 @@ def project_page_preview(slug):
     return views_page.project_page_preview(slug)
 
 
+def site_page_edit():
+    """Hub-page editor (sysadmin; GET the form / POST one block operation)."""
+    from ckanext.csunesco.logic import views_page
+    return views_page.site_page_edit()
+
+
+def site_page_preview():
+    """Render the hub page DRAFT through the public hub template (sysadmin)."""
+    from ckanext.csunesco.logic import views_page
+    return views_page.site_page_preview()
+
+
 def data_source_approve(id):
     """POST: approve a pending data source (creates the CKAN dataset)."""
     from ckanext.csunesco.logic import views_admin
@@ -463,6 +475,13 @@ csunesco_bp.add_url_rule(
 csunesco_bp.add_url_rule(
     '/project/<slug>/page/preview', 'project_page_preview',
     project_page_preview, methods=['GET'])
+
+# Site (hub) page builder: the SAME workbench against the home page,
+# sysadmin-only, publish is direct (no review queue).
+csunesco_bp.add_url_rule(
+    '/page', 'site_page_edit', site_page_edit, methods=['GET', 'POST'])
+csunesco_bp.add_url_rule(
+    '/page/preview', 'site_page_preview', site_page_preview, methods=['GET'])
 
 
 def get_blueprints():

@@ -30,6 +30,7 @@ from flask import request, session
 import ckan.plugins.toolkit as tk
 import ckan.model as model
 
+from ckanext.csunesco import db
 from ckanext.csunesco.logic import blocks as blocks_module
 from ckanext.csunesco.logic import page_render
 
@@ -97,12 +98,14 @@ def _initial_blocks(page):
 
 
 def _render_editor(project, page, blocks, errors=None, notice=None,
-                   drops=None):
-    """Render the editor.
+                   drops=None, scope='project'):
+    """Render the editor (shared by the project pages and the site page).
 
     ``drops`` is what normalization threw away on the last save, indexed by
     block id so each editor snippet can show it beside the field the author
-    actually typed into.
+    actually typed into. ``scope='site'`` renders the same form against the
+    hub page: ``project`` is None there and the template derives its heading,
+    action URL and publish copy from ``scope``.
     """
     by_block = {}
     for drop in drops or []:
@@ -118,6 +121,7 @@ def _render_editor(project, page, blocks, errors=None, notice=None,
     open_ids.update(id for id in request.args.getlist('open')[:8] if id in known)
     return tk.render('csunesco/project_page_form.html', extra_vars={
         'project': project,
+        'scope': scope,
         'page': page or {},
         'blocks': blocks,
         'errors': errors or {},
@@ -125,7 +129,7 @@ def _render_editor(project, page, blocks, errors=None, notice=None,
         'drops_by_block': by_block,
         'attention_ids': attention,
         'open_ids': open_ids & known,
-        'palette': tk.h.csunesco_block_palette(),
+        'palette': tk.h.csunesco_block_palette(scope),
         'max_blocks': blocks_module.MAX_BLOCKS,
     })
 
@@ -292,6 +296,141 @@ def project_page_preview(slug):
 
     return tk.render('csunesco/project_landing.html', extra_vars={
         'project': project,
+        'blocks': blocks,
+        'ctx': ctx,
+        'is_draft_preview': True,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Site (hub) page editor -- same workbench, sysadmin-only, publish is direct
+# ---------------------------------------------------------------------------
+
+def _is_sysadmin_user():
+    user = getattr(tk.g, 'userobj', None)
+    return bool(user and getattr(user, 'sysadmin', False))
+
+
+def _load_site_page():
+    """The stored site page dict including the draft, or ``None`` on failure."""
+    try:
+        return tk.get_action('csunesco_site_page_show')(
+            _context(), {'include_draft': True})
+    except Exception:
+        log.warning('csunesco: site page draft could not be loaded')
+        return None
+
+
+def _initial_site_blocks(page):
+    """What the site editor opens with (draft > published > default hub)."""
+    draft = (page or {}).get('draft_blocks')
+    if draft:
+        return blocks_module.ensure_builtins(draft, scope='site')
+    published = (page or {}).get('published_blocks')
+    if published:
+        return blocks_module.ensure_builtins(published, scope='site')
+    return blocks_module.default_site_blocks()
+
+
+def site_page_edit():
+    """GET the hub-page editor; POST applies one operation and saves.
+
+    The exact shape of project_page_edit with the project resolution swapped
+    for a sysadmin gate, ops applied with scope='site', and publish going
+    straight to csunesco_site_page_publish (there is no review queue).
+    """
+    if not tk.g.user:
+        return _not_authorized_response()
+    if not _is_sysadmin_user():
+        return _not_authorized_response()
+
+    page = _load_site_page()
+
+    if request.method == 'GET':
+        return _render_editor(None, page, _initial_site_blocks(page),
+                              drops=_take_drops(db.SITE_PAGE_ID),
+                              scope='site')
+
+    # --- POST ---------------------------------------------------------------
+    raw_op = blocks_module.choose_op(request.form.get('op'),
+                                     request.form.get('op_js'))
+    report = blocks_module.DropReport()
+    blocks = blocks_module.blocks_from_form(request.form.items(multi=True),
+                                            report=report)
+    blocks = blocks_module.ensure_builtins(blocks, scope='site')
+    op_name, _argument = blocks_module.parse_op(raw_op)
+    blocks, anchor = blocks_module.apply_op(blocks, raw_op, scope='site')
+    alive = {block['id'] for block in blocks}
+    drops = [drop for drop in report.drops if drop['block'] in alive]
+
+    try:
+        tk.get_action('csunesco_site_page_update')(
+            _context(), {'blocks': blocks})
+    except tk.NotAuthorized:
+        return _not_authorized_response()
+    except tk.ValidationError as error:
+        return _render_editor(None, page, blocks,
+                              errors=error.error_dict or {}, drops=drops,
+                              scope='site')
+    except Exception:
+        log.warning('csunesco: site page draft could not be saved')
+        return _render_editor(None, page, blocks,
+                              errors={'message': GENERIC_ERROR},
+                              drops=drops, scope='site')
+
+    if op_name == 'submit':
+        try:
+            tk.get_action('csunesco_site_page_publish')(_context(), {})
+        except tk.NotAuthorized:
+            return _not_authorized_response()
+        except tk.ValidationError as error:
+            return _render_editor(None, page, blocks,
+                                  errors=error.error_dict or {},
+                                  drops=drops, scope='site')
+        except Exception:
+            log.warning('csunesco: site page could not be published')
+            return _render_editor(None, page, blocks,
+                                  errors={'message': GENERIC_ERROR},
+                                  drops=drops, scope='site')
+        tk.h.flash_success(tk._('The Citizen Science home page is live.'))
+        return tk.redirect_to('csunesco.index')
+
+    _stash_drops(db.SITE_PAGE_ID, drops)
+
+    if op_name == 'preview':
+        return tk.redirect_to('csunesco.site_page_preview')
+
+    tk.h.flash_success({
+        'move_up': tk._('Section moved up.'),
+        'move_down': tk._('Section moved down.'),
+        'delete': tk._('Section deleted.'),
+        'add': tk._('Section added.'),
+    }.get(op_name, tk._('Draft saved.')))
+
+    return tk.redirect_to(
+        tk.url_for('csunesco.site_page_edit',
+                   **({'open': anchor} if anchor else {}))
+        + ('#block-%s' % anchor if anchor else ''))
+
+
+def site_page_preview():
+    """Render the hub DRAFT through the public hub template (sysadmin only).
+
+    Hidden blocks are shown with a marker, exactly like the project preview.
+    """
+    if not tk.g.user:
+        return _not_authorized_response()
+    if not _is_sysadmin_user():
+        return _not_authorized_response()
+
+    page = _load_site_page()
+    blocks = [block for block in _initial_site_blocks(page)
+              if block.get('type') in blocks_module.BLOCK_TYPES
+              and 'site' in blocks_module.BLOCK_TYPES[block['type']].scopes]
+    ctx = page_render.build_context(
+        _context(), None, blocks, can_manage=True, preview=True)
+
+    return tk.render('csunesco/citizen-science.html', extra_vars={
         'blocks': blocks,
         'ctx': ctx,
         'is_draft_preview': True,

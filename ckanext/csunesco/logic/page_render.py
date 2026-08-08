@@ -48,17 +48,27 @@ def build_context(context, project, blocks, has_region=False,
 
     ``preview`` marks a manager previewing their unpublished draft, so snippets
     can label the page accordingly.
+
+    ``project=None`` means SITE scope -- the hub page. There, ``stats`` holds
+    the portal-wide aggregate (same four keys as a project's stats row, which
+    is what lets the shared ``stats``/at-a-glance snippets render both) and
+    the data-source machinery stays empty: the data-bound block types are
+    project-only, so a forged one in stored JSON simply resolves to nothing.
     """
     types = {block.get('type') for block in blocks or []}
+    scope = 'site' if project is None else 'project'
     ctx = {
+        'scope': scope,
         'project': project,
-        'stats': project.get('stats') or {},
+        'stats': (_aggregate_stats(context) if project is None
+                  else project.get('stats') or {}),
         'has_region': has_region,
         'can_manage': can_manage,
         'preview': preview,
         'data_sources': [],
         'approved_sources': {},
         'news_events': [],
+        'recent_projects': [],
         # Asset gating: a page with no chart must not pay for a 208 KB
         # Chart.js bundle, and one with no gallery must not load the lightbox.
         # The chat draws its answers with the same painter as a chart block, so
@@ -72,7 +82,7 @@ def build_context(context, project, blocks, has_region=False,
                             for block in blocks or []),
     }
 
-    if types & _DATA_BLOCKS:
+    if project is not None and types & _DATA_BLOCKS:
         data_sources = _list_data_sources(context, project['id'])
         ctx['data_sources'] = data_sources
         # The allowlist every block that names a source is checked against.
@@ -80,9 +90,16 @@ def build_context(context, project, blocks, has_region=False,
             (source['id'], source) for source in data_sources
             if source.get('status') == 'approved')
 
-    if types & _CONTENT_BLOCKS:
+    if project is not None and types & _CONTENT_BLOCKS:
         ctx['news_events'] = _list_content(
             context, project['id'], limit=BUILTIN_CONTENT_LIMIT)
+
+    if 'site_projects' in types:
+        # One query even if (somehow) several site_projects blocks exist:
+        # fetch the largest limit any of them asks for; each block slices.
+        limit = max([int(block.get('limit') or 6) for block in blocks or []
+                     if block.get('type') == 'site_projects'] or [6])
+        ctx['recent_projects'] = _recent_projects(context, limit)
 
     # Author-configurable listings, resolved ONCE per distinct configuration.
     # Without the memo, four content_list blocks with the same settings would
@@ -112,9 +129,13 @@ def _resolve_content_lists(context, project, blocks):
         data_dict = {'limit': limit, 'offset': 0}
         if content_type != 'all':
             data_dict['content_type'] = content_type
-        if scope == 'initiative':
+        # 'site' means portal-wide (no scope filter). On the hub page
+        # (project is None) the project/initiative scopes DEGRADE to
+        # portal-wide too -- fail-soft: a copied or forged block must render
+        # a duller list, never break the page.
+        if scope == 'initiative' and project is not None:
             data_dict['initiative'] = project.get('initiative_group')
-        else:
+        elif scope != 'site' and project is not None:
             data_dict['project_id'] = project['id']
         if featured:
             data_dict['featured'] = True
@@ -184,6 +205,33 @@ def _search_datasets(query, limit):
         return []
 
 
+def _aggregate_stats(context):
+    """Portal-wide counters for the hub (fail-soft to zeros)."""
+    try:
+        return tk.get_action('csunesco_aggregate_stats')(context, {}) or {}
+    except Exception:
+        log.warning('csunesco: aggregate stats unavailable')
+        return {}
+
+
+def _recent_projects(context, limit):
+    """The newest approved projects, decorated with ``initiative_title``."""
+    try:
+        listing = tk.get_action('csunesco_project_list')(
+            context, {'limit': limit, 'offset': 0})
+        results = listing.get('results', [])
+    except Exception:
+        log.warning('csunesco: site page project list unavailable')
+        return []
+    from ckanext.csunesco import constants
+    titles = {initiative['name']: initiative['title']
+              for initiative in constants.CS_INITIATIVES}
+    for project in results:
+        project['initiative_title'] = titles.get(
+            project.get('initiative_group'), project.get('initiative_group'))
+    return results
+
+
 def _list_data_sources(context, project_id):
     """Connected app-data sources. The action widens scope for managers (they
     also see pending/rejected rows with a status badge); the public gets
@@ -211,9 +259,12 @@ def _list_content(context, project_id, limit=BUILTIN_CONTENT_LIMIT,
         return []
 
 
-def visible_blocks(blocks):
-    """The blocks that actually render: not hidden, and of a known type."""
+def visible_blocks(blocks, scope='project'):
+    """The blocks that actually render: not hidden, of a known type, and
+    allowed in ``scope`` -- a site_hero forged into a project page's JSON is
+    stored harmlessly (normalize is scope-agnostic) and filtered out HERE."""
     from ckanext.csunesco.logic import blocks as blocks_module
     return [block for block in blocks or []
             if not block.get('hidden')
-            and block.get('type') in blocks_module.BLOCK_TYPES]
+            and block.get('type') in blocks_module.BLOCK_TYPES
+            and scope in blocks_module.BLOCK_TYPES[block['type']].scopes]

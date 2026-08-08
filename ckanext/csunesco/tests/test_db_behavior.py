@@ -671,6 +671,36 @@ def test_pending_pages_lists_only_pending_rows(session):
     assert 'draft_json' not in rows[0]
 
 
+def test_pending_pages_never_lists_the_site_page(session):
+    """The site (hub) page never enters 'pending' by design, but if a bug
+    ever left it there the review tab must not show a NULL-titled row."""
+    page = db.CsProjectPage()
+    page.project_id = db.SITE_PAGE_ID
+    page.status = 'pending'          # forced by hand: cannot happen via actions
+    session.add(page)
+    session.commit()
+
+    total, rows = db.pending_pages()
+    assert total == 0
+    assert rows == []
+    assert db._count_pending_pages() == 0
+
+
+def test_site_page_row_round_trips(session):
+    """The sentinel row reuses the whole draft/published lifecycle."""
+    page = db.get_or_create_project_page(db.SITE_PAGE_ID, created_by='u1')
+    page.draft_json = '[{"type": "site_hero", "id": "abcdef01"}]'
+    session.commit()
+
+    again = db.get_or_create_project_page(db.SITE_PAGE_ID)
+    assert again is page
+    result = db.page_dictize(db.get_project_page(db.SITE_PAGE_ID),
+                             include_draft=True)
+    assert result['project_id'] == db.SITE_PAGE_ID
+    assert result['published_blocks'] is None
+    assert result['draft_blocks'][0]['type'] == 'site_hero'
+
+
 def test_pending_counts_key_set_never_drifts(session):
     """The guard: a new queue must reach the zero dict, BOTH branches and the
     total. Anything half-wired shows up here first."""

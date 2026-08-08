@@ -109,19 +109,50 @@ def _member_state_choices():
 # ---------------------------------------------------------------------------
 
 def hub():
-    """Public Citizen Science hub: initiatives + recent projects + at-a-glance."""
+    """Public Citizen Science hub -- a block page a sysadmin can edit.
+
+    Renders the PUBLISHED site-page blocks; a hub that was never edited falls
+    back to ``default_site_blocks()``, which reproduces the pre-block layout
+    exactly. This page must never 500: any failure degrades to that default.
+    """
+    from ckanext.csunesco.logic import blocks as blocks_module
+
+    user = getattr(tk.g, 'userobj', None)
+    is_sysadmin = bool(user and getattr(user, 'sysadmin', False))
     try:
-        listing = tk.get_action('csunesco_project_list')(
-            _context(), {'limit': 6, 'offset': 0})
+        page = tk.get_action('csunesco_site_page_show')(_context(), {})
+        published = page.get('published_blocks')
+        blocks = (published if published is not None
+                  else blocks_module.default_site_blocks())
+        blocks = page_render.visible_blocks(blocks, scope='site')
+        ctx = page_render.build_context(
+            _context(), None, blocks, can_manage=is_sysadmin)
     except Exception:
-        log.warning('csunesco: hub project list unavailable')
-        listing = {'results': [], 'count': 0}
+        log.warning('csunesco: hub page failed; rendering the default layout')
+        blocks = page_render.visible_blocks(
+            blocks_module.default_site_blocks(), scope='site')
+        ctx = _fallback_site_ctx()
 
     return tk.render('csunesco/citizen-science.html', extra_vars={
-        'initiatives': constants.CS_INITIATIVES,
-        'projects': _decorate_projects(listing.get('results', [])),
-        'project_count': listing.get('count', 0),
+        'blocks': blocks,
+        'ctx': ctx,
+        'is_draft_preview': False,
     })
+
+
+def _fallback_site_ctx():
+    """The minimal ctx the site block templates can render from (all empty).
+
+    Only reached when even build_context failed -- its lookups are already
+    individually fail-soft, so this is the last line of the never-500 rule.
+    """
+    return {
+        'scope': 'site', 'project': None, 'stats': {},
+        'has_region': False, 'can_manage': False, 'preview': False,
+        'data_sources': [], 'approved_sources': {}, 'news_events': [],
+        'recent_projects': [], 'content_lists': {}, 'dataset_lists': {},
+        'has_charts': False, 'has_chat': False, 'has_lightbox': False,
+    }
 
 
 def initiative_index(name):

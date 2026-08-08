@@ -317,6 +317,100 @@ def csunesco_project_page_reject(context, data_dict):
     return db.page_dictize(page)
 
 
+# ---------------------------------------------------------------------------
+# Site (hub) page actions
+# ---------------------------------------------------------------------------
+# Same storage row and draft/published lifecycle as a project page, keyed by
+# ``db.SITE_PAGE_ID``. Deliberately separate actions rather than a flag on the
+# project ones: those resolve and gate on a project row (approved status,
+# can_manage_project), while the hub page is sysadmin-only and has NO review
+# queue -- publish is direct, which is exactly what
+# ``page_initial_status(is_sysadmin=True, ...)`` would conclude anyway.
+
+
+@tk.side_effect_free
+def csunesco_site_page_show(context, data_dict):
+    """The hub page. Public callers only ever see the published version.
+
+    ``published_blocks`` is ``None`` when the page has never been published --
+    the caller then renders ``blocks.default_site_blocks()`` (the pre-block
+    hub). ``draft_blocks`` is included only for a sysadmin asking for it.
+    """
+    tk.check_access('csunesco_site_page_show', context, data_dict)
+    data_dict = data_dict or {}
+    include_draft = tk.asbool(data_dict.get('include_draft', False))
+    if include_draft:
+        tk.check_access('csunesco_site_page_update', context, data_dict)
+
+    page = db.get_project_page(db.SITE_PAGE_ID)
+    if page is None:
+        result = {
+            'project_id': db.SITE_PAGE_ID,
+            'status': 'draft',
+            'published_blocks': None,
+        }
+        if include_draft:
+            result['draft_blocks'] = None
+        return result
+    return db.page_dictize(page, include_draft=include_draft)
+
+
+def csunesco_site_page_update(context, data_dict):
+    """Save the hub page DRAFT (sysadmin). Never touches the published one."""
+    tk.check_access('csunesco_site_page_update', context, data_dict)
+    data_dict = data_dict or {}
+
+    raw_blocks = data_dict.get('blocks')
+    if raw_blocks is None:
+        raise tk.ValidationError({'blocks': [tk._('Missing value')]})
+    if isinstance(raw_blocks, str):
+        blocks = blocks_module.blocks_from_json(raw_blocks)
+    else:
+        blocks = blocks_module.normalize_blocks(raw_blocks)
+    blocks = blocks_module.ensure_builtins(blocks, scope='site')
+    # The site palette has no terria_map, but a forged JSON could smuggle one
+    # in; the policy check is cheap and closes that door too.
+    _validate_policy(blocks)
+    if blocks_module.oversized(blocks):
+        raise tk.ValidationError({'blocks': [tk._(
+            'This page is too large. Shorten the text blocks and try again.')]})
+
+    page = db.get_or_create_project_page(
+        db.SITE_PAGE_ID, created_by=current_user_id(context))
+    page.draft_json = blocks_module.blocks_to_json(blocks)
+    page.draft_hash = draft_hash(blocks)
+    page.status = u'draft'
+    page.modified = _utcnow()
+    db.Session.add(page)
+    db.Session.commit()
+    return db.page_dictize(page, include_draft=True)
+
+
+def csunesco_site_page_publish(context, data_dict):
+    """Copy the hub draft over the published page. Immediate -- no queue."""
+    tk.check_access('csunesco_site_page_publish', context, data_dict)
+
+    page = db.get_project_page(db.SITE_PAGE_ID)
+    if page is None or not page.draft_json:
+        raise tk.ValidationError({'blocks': [tk._(
+            'There is nothing to publish yet')]})
+    blocks = blocks_module.blocks_from_json(page.draft_json)
+    _validate_policy(blocks)
+
+    now = _utcnow()
+    user_id = current_user_id(context)
+    page.published_json = page.draft_json
+    page.published_at = now
+    page.status = u'approved'
+    page.reviewed_by = user_id
+    page.reviewed_at = now
+    page.rejection_reason = None
+    page.modified = now
+    db.Session.add(page)
+    db.Session.commit()
+    return db.page_dictize(page, include_draft=True)
+
+
 def get_actions():
     return {
         'csunesco_project_page_show': csunesco_project_page_show,
@@ -324,4 +418,7 @@ def get_actions():
         'csunesco_project_page_submit': csunesco_project_page_submit,
         'csunesco_project_page_approve': csunesco_project_page_approve,
         'csunesco_project_page_reject': csunesco_project_page_reject,
+        'csunesco_site_page_show': csunesco_site_page_show,
+        'csunesco_site_page_update': csunesco_site_page_update,
+        'csunesco_site_page_publish': csunesco_site_page_publish,
     }

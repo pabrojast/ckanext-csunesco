@@ -522,6 +522,27 @@ def csunesco_project_page_submit(context, data_dict):
     return csunesco_project_page_update(context, data_dict)
 
 
+@tk.auth_allow_anonymous_access
+def csunesco_site_page_show(context, data_dict):
+    # Public read. The action returns only the PUBLISHED blocks unless the
+    # caller both asks for the draft and passes csunesco_site_page_update.
+    return {'success': True}
+
+
+def csunesco_site_page_update(context, data_dict):
+    """Only a sysadmin edits the hub page -- it is the portal's front door."""
+    if _is_sysadmin(context):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only a UNESCO administrator can edit the Citizen '
+                        'Science home page')}
+
+
+def csunesco_site_page_publish(context, data_dict):
+    """Publishing the hub page requires exactly what editing it does."""
+    return csunesco_site_page_update(context, data_dict)
+
+
 def _is_page_initiative_admin(context, project_id):
     """ADM of the project whose page this is."""
     return _is_project_initiative_admin(context, project_id)
@@ -600,6 +621,9 @@ def get_auth_functions():
         'csunesco_project_page_submit': csunesco_project_page_submit,
         'csunesco_project_page_approve': csunesco_project_page_approve,
         'csunesco_project_page_reject': csunesco_project_page_reject,
+        'csunesco_site_page_show': csunesco_site_page_show,
+        'csunesco_site_page_update': csunesco_site_page_update,
+        'csunesco_site_page_publish': csunesco_site_page_publish,
         'csunesco_register_citizen_scientist':
             csunesco_register_citizen_scientist,
     }

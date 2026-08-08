@@ -24,21 +24,28 @@
   the index is the page's map, not decoration. Below 1100px the same markup
   renders as a chip row. Plain anchors either way: works without JavaScript.
 
-  Vars: project, page (dict), blocks (list), errors (dict), notice (str|None),
+  Vars: project (dict | None in site scope), scope ('project'|'site'),
+        page (dict), blocks (list), errors (dict), notice (str|None),
         drops_by_block (dict), attention_ids (set), open_ids (set),
         palette (list of BlockType), max_blocks (int).
+
+  The SAME workbench edits a project page and the site (hub) page: `scope`
+  only changes the heading, the action URL, the back link and the publish
+  copy -- every block mechanic below is identical.
 #}
 
+{% set is_site = (scope | default('project')) == 'site' %}
 {% set can_add = blocks | length < max_blocks %}
+{% set page_title = _("Citizen Science home page") if is_site else project.title %}
 
-{% block subtitle %}{{ _("Edit page") }} - {{ project.title }}{% endblock %}
+{% block subtitle %}{{ _("Edit page") }} - {{ page_title }}{% endblock %}
 
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
   <header class="cs-wb-header">
-    <p class="cs-wb-eyebrow">{{ _("Citizen Science") }} · {{ _("Project page") }}</p>
-    <h1 class="cs-wb-title" id="cs-pb-title">{{ project.title }}</h1>
+    <p class="cs-wb-eyebrow">{{ _("Citizen Science") }} · {{ _("Home page") if is_site else _("Project page") }}</p>
+    <h1 class="cs-wb-title" id="cs-pb-title">{{ page_title }}</h1>
     {% if page.status == 'pending' %}
       <span class="cs-wb-chip cs-wb-chip-work">{{ h.csunesco_icon('alert', 14) }} {{ _("In review") }}</span>
     {% elif page.status == 'rejected' %}
@@ -54,13 +61,22 @@
       <span class="cs-wb-chip cs-wb-chip-quiet">{{ _("Not published yet") }}</span>
     {% endif %}
     <span class="cs-wb-actions">
-      <a class="cs-btn cs-btn-secondary cs-btn-sm"
-         href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
-        {{ _("Back to the project") }}
-      </a>
+      {% if is_site %}
+        <a class="cs-btn cs-btn-secondary cs-btn-sm"
+           href="{{ h.url_for('csunesco.index') }}">
+          {{ _("Back to the page") }}
+        </a>
+      {% else %}
+        <a class="cs-btn cs-btn-secondary cs-btn-sm"
+           href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
+          {{ _("Back to the project") }}
+        </a>
+      {% endif %}
     </span>
     <p class="cs-wb-sub">
-      {% if page.status == 'pending' %}
+      {% if is_site %}
+        {{ _("The standard sections below show live portal content and keep themselves up to date — rename them, add an intro, reorder or hide them, add your own, then publish.") }}
+      {% elif page.status == 'pending' %}
         {{ _("This page is waiting for a reviewer. Editing it now takes it back out of the queue.") }}
       {% elif page.get('published_blocks') is not none %}
         {{ _("Your draft is separate: the public keeps seeing the published page until a new version is approved.") }}
@@ -169,7 +185,7 @@
     away next to the field (blocks/edit/_drop.html).
   #}
   <form method="post" class="cs-pb-form" id="cs-page-form" novalidate
-        action="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
+        action="{{ h.url_for('csunesco.site_page_edit') if is_site else h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
     {{ h.csrf_input() }}
     {#
       Where a JS-enhanced submit writes the operation before submitting, because
@@ -266,11 +282,18 @@
 
               {% if spec.builtin %}
                 {#
-                  Built-in sections carry no payload: their content comes from
-                  the project itself. Only visibility and order are editable --
-                  and they can never be deleted, or the standard section would
-                  be unrecoverable from this screen.
+                  Built-in sections: their CONTENT comes from the project (or
+                  the portal) itself and can never be deleted, or the standard
+                  section would be unrecoverable from this screen. Site
+                  builtins additionally expose override fields through their
+                  editor snippet (registry-driven: spec.editor_snippet is None
+                  for the field-less ones).
                 #}
+                {% if spec.editor_snippet %}
+                  {% snippet spec.editor_snippet, block=block, index=loop.index0,
+                             project=project,
+                             drops=drops_by_block.get(block.id, {}) %}
+                {% endif %}
                 {% if spec.deprecated %}
                   {% if project.landing_content %}
                     <div class="cs-pb-legacy">
@@ -348,7 +371,9 @@
       #}
       {% set needs_review = h.csunesco_blocks_need_review(blocks) %}
       <p class="cs-hint cs-pb-publish-hint">
-        {% if project.trusted and not needs_review %}
+        {% if is_site %}
+          {{ _("Publishing puts the new home page live immediately.") }}
+        {% elif project.trusted and not needs_review %}
           {{ _("This project is trusted, so the page goes live immediately.") }}
         {% elif needs_review %}
           {{ _("This page embeds external media (images, video or a map viewer), so it will be reviewed before it goes live.") }}

@@ -309,10 +309,10 @@ def csunesco_project_data_sources(project_id):
     return sources
 
 
-def csunesco_block_palette():
-    """The block types a manager may ADD, in editor-palette order."""
+def csunesco_block_palette(scope='project'):
+    """The block types an author may ADD in ``scope``, in palette order."""
     from ckanext.csunesco.logic import blocks
-    return [blocks.BLOCK_TYPES[key] for key in blocks.ADDABLE_TYPES]
+    return [blocks.BLOCK_TYPES[key] for key in blocks.addable_types(scope)]
 
 
 def csunesco_terria_embed_url(url):
