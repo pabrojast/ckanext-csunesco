@@ -80,6 +80,9 @@ def build_context(context, project, blocks, has_region=False,
         'has_lightbox': any(block.get('type') == 'image'
                             and block.get('lightbox')
                             for block in blocks or []),
+        # Where the per-section "Edit" pencil points (managers only, and only
+        # outside the preview -- the preview IS the editor's output).
+        'edit_url': _edit_url(project) if can_manage and not preview else None,
     }
 
     if project is not None and types & _DATA_BLOCKS:
@@ -203,6 +206,17 @@ def _search_datasets(query, limit):
     except Exception:
         log.warning('csunesco: dataset search block unavailable')
         return []
+
+
+def _edit_url(project):
+    """The editor URL for this page's scope, or None (fail-soft)."""
+    try:
+        if project is None:
+            return tk.url_for('csunesco.site_page_edit')
+        return tk.url_for('csunesco.project_page_edit',
+                          slug=project['slug'])
+    except Exception:
+        return None
 
 
 def _aggregate_stats(context):

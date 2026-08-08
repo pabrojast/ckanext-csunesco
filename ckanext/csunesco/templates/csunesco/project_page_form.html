@@ -262,7 +262,7 @@
                   {{ _(spec.label) }}
                   {%- if block.title %} <span class="cs-pb-name">— {{ block.title }}</span>{% endif %}
                   {% if spec.builtin %}
-                    <span class="cs-pb-tag">{{ _("standard section") }}</span>
+                    <span class="cs-pb-tag cs-pb-tag-auto">{{ _("automatic") }}</span>
                   {% endif %}
                   {% if spec.requires_review %}
                     <span class="cs-pb-tag cs-pb-tag-review">{{ _("needs review") }}</span>
@@ -282,13 +282,40 @@
 
               {% if spec.builtin %}
                 {#
-                  Built-in sections: their CONTENT comes from the project (or
-                  the portal) itself and can never be deleted, or the standard
-                  section would be unrecoverable from this screen. Site
-                  builtins additionally expose override fields through their
-                  editor snippet (registry-driven: spec.editor_snippet is None
-                  for the field-less ones).
+                  Automatic sections: their CONTENT comes from the project (or
+                  the portal) and keeps itself up to date, and they can never
+                  be deleted -- but everything AROUND the content belongs to
+                  the author: heading, intro, order, visibility. SAYING so is
+                  the point: a wall of untouchable-looking sections used to
+                  read as "nothing on this page can be edited". Site builtins
+                  additionally expose override fields through their editor
+                  snippet (registry-driven: spec.editor_snippet is None for
+                  the field-less ones).
                 #}
+                <p class="cs-pb-auto-note">
+                  {% if is_site %}
+                    {{ _("This section fills itself from live portal content — nothing to maintain. Yours to shape: rename it, add an intro, move it, or hide it.") }}
+                  {% else %}
+                    {{ _("This section fills itself from your project's data — nothing to maintain. Yours to shape: rename it, add an intro, move it, or hide it.") }}
+                  {% endif %}
+                </p>
+                <div class="cs-field">
+                  <label for="b{{ loop.index0 }}-title">{{ _("Section title") }}</label>
+                  <input type="text" id="b{{ loop.index0 }}-title"
+                         name="blocks[{{ loop.index0 }}][title]"
+                         value="{{ block.title }}"
+                         placeholder="{{ _(spec.label) }}">
+                </div>
+                {# Only the builtins whose normalizer carries an intro get the
+                   field -- posting one against e.g. site_hero would be
+                   silently discarded, which is worse than not asking. #}
+                {% if block.intro is defined %}
+                  <div class="cs-field">
+                    <label for="b{{ loop.index0 }}-intro">{{ _("Intro text (optional)") }}</label>
+                    <textarea id="b{{ loop.index0 }}-intro" rows="2"
+                              name="blocks[{{ loop.index0 }}][intro]">{{ block.intro }}</textarea>
+                  </div>
+                {% endif %}
                 {% if spec.editor_snippet %}
                   {% snippet spec.editor_snippet, block=block, index=loop.index0,
                              project=project,
@@ -386,28 +413,45 @@
     <section class="cs-pb-palette" aria-labelledby="cs-pb-add-title">
       <h2 id="cs-pb-add-title" class="cs-wb-palette-title">{{ _("Add a section") }}</h2>
       {% if can_add %}
-        <div class="cs-pb-palette-grid">
-          {% for spec in palette %}
-            {% set used = blocks | selectattr('type', 'equalto', spec.key) | list | length %}
-            {% set full = used >= spec.max_instances %}
-            {#
-              aria-disabled, not disabled: the reason a card is unavailable is
-              written INSIDE it, and a disabled control is unreachable by
-              keyboard. Without JS a press still submits — the server treats an
-              over-limit add as a no-op, so nothing can go wrong.
-            #}
-            <button type="submit" name="op" value="add:{{ spec.key }}"
-                    class="cs-pb-add"
-                    {% if full %}aria-disabled="true"{% endif %}>
-              <span class="cs-pb-add-icon" aria-hidden="true">{{ h.csunesco_icon(spec.icon, 22) }}</span>
-              <span class="cs-pb-add-label">{{ _(spec.label) }}</span>
-              <span class="cs-pb-add-desc">{{ _(spec.description) }}</span>
-              {% if full %}
-                <span class="cs-pb-add-limit">{{ _("Already on this page") }}</span>
-              {% endif %}
-            </button>
-          {% endfor %}
-        </div>
+        {#
+          Grouped by what the block is made of. The group list is fixed here
+          (order + translated names); WHICH group a type belongs to comes from
+          the registry (spec.category), so a new block type lands in the right
+          place without touching this template. Empty groups vanish -- the
+          site palette has no Data group, for instance.
+        #}
+        {% for cat_key, cat_label in [
+            ('content', _('Text & highlights')),
+            ('media', _('Images & video')),
+            ('data', _('Your app data')),
+            ('lists', _('Automatic lists'))] %}
+          {% set specs = palette | selectattr('category', 'equalto', cat_key) | list %}
+          {% if specs %}
+            <h3 class="cs-pb-palette-group-title">{{ cat_label }}</h3>
+            <div class="cs-pb-palette-grid">
+              {% for spec in specs %}
+                {% set used = blocks | selectattr('type', 'equalto', spec.key) | list | length %}
+                {% set full = used >= spec.max_instances %}
+                {#
+                  aria-disabled, not disabled: the reason a card is unavailable
+                  is written INSIDE it, and a disabled control is unreachable
+                  by keyboard. Without JS a press still submits — the server
+                  treats an over-limit add as a no-op, so nothing can go wrong.
+                #}
+                <button type="submit" name="op" value="add:{{ spec.key }}"
+                        class="cs-pb-add"
+                        {% if full %}aria-disabled="true"{% endif %}>
+                  <span class="cs-pb-add-icon" aria-hidden="true">{{ h.csunesco_icon(spec.icon, 22) }}</span>
+                  <span class="cs-pb-add-label">{{ _(spec.label) }}</span>
+                  <span class="cs-pb-add-desc">{{ _(spec.description) }}</span>
+                  {% if full %}
+                    <span class="cs-pb-add-limit">{{ _("Already on this page") }}</span>
+                  {% endif %}
+                </button>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endfor %}
       {% else %}
         <p class="cs-empty">
           {{ _("This page has reached the maximum number of sections. Delete one to add another.") }}

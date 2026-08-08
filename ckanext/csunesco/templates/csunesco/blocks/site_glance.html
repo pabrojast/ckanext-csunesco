@@ -7,6 +7,6 @@
   Vars: block, ctx.
 #}
 <div id="block-{{ block.id }}">
-  {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
-  {% snippet "csunesco/snippets/at_a_glance.html", stats=ctx.stats or {} %}
+  {% snippet "csunesco/snippets/at_a_glance.html", stats=ctx.stats or {},
+             title=block.title, intro=block.intro %}
 </div>

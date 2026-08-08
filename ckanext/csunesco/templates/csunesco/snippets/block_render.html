@@ -29,6 +29,23 @@
       </div>
     {% endif %}
   {% else %}
-    {% snippet spec.snippet, block=block, ctx=ctx %}
+    {% if ctx.edit_url %}
+      {#
+        Managers get a per-section "Edit" pencil that opens the editor with
+        THIS block expanded (?open= is already understood there). It wraps
+        the section instead of touching its markup, so every block type gets
+        the affordance without knowing about it.
+      #}
+      <div class="cs-block-managed">
+        <a class="cs-block-edit-pencil"
+           href="{{ ctx.edit_url }}?open={{ block.id }}#block-{{ block.id }}">
+          {{ h.csunesco_icon('pencil', 14) }}
+          <span>{{ _("Edit section") }}</span>
+        </a>
+        {% snippet spec.snippet, block=block, ctx=ctx %}
+      </div>
+    {% else %}
+      {% snippet spec.snippet, block=block, ctx=ctx %}
+    {% endif %}
   {% endif %}
 {% endif %}

@@ -13,7 +13,8 @@
 #}
 {% if ctx.project.landing_content %}
   <section class="cs-section cs-project-description" aria-labelledby="cs-desc-title">
-    <h2 id="cs-desc-title" class="cs-section-title">{{ _("About this project") }}</h2>
+    <h2 id="cs-desc-title" class="cs-section-title">{{ block.title or _("About this project") }}</h2>
+    {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
     <div class="cs-rich-text">{{ ctx.project.landing_content | safe }}</div>
   </section>
 {% endif %}

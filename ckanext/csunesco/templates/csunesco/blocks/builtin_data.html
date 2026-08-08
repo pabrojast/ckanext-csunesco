@@ -12,7 +12,7 @@
 #}
 <section class="cs-section" aria-labelledby="cs-data-title">
   <div class="cs-section-header">
-    <h2 id="cs-data-title" class="cs-section-title">{{ _("Data") }}</h2>
+    <h2 id="cs-data-title" class="cs-section-title">{{ block.title or _("Data") }}</h2>
     {% if ctx.can_manage %}
       <span class="cs-section-header-links">
         <a class="cs-btn cs-btn-secondary cs-btn-sm"
@@ -28,6 +28,7 @@
       </span>
     {% endif %}
   </div>
+  {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
   {% set approved_sources = ctx.data_sources | selectattr('status', 'equalto', 'approved') | list %}
   {% for ds in approved_sources %}
     <article class="cs-data-source">

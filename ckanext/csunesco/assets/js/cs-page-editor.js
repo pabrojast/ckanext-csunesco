@@ -236,6 +236,85 @@
     });
   }
 
+  /**
+   * One button to open or close every section at once.
+   *
+   * Injected here rather than in the template because without JavaScript it
+   * could do nothing -- a dead control is worse than none. type="button": it
+   * must never submit the form.
+   */
+  function initToggleAll(form) {
+    var list = form.querySelector(".cs-pb-list");
+    var all = form.querySelectorAll(".cs-pb-details");
+    if (!list || all.length < 2) { return; }
+
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "cs-btn cs-btn-secondary cs-btn-sm cs-pb-toggle-all";
+
+    function anyClosed() {
+      return Array.prototype.some.call(all, function (details) {
+        return !details.open;
+      });
+    }
+    function relabel() {
+      button.textContent = anyClosed()
+        ? button.getAttribute("data-open-label")
+        : button.getAttribute("data-close-label");
+    }
+    // Labels ride on data attributes so a future i18n pass has one place to
+    // inject translations; English is the fallback.
+    button.setAttribute("data-open-label", "Open all sections");
+    button.setAttribute("data-close-label", "Close all sections");
+
+    button.addEventListener("click", function () {
+      var open = anyClosed();
+      Array.prototype.forEach.call(all, function (details) {
+        details.open = open;
+      });
+      relabel();
+    });
+    Array.prototype.forEach.call(all, function (details) {
+      details.addEventListener("toggle", relabel);
+    });
+    relabel();
+    list.parentNode.insertBefore(button, list);
+  }
+
+  /**
+   * Highlight in the spine the section currently on screen.
+   *
+   * Pure orientation -- the anchors already work without it. Skipped silently
+   * where IntersectionObserver is missing.
+   */
+  function initSpineSpy() {
+    if (!window.IntersectionObserver) { return; }
+    var links = document.querySelectorAll(".cs-pb-jump-list a[href^='#']");
+    if (!links.length) { return; }
+    var byId = {};
+    Array.prototype.forEach.call(links, function (link) {
+      byId[link.getAttribute("href").slice(1)] = link;
+    });
+
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        var link = byId[entry.target.id];
+        if (!link) { return; }
+        if (entry.isIntersecting) {
+          Array.prototype.forEach.call(links, function (other) {
+            other.classList.remove("is-current");
+          });
+          link.classList.add("is-current");
+        }
+      });
+    }, { rootMargin: "-20% 0px -70% 0px" });
+
+    Object.keys(byId).forEach(function (id) {
+      var target = document.getElementById(id);
+      if (target) { observer.observe(target); }
+    });
+  }
+
   function init() {
     var form = document.getElementById("cs-page-form");
     if (!form) { return; }
@@ -243,6 +322,8 @@
     initChartPickers(form);
     initOps(form);
     initUnsavedGuard(form);
+    initToggleAll(form);
+    initSpineSpy();
   }
 
   if (document.readyState === "loading") {

@@ -9,9 +9,12 @@
   Vars:
     stats -- dict with keys citizen_scientists / observations / sites_monitored
              / member_states (each an int; missing keys default to 0).
+    title -- optional heading override (block title; empty keeps the default).
+    intro -- optional author intro paragraph under the heading.
 #}
 <section class="cs-section" aria-labelledby="cs-glance-title">
-  <h2 id="cs-glance-title" class="cs-section-title">{{ _("At a Glance") }}</h2>
+  <h2 id="cs-glance-title" class="cs-section-title">{{ title or _("At a Glance") }}</h2>
+  {% if intro %}<p class="cs-section-intro">{{ intro }}</p>{% endif %}
   <div class="cs-stats-band">
     <div class="stat-item">
       <div class="stat-number">{{ h.csunesco_format_number(stats.get('citizen_scientists', 0)) }}</div>

@@ -9,7 +9,8 @@
 #}
 {% if ctx.has_region %}
   <section class="cs-section" aria-labelledby="cs-map-title">
-    <h2 id="cs-map-title" class="cs-section-title">{{ _("Project Region") }}</h2>
+    <h2 id="cs-map-title" class="cs-section-title">{{ block.title or _("Project Region") }}</h2>
+    {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
     <div id="cs-map" class="cs-map"
          data-geojson-url="{{ h.csunesco_project_url(ctx.project.slug) }}/geojson"
          role="img" aria-label="{{ _('Map of the project region') }}">

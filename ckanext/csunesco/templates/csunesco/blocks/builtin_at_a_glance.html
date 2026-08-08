@@ -6,4 +6,5 @@
 
   Vars: block, ctx (see snippets/block_render.html).
 #}
-{% snippet "csunesco/snippets/at_a_glance.html", stats=ctx.stats %}
+{% snippet "csunesco/snippets/at_a_glance.html", stats=ctx.stats,
+           title=block.title, intro=block.intro %}

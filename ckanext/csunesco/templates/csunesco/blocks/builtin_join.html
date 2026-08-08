@@ -6,7 +6,8 @@
 {% set project_link = h.url_for('csunesco.project_landing', slug=ctx.project.slug, qualified=True) %}
 {% set qr = h.csunesco_qr_data_uri(project_link) %}
 <section class="cs-section cs-join" aria-labelledby="cs-join-title">
-  <h2 id="cs-join-title" class="cs-section-title">{{ _("Join this project") }}</h2>
+  <h2 id="cs-join-title" class="cs-section-title">{{ block.title or _("Join this project") }}</h2>
+  {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
   <div class="cs-join-inner">
     <div class="cs-join-actions">
       {% if g.user %}

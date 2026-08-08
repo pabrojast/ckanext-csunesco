@@ -1338,6 +1338,62 @@
   margin-top: var(--space-unit);
 }
 
+/* ---- Per-section edit affordance (managers only) ------------------------
+   The pencil sits at the section's top-right and appears on hover or
+   keyboard focus; on touch (no hover) it is simply always there. The dashed
+   outline answers "which part of the page does this edit?" without
+   repainting the section itself. */
+.cs-block-managed {
+  position: relative;
+}
+
+.cs-block-managed:hover,
+.cs-block-managed:focus-within {
+  outline: 2px dashed var(--unesco-blue-light);
+  outline-offset: 6px;
+  border-radius: var(--radius);
+}
+
+.cs-block-edit-pencil {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--unesco-blue-light);
+  box-shadow: var(--shadow);
+  color: var(--unesco-blue-dark);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.cs-block-managed:hover .cs-block-edit-pencil,
+.cs-block-edit-pencil:focus-visible {
+  opacity: 1;
+}
+
+.cs-block-edit-pencil:hover {
+  background: var(--unesco-blue-pale);
+  text-decoration: none;
+}
+
+/* No hover on touch screens: the pencil must not be unreachable. */
+@media (hover: none) {
+  .cs-block-edit-pencil { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-block-edit-pencil { transition: none; }
+}
+
 /* ---- Callout ----------------------------------------------------------- */
 
 .cs-callout {
@@ -1651,8 +1707,18 @@
   color: #46586a;
 }
 
+/* JS-injected "open/close all sections" control above the block list. */
+.cs-pb-toggle-all { margin-top: var(--space-unit); }
+
 /* Jump-to list: with 17+ blocks the editor is several screens tall. */
 .cs-pb-jump { margin-top: var(--space-unit); }
+
+/* Scroll-spy highlight (JS-injected class; pure orientation). */
+.cs-pb-jump-list a.is-current {
+  background: var(--unesco-blue-pale);
+  border-radius: 6px;
+  color: var(--unesco-blue-dark);
+}
 
 .cs-pb-jump-title {
   margin: 0 0 0.5rem;
@@ -1736,6 +1802,30 @@
 
 .cs-pb-tag-review { border-color: #f0d39a; background: #fff8e8; color: #8a5a00; }
 
+/* "automatic" reads as a capability, not a lock: UNESCO blue, not grey. */
+.cs-pb-tag-auto {
+  border-color: var(--unesco-blue-light);
+  background: var(--unesco-blue-pale);
+  color: var(--unesco-blue-dark);
+}
+
+/* Automatic sections carry a quiet blue spine so the two kinds of card can
+   be told apart at a glance while scrolling the list. */
+.cs-pb-block:has(.cs-pb-tag-auto) {
+  border-left: 4px solid var(--unesco-blue-light);
+}
+
+/* What an automatic section IS and what the author may still do with it. */
+.cs-pb-auto-note {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--unesco-blue-pale);
+  border-radius: var(--radius);
+  color: var(--unesco-blue-dark);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
 .cs-pb-ops {
   position: absolute;
   top: 0.5rem;
@@ -1801,6 +1891,15 @@
 /* ---- Add-a-section palette --------------------------------------------- */
 
 .cs-pb-palette { margin-top: calc(var(--space-unit) * 2); }
+
+.cs-pb-palette-group-title {
+  margin: calc(var(--space-unit) * 1.25) 0 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #5a6b7b;
+}
 
 .cs-pb-palette-grid {
   display: grid;

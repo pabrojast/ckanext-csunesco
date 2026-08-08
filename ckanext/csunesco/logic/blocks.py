@@ -593,7 +593,7 @@ class BlockType(object):
     def __init__(self, key, label, icon, normalize, description=u'',
                  max_instances=1, requires_review=False, builtin=False,
                  addable=True, deprecated=False, scopes=('project',),
-                 has_editor=None):
+                 has_editor=None, category='content'):
         self.key = key
         self.label = label
         self.icon = icon
@@ -618,6 +618,9 @@ class BlockType(object):
         # fields live in the form itself) unless the registry says otherwise
         # -- the site builtins with override fields do.
         self.has_editor = (not builtin) if has_editor is None else has_editor
+        # Palette grouping only ('content' / 'media' / 'data' / 'lists');
+        # meaningless for builtins, which never appear in the palette.
+        self.category = category
 
     @property
     def snippet(self):
@@ -644,41 +647,44 @@ _TYPES = [
     BlockType('media_text', u'Image + text', u'media-text', _n_media_text,
               u'An image beside a paragraph of formatted text.',
               max_instances=4, requires_review=True,
-              scopes=('project', 'site')),
+              scopes=('project', 'site'), category='media'),
     BlockType('chart', u'Chart', u'chart', _n_chart,
               u'A chart of the observations your volunteers collected in the '
               u'app. Nothing shows until you pick which data to chart.',
-              max_instances=6),
+              max_instances=6, category='data'),
     BlockType('data_chat', u'Ask the data', u'chat', _n_data_chat,
               u'Visitors ask about your observations in plain language and '
               u'get a chart computed from the data. Sign-in required.',
-              max_instances=1),
+              max_instances=1, category='data'),
     BlockType('stats', u'Your own counters', u'counters', _n_stats,
               u'Up to four big numbers you choose - typed in, or kept up to '
               u'date automatically from your data.', max_instances=3,
-              scopes=('project', 'site')),
+              scopes=('project', 'site'), category='data'),
     BlockType('image', u'Images', u'image', _n_image,
               u'One image or a gallery.', max_instances=8,
-              requires_review=True, scopes=('project', 'site')),
+              requires_review=True, scopes=('project', 'site'),
+              category='media'),
     BlockType('video', u'Video', u'video', _n_video,
               u'A YouTube or Vimeo video.', max_instances=4,
-              requires_review=True, scopes=('project', 'site')),
+              requires_review=True, scopes=('project', 'site'),
+              category='media'),
     BlockType('observation_map', u'Observation map', u'pin',
               _n_observation_map,
               u'A map with a pin for every observation in one set of app data.',
-              max_instances=4),
+              max_instances=4, category='data'),
     BlockType('terria_map', u'Interactive map', u'map', _n_terria_map,
               u'A map you built in the IHP-WINS map viewer and shared with its '
-              u'Share button.', max_instances=2, requires_review=True),
+              u'Share button.', max_instances=2, requires_review=True,
+              category='data'),
     BlockType('content_list', u'A list of news or events', u'news',
               _n_content_list,
               u'Pick exactly which news, events or publications to list, and '
               u'how many. (The standard "News, Events & More" section already '
               u'shows the most recent ones.)', max_instances=4,
-              scopes=('project', 'site')),
+              scopes=('project', 'site'), category='lists'),
     BlockType('datasets_list', u'Datasets', u'database', _n_datasets_list,
               u'A list of datasets published on IHP-WINS.', max_instances=2,
-              scopes=('project', 'site')),
+              scopes=('project', 'site'), category='lists'),
     BlockType('callout', u'Highlight', u'bulb', _n_callout,
               u'A highlighted note with an optional button.', max_instances=6,
               scopes=('project', 'site')),
