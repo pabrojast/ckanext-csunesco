@@ -1,0 +1,12 @@
+{#
+  Site builtin: the portal-wide "At a Glance" counter band.
+
+  `ctx.stats` holds the csunesco_aggregate_stats result in site scope (same
+  four keys as a project's stats row), so the shared snippet renders both.
+
+  Vars: block, ctx.
+#}
+<div id="block-{{ block.id }}">
+  {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
+  {% snippet "csunesco/snippets/at_a_glance.html", stats=ctx.stats or {} %}
+</div>

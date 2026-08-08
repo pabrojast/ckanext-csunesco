@@ -1,0 +1,19 @@
+{# Editor: hub hero overrides. Empty fields keep the standard translated
+   banner. Vars: block, index, project, drops. #}
+<div class="cs-field">
+  <label for="b{{ index }}-hero-heading">{{ _("Heading") }}</label>
+  <input type="text" id="b{{ index }}-hero-heading" name="blocks[{{ index }}][heading]"
+         value="{{ block.heading }}" placeholder="{{ _('UNESCO Citizen Science') }}">
+  <p class="cs-hint">{{ _("Leave empty to keep the standard translated text.") }}</p>
+</div>
+<div class="cs-field">
+  <label for="b{{ index }}-hero-tagline">{{ _("Tagline") }}</label>
+  <input type="text" id="b{{ index }}-hero-tagline" name="blocks[{{ index }}][tagline]"
+         value="{{ block.tagline }}">
+</div>
+<div class="cs-field">
+  <label for="b{{ index }}-hero-image">{{ _("Background image URL") }}</label>
+  <input type="text" id="b{{ index }}-hero-image" name="blocks[{{ index }}][image_url]"
+         value="{{ block.image_url }}" placeholder="https://… {{ _('or') }} /csunesco/images/…">
+  {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='image_url' %}
+</div>

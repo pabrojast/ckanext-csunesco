@@ -1,0 +1,33 @@
+{#
+  Site builtin: the latest portal-wide news band.
+
+  Content comes straight from the existing csunesco_recent_news helper (the
+  same one the pre-block hub used), so the block needs nothing from ctx.
+
+  Vars: block, ctx.
+#}
+<section class="cs-section cs-news-band" aria-labelledby="title-{{ block.id }}"
+         id="block-{{ block.id }}">
+  <div class="cs-section-header">
+    <h2 id="title-{{ block.id }}" class="cs-section-title">{{ block.title or _("Latest News") }}</h2>
+    <span class="cs-section-header-links">
+      <a class="cs-link" href="{{ h.url_for('csunesco.cs_news_index') }}">
+        {{ _("Browse all news") }} &rarr;
+      </a>
+      <a class="cs-link" href="{{ h.url_for('csunesco.cs_publications_index') }}">
+        {{ _("Publications") }} &rarr;
+      </a>
+      <a class="cs-link" href="{{ h.url_for('csunesco.cs_maps_index') }}">
+        {{ _("Maps") }} &rarr;
+      </a>
+    </span>
+  </div>
+  {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
+  <div class="cs-content-grid">
+    {% for item in h.csunesco_recent_news(block.limit or 3) %}
+      {% snippet "csunesco/snippets/content_card.html", item=item %}
+    {% else %}
+      <p class="cs-empty">{{ _("No news have been published yet. Check back soon.") }}</p>
+    {% endfor %}
+  </div>
+</section>

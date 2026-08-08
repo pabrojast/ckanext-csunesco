@@ -1,0 +1,7 @@
+{# Editor: hub Projects grid. Vars: block, index, project, drops. #}
+<div class="cs-field">
+  <label for="b{{ index }}-projects-limit">{{ _("How many projects") }}</label>
+  <input type="number" id="b{{ index }}-projects-limit" name="blocks[{{ index }}][limit]"
+         value="{{ block.limit }}" min="1" max="12" step="1">
+  <p class="cs-hint">{{ _("The most recently approved projects, newest first (1–12).") }}</p>
+</div>

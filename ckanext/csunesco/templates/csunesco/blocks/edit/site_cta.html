@@ -1,0 +1,21 @@
+{# Editor: hub call-to-action overrides. Empty fields keep the standard
+   translated copy. Vars: block, index, project, drops. #}
+<div class="cs-field">
+  <label for="b{{ index }}-cta-text">{{ _("Text") }}</label>
+  <input type="text" id="b{{ index }}-cta-text" name="blocks[{{ index }}][text]"
+         value="{{ block.text }}" placeholder="{{ _('Leading a community water-monitoring effort?') }}">
+  <p class="cs-hint">{{ _("Leave empty to keep the standard translated text.") }}</p>
+</div>
+<div class="cs-field cs-pb-pair">
+  <span>
+    <label for="b{{ index }}-cta-label">{{ _("Button label") }}</label>
+    <input type="text" id="b{{ index }}-cta-label" name="blocks[{{ index }}][cta_label]"
+           value="{{ block.cta_label }}">
+  </span>
+  <span>
+    <label for="b{{ index }}-cta-url">{{ _("Button link") }}</label>
+    <input type="text" id="b{{ index }}-cta-url" name="blocks[{{ index }}][cta_url]"
+           value="{{ block.cta_url }}" placeholder="https://… {{ _('or') }} /citizen-science/…">
+    {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='cta_url' %}
+  </span>
+</div>

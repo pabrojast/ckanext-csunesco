@@ -280,9 +280,12 @@
   align-items: center;
   margin-bottom: calc(var(--space-unit) * 2);
   /* UNESCO Citizen Science illustrated banner (generated asset), with a blue
-     gradient fallback underneath in case the image is missing. */
+     gradient fallback underneath in case the image is missing. The site_hero
+     block may override the image via the --cs-site-hero-img custom property
+     (set inline by its template from a charset-restricted URL). */
   background: var(--unesco-blue-dark)
-    url('/csunesco/images/cs-hero.png') center / cover no-repeat;
+    var(--cs-site-hero-img, url('/csunesco/images/cs-hero.png'))
+    center / cover no-repeat;
 }
 
 .section-title-overlay {
@@ -1181,6 +1184,20 @@
 
 .cs-about-text p {
   margin: 0.5rem 0 0;
+  color: #46586a;
+  line-height: 1.6;
+}
+
+/* media_text with the image on the right: swap the visual order only (the
+   DOM keeps media first so reading order stays image-then-text). */
+.cs-about--flip .cs-about-media {
+  order: 2;
+}
+
+/* Optional author intro under a section heading (builtins + site blocks). */
+.cs-section-intro {
+  margin: 0.35rem 0 1rem;
+  max-width: 70ch;
   color: #46586a;
   line-height: 1.6;
 }

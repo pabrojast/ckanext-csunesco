@@ -1,0 +1,7 @@
+{# Editor: hub Latest News band. Vars: block, index, project, drops. #}
+<div class="cs-field">
+  <label for="b{{ index }}-news-limit">{{ _("How many news items") }}</label>
+  <input type="number" id="b{{ index }}-news-limit" name="blocks[{{ index }}][limit]"
+         value="{{ block.limit }}" min="1" max="6" step="1">
+  <p class="cs-hint">{{ _("The most recent published news across the portal (1–6).") }}</p>
+</div>

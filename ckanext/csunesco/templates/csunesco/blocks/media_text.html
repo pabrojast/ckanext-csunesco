@@ -1,0 +1,24 @@
+{#
+  Block: an image beside a paragraph of formatted text (the hub's "About"
+  layout, addable on both project and site pages).
+
+  `html` was sanitized with sanitize_page_html BEFORE storage -- that is what
+  makes `| safe` legitimate here. Renders nothing when both sides are empty.
+
+  Vars: block, ctx.
+#}
+{% if block.html or block.image_url %}
+  <section class="cs-section cs-block cs-about{% if block.media_side == 'right' %} cs-about--flip{% endif %}"
+           id="block-{{ block.id }}"
+           aria-labelledby="title-{{ block.id }}">
+    {% if block.image_url %}
+      <div class="cs-about-media">
+        <img loading="lazy" alt="{{ block.alt }}" src="{{ block.image_url }}">
+      </div>
+    {% endif %}
+    <div class="cs-about-text">
+      {% snippet "csunesco/blocks/_heading.html", block=block %}
+      <div class="cs-rich-text">{{ block.html | safe }}</div>
+    </div>
+  </section>
+{% endif %}

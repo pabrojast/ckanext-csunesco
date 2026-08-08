@@ -774,3 +774,192 @@ def test_data_chat_does_not_force_a_page_into_review():
         [{'type': 'data_chat'}])
     assert b.page_initial_status(False, True, [{'type': 'data_chat'}]) \
         == 'approved'
+
+
+# --------------------------------------------------------------------------- #
+# Scopes: site vs project (the hub page reuses this registry)                 #
+# --------------------------------------------------------------------------- #
+
+def test_registry_scopes_are_consistent():
+    for block_type in b.BLOCK_TYPES.values():
+        assert block_type.scopes, 'every type must live somewhere'
+        assert set(block_type.scopes) <= {'project', 'site'}
+    # Every site default is a site builtin, and vice versa.
+    site_builtins = {t.key for t in b.BLOCK_TYPES.values()
+                     if t.builtin and 'site' in t.scopes}
+    assert site_builtins == set(b.SITE_DEFAULT_BLOCK_TYPES)
+    # Project builtins never leak into the site scope (and vice versa):
+    # a builtin belongs to exactly one scope.
+    for block_type in b.BLOCK_TYPES.values():
+        if block_type.builtin:
+            assert len(block_type.scopes) == 1
+
+
+def test_addable_types_filters_by_scope():
+    site = b.addable_types('site')
+    project = b.addable_types('project')
+    assert b.ADDABLE_TYPES == project        # legacy alias
+    # Data-bound blocks need a project's approved sources: project-only.
+    for key in ('chart', 'data_chat', 'observation_map', 'terria_map'):
+        assert key in project and key not in site
+    # Portable blocks appear in both palettes, in the same relative order.
+    for key in ('rich_text', 'media_text', 'stats', 'image', 'video',
+                'content_list', 'datasets_list', 'callout'):
+        assert key in project and key in site
+    # No builtin is ever addable.
+    assert not set(site) & set(b.SITE_DEFAULT_BLOCK_TYPES)
+
+
+def test_default_site_blocks_match_the_pre_block_hub_order():
+    types = [block['type'] for block in b.default_site_blocks()]
+    assert types == list(b.SITE_DEFAULT_BLOCK_TYPES)
+
+
+def test_default_site_blocks_survive_a_second_normalize_unchanged():
+    blocks = b.default_site_blocks()
+    assert b.normalize_blocks(blocks) == blocks
+
+
+def test_default_site_blocks_are_not_shared_mutable_state():
+    first = b.default_site_blocks()
+    first[0]['title'] = 'mutated'
+    assert b.default_site_blocks()[0]['title'] == ''
+
+
+def test_apply_op_add_respects_scope():
+    blocks = b.default_site_blocks()
+    # A forged add of a project-only type against the site editor: no-op.
+    out, anchor = b.apply_op(blocks, 'add:chart', scope='site')
+    assert [x['type'] for x in out] == [x['type'] for x in blocks]
+    assert anchor is None
+    # And the mirror image: site builtins cannot be added anywhere (addable
+    # is False), nor can a portable type sneak into a scope it lacks.
+    out, anchor = b.apply_op(b.default_blocks(), 'add:site_hero',
+                             scope='project')
+    assert anchor is None
+    # A legitimate add works in both scopes.
+    out, anchor = b.apply_op(blocks, 'add:media_text', scope='site')
+    assert anchor is not None
+    assert out[0]['type'] == 'media_text'     # inserted before the builtins
+
+
+def test_apply_op_delete_refuses_site_builtins():
+    blocks = b.default_site_blocks()
+    out, _anchor = b.apply_op(blocks, 'delete:0', scope='site')
+    assert [x['type'] for x in out] == list(b.SITE_DEFAULT_BLOCK_TYPES)
+
+
+def test_ensure_builtins_is_scoped_and_idempotent():
+    # Site: a page missing site builtins gets exactly those, hidden.
+    grown = b.ensure_builtins([], scope='site')
+    assert {x['type'] for x in grown} == set(b.SITE_DEFAULT_BLOCK_TYPES)
+    assert all(x['hidden'] for x in grown)
+    assert b.ensure_builtins(grown, scope='site') == grown
+    # Cross-contamination guard (G4): project scope never appends site
+    # builtins, and site scope never appends project ones.
+    project_page = b.ensure_builtins(b.default_blocks(), scope='project')
+    assert not {x['type'] for x in project_page} \
+        & set(b.SITE_DEFAULT_BLOCK_TYPES)
+    site_page = b.ensure_builtins(b.default_site_blocks(), scope='site')
+    assert not {x['type'] for x in site_page} & set(b.DEFAULT_BLOCK_TYPES)
+
+
+def test_a_forged_site_block_inside_a_project_page_is_stored_harmless():
+    """normalize stays scope-agnostic (G1): the row is kept, not mangled --
+    scope enforcement lives in visible_blocks/apply_op/ensure_builtins."""
+    out = b.normalize_blocks([{'type': 'site_hero', 'heading': 'X'}])
+    assert out[0]['type'] == 'site_hero'
+    assert out[0]['heading'] == 'X'
+
+
+# --------------------------------------------------------------------------- #
+# media_text                                                                  #
+# --------------------------------------------------------------------------- #
+
+def test_media_text_normalizes_and_sanitizes():
+    out = b.normalize_block({
+        'type': 'media_text',
+        'image_url': 'https://example.org/pic.jpg',
+        'alt': '<b>alt</b> text',
+        'html': '<p>hello <script>alert(1)</script>world</p>',
+        'media_side': 'right'})
+    assert out['image_url'] == 'https://example.org/pic.jpg'
+    assert out['alt'] == 'alt text'
+    assert '<script>' not in out['html'] and 'world' in out['html']
+    assert out['media_side'] == 'right'
+    assert b.normalize_block(
+        {'type': 'media_text', 'media_side': 'diagonal'})['media_side'] \
+        == 'left'
+
+
+def test_media_text_accepts_internal_paths_but_not_unsafe_urls():
+    ok = b.normalize_block({'type': 'media_text',
+                            'image_url': '/csunesco/images/x.jpg'})
+    assert ok['image_url'] == '/csunesco/images/x.jpg'
+    for bad in ('http://x.org/a.jpg', '//evil/a.jpg',
+                "https://x.org/a').jpg", 'https://x.org/a b.jpg',
+                'javascript:alert(1)'):
+        report = b.DropReport()
+        out = b.normalize_blocks(
+            [{'type': 'media_text', 'image_url': bad}], report=report)
+        assert out[0]['image_url'] == ''
+        assert report.drops and report.drops[0]['reason'] == 'bad_image_url'
+
+
+def test_media_text_requires_review():
+    assert 'media_text' in b.blocks_requiring_review(
+        [{'type': 'media_text'}])
+
+
+# --------------------------------------------------------------------------- #
+# Site builtin payloads + builtin title/intro round-trip                      #
+# --------------------------------------------------------------------------- #
+
+def test_site_hero_overrides_normalize_and_drop_unsafe_images():
+    out = b.normalize_block({
+        'type': 'site_hero', 'heading': '<em>Hi</em>', 'tagline': 'T',
+        'image_url': '/csunesco/images/cs-hero-legacy.jpg'})
+    assert out['heading'] == 'Hi'
+    assert out['image_url'] == '/csunesco/images/cs-hero-legacy.jpg'
+    report = b.DropReport()
+    out = b.normalize_blocks([{'type': 'site_hero',
+                               'image_url': "https://x/a'.jpg"}],
+                             report=report)
+    assert out[0]['image_url'] == ''
+    assert report.drops[0]['reason'] == 'bad_image_url'
+
+
+def test_site_limits_are_clamped():
+    assert b.normalize_block({'type': 'site_projects',
+                              'limit': 99})['limit'] == 12
+    assert b.normalize_block({'type': 'site_projects'})['limit'] == 6
+    assert b.normalize_block({'type': 'site_news', 'limit': 0})['limit'] == 1
+    assert b.normalize_block({'type': 'site_news'})['limit'] == 3
+
+
+def test_content_list_accepts_site_scope_and_rejects_garbage():
+    assert b.normalize_block({'type': 'content_list',
+                              'scope': 'site'})['scope'] == 'site'
+    assert b.normalize_block({'type': 'content_list',
+                              'scope': 'galaxy'})['scope'] == 'project'
+
+
+def test_builtin_title_and_intro_round_trip_through_the_form():
+    pairs = [
+        ('blocks[0][type]', 'builtin_data'),
+        ('blocks[0][id]', 'aaaaaaaa'),
+        ('blocks[0][title]', 'Our datasets'),
+        ('blocks[0][intro]', 'Everything <b>we</b> measured.'),
+    ]
+    blocks = b.blocks_from_form(pairs)
+    assert blocks[0]['title'] == 'Our datasets'
+    assert blocks[0]['intro'] == 'Everything we measured.'   # tags out
+    # And the stored JSON survives a re-normalize unchanged.
+    again = b.blocks_from_json(b.blocks_to_json(blocks))
+    assert again == blocks
+
+
+def test_old_builtin_json_without_intro_normalizes_to_empty():
+    """Pages published before ``intro`` existed must render identically."""
+    out = b.blocks_from_json('[{"type": "builtin_join", "id": "abcdef01"}]')
+    assert out[0]['intro'] == ''

@@ -1,0 +1,26 @@
+{# Editor: image beside formatted text. Vars: block, index, project, drops. #}
+<div class="cs-field cs-pb-pair">
+  <span>
+    <label for="b{{ index }}-mt-image">{{ _("Image URL") }}</label>
+    <input type="text" id="b{{ index }}-mt-image" name="blocks[{{ index }}][image_url]"
+           value="{{ block.image_url }}" placeholder="https://…">
+    {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='image_url' %}
+  </span>
+  <span>
+    <label for="b{{ index }}-mt-alt">{{ _("Image description (alt text)") }}</label>
+    <input type="text" id="b{{ index }}-mt-alt" name="blocks[{{ index }}][alt]"
+           value="{{ block.alt }}">
+  </span>
+</div>
+<div class="cs-field">
+  <label for="b{{ index }}-mt-side">{{ _("Image position") }}</label>
+  <select id="b{{ index }}-mt-side" name="blocks[{{ index }}][media_side]">
+    <option value="left" {% if block.media_side != 'right' %}selected{% endif %}>{{ _("Left of the text") }}</option>
+    <option value="right" {% if block.media_side == 'right' %}selected{% endif %}>{{ _("Right of the text") }}</option>
+  </select>
+</div>
+<div class="cs-field">
+  <label for="b{{ index }}-mt-html">{{ _("Text") }}</label>
+  <textarea id="b{{ index }}-mt-html" name="blocks[{{ index }}][html]" rows="6"
+            class="cs-pb-richtext">{{ block.html }}</textarea>
+</div>

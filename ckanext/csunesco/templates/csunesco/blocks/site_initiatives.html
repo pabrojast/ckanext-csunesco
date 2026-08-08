@@ -1,0 +1,27 @@
+{#
+  Site builtin: the Initiatives grid (auto content from the CKAN groups).
+
+  Vars: block, ctx.
+#}
+<section class="cs-section" aria-labelledby="title-{{ block.id }}"
+         id="block-{{ block.id }}">
+  <h2 id="title-{{ block.id }}" class="cs-section-title">{{ block.title or _("Initiatives") }}</h2>
+  {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
+  <div class="cs-initiative-grid">
+    {% for initiative in h.csunesco_initiatives() %}
+      <article class="cs-initiative-card">
+        <a class="cs-initiative-card-link"
+           href="{{ h.url_for('csunesco.initiative_index', name=initiative.name) }}">
+          <img class="cs-initiative-card-img" loading="lazy" alt=""
+               src="/csunesco/images/initiative-{{ initiative.name }}.png">
+          <span class="cs-initiative-card-text">
+            <h3 class="cs-card-title">{{ initiative.title }}</h3>
+            <span class="cs-card-cta">{{ _("View projects") }} &rarr;</span>
+          </span>
+        </a>
+      </article>
+    {% else %}
+      <p class="cs-empty">{{ _("No initiatives available yet.") }}</p>
+    {% endfor %}
+  </div>
+</section>

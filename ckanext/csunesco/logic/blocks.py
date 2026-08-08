@@ -166,6 +166,34 @@ def _https_url(value):
     return text
 
 
+# Charset for image URLs that templates may interpolate inside a CSS
+# ``url('...')``: no quotes, parens, backslashes or whitespace, because
+# Jinja's HTML escaping does not protect the CSS-string context. Mirrors
+# validators.csunesco_valid_image_url (which guards cs_project.image_url).
+_IMAGE_URL_SAFE_RE = re.compile(r'^[A-Za-z0-9/_:.,~%&=?#+-]*$')
+
+
+def _image_url(value):
+    """An https URL **or** an internal ``/path``, safe for src and CSS url().
+
+    Stricter than ``_https_url`` (restricted charset, see above) and unlike it
+    accepts site-relative paths, so a hero/about image may point at a bundled
+    asset such as ``/csunesco/images/cs-hero-legacy.jpg``.
+    """
+    text = _plain(value, MAX_URL)
+    if not text or not _IMAGE_URL_SAFE_RE.match(text):
+        return u''
+    if _INTERNAL_PATH_RE.match(text):
+        return text
+    try:
+        parsed = urlparse(text)
+    except ValueError:
+        return u''
+    if parsed.scheme != 'https' or not parsed.netloc:
+        return u''
+    return text
+
+
 def _link_url(value):
     """An http(s) URL **or** a site-relative path, or ``''``.
 
@@ -406,7 +434,8 @@ def _n_content_list(raw, report=None):
     return {
         'content_type': _enum(raw.get('content_type'), CONTENT_LIST_TYPES,
                               'all'),
-        'scope': _enum(raw.get('scope'), ('project', 'initiative'), 'project'),
+        'scope': _enum(raw.get('scope'), ('project', 'initiative', 'site'),
+                       'project'),
         'limit': _int(raw.get('limit'), 6, 1, 12),
         'featured_only': _bool(raw.get('featured_only')),
         'layout': _enum(raw.get('layout'), ('grid', 'list'), 'grid'),
@@ -477,9 +506,78 @@ def _n_callout(raw, report=None):
     }
 
 
+MAX_MEDIA_TEXT_HTML = 8_000
+
+
+def _n_media_text(raw, report=None):
+    """An image beside a paragraph -- the hub's "About" layout, reusable."""
+    return {
+        'image_url': _kept(report, 'image_url', _image_url,
+                           raw.get('image_url'), 'bad_image_url'),
+        'alt': _plain(raw.get('alt'), 160),
+        'html': _rich(raw.get('html'), MAX_MEDIA_TEXT_HTML),
+        'media_side': _enum(raw.get('media_side'), ('left', 'right'), 'left'),
+    }
+
+
+# Optional author intro under a section heading (builtins + site sections).
+MAX_SECTION_INTRO = 500
+
+
 def _n_builtin(raw, report=None):
-    """Built-in wrappers carry no payload -- only the envelope matters."""
-    return {}
+    """Built-in wrappers: the payload is just an optional intro paragraph.
+
+    (The heading override lives in the envelope ``title``.) Old stored JSON
+    has no ``intro`` key and normalizes to ``''`` -- render-identical.
+    """
+    return {'intro': _plain(raw.get('intro'), MAX_SECTION_INTRO)}
+
+
+# --- site (hub) builtins ---------------------------------------------------
+# Every field is an OPTIONAL override: while empty, the block template falls
+# back to the hub's original hardcoded markup, `_()`-translated -- which is
+# what keeps a never-edited hub byte-identical to the pre-block one. Filled
+# fields become monolingual authored content.
+
+def _n_site_hero(raw, report=None):
+    return {
+        'heading': _plain(raw.get('heading'), MAX_TITLE),
+        'tagline': _plain(raw.get('tagline'), 300),
+        'image_url': _kept(report, 'image_url', _image_url,
+                           raw.get('image_url'), 'bad_image_url'),
+    }
+
+
+def _n_site_about(raw, report=None):
+    return {
+        'image_url': _kept(report, 'image_url', _image_url,
+                           raw.get('image_url'), 'bad_image_url'),
+        'alt': _plain(raw.get('alt'), 160),
+        'html': _rich(raw.get('html'), MAX_MEDIA_TEXT_HTML),
+    }
+
+
+def _n_site_cta(raw, report=None):
+    return {
+        'text': _plain(raw.get('text'), 300),
+        'cta_label': _plain(raw.get('cta_label'), 60),
+        'cta_url': _kept(report, 'cta_url', _link_url, raw.get('cta_url'),
+                         'bad_link'),
+    }
+
+
+def _n_site_projects(raw, report=None):
+    return {
+        'limit': _int(raw.get('limit'), 6, 1, 12),
+        'intro': _plain(raw.get('intro'), MAX_SECTION_INTRO),
+    }
+
+
+def _n_site_news(raw, report=None):
+    return {
+        'limit': _int(raw.get('limit'), 3, 1, 6),
+        'intro': _plain(raw.get('intro'), MAX_SECTION_INTRO),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -494,7 +592,8 @@ class BlockType(object):
 
     def __init__(self, key, label, icon, normalize, description=u'',
                  max_instances=1, requires_review=False, builtin=False,
-                 addable=True, deprecated=False):
+                 addable=True, deprecated=False, scopes=('project',),
+                 has_editor=None):
         self.key = key
         self.label = label
         self.icon = icon
@@ -508,6 +607,17 @@ class BlockType(object):
         self.builtin = builtin
         self.addable = addable
         self.deprecated = deprecated
+        # Where this block may LIVE: 'project' pages, the 'site' (hub) page,
+        # or both. Enforced at the edges only -- apply_op('add'),
+        # ensure_builtins, the palette and visible_blocks -- NEVER inside
+        # normalize_blocks, which must stay total and scope-agnostic (stored
+        # JSON is re-normalized by page_dictize, which knows no scope).
+        self.scopes = tuple(scopes)
+        # Whether the editor shows a per-type fieldset. Addable blocks always
+        # have one; builtins default to none (their generic title/intro
+        # fields live in the form itself) unless the registry says otherwise
+        # -- the site builtins with override fields do.
+        self.has_editor = (not builtin) if has_editor is None else has_editor
 
     @property
     def snippet(self):
@@ -515,13 +625,26 @@ class BlockType(object):
 
     @property
     def editor_snippet(self):
+        """The per-type editor fieldset, or ``None`` when there is none.
+
+        The form template snippets this blindly when set, so returning None
+        for field-less builtins is what keeps it registry-driven instead of
+        hardcoding which types have extra fields.
+        """
+        if not self.has_editor:
+            return None
         return 'csunesco/blocks/edit/%s.html' % self.key
 
 
 _TYPES = [
     # --- author-added -----------------------------------------------------
     BlockType('rich_text', u'Text', u'text', _n_rich_text,
-              u'A paragraph of formatted text.', max_instances=20),
+              u'A paragraph of formatted text.', max_instances=20,
+              scopes=('project', 'site')),
+    BlockType('media_text', u'Image + text', u'media-text', _n_media_text,
+              u'An image beside a paragraph of formatted text.',
+              max_instances=4, requires_review=True,
+              scopes=('project', 'site')),
     BlockType('chart', u'Chart', u'chart', _n_chart,
               u'A chart of the observations your volunteers collected in the '
               u'app. Nothing shows until you pick which data to chart.',
@@ -532,13 +655,14 @@ _TYPES = [
               max_instances=1),
     BlockType('stats', u'Your own counters', u'counters', _n_stats,
               u'Up to four big numbers you choose - typed in, or kept up to '
-              u'date automatically from your data.', max_instances=3),
+              u'date automatically from your data.', max_instances=3,
+              scopes=('project', 'site')),
     BlockType('image', u'Images', u'image', _n_image,
               u'One image or a gallery.', max_instances=8,
-              requires_review=True),
+              requires_review=True, scopes=('project', 'site')),
     BlockType('video', u'Video', u'video', _n_video,
               u'A YouTube or Vimeo video.', max_instances=4,
-              requires_review=True),
+              requires_review=True, scopes=('project', 'site')),
     BlockType('observation_map', u'Observation map', u'pin',
               _n_observation_map,
               u'A map with a pin for every observation in one set of app data.',
@@ -550,11 +674,14 @@ _TYPES = [
               _n_content_list,
               u'Pick exactly which news, events or publications to list, and '
               u'how many. (The standard "News, Events & More" section already '
-              u'shows the most recent ones.)', max_instances=4),
+              u'shows the most recent ones.)', max_instances=4,
+              scopes=('project', 'site')),
     BlockType('datasets_list', u'Datasets', u'database', _n_datasets_list,
-              u'A list of datasets published on IHP-WINS.', max_instances=2),
+              u'A list of datasets published on IHP-WINS.', max_instances=2,
+              scopes=('project', 'site')),
     BlockType('callout', u'Highlight', u'bulb', _n_callout,
-              u'A highlighted note with an optional button.', max_instances=6),
+              u'A highlighted note with an optional button.', max_instances=6,
+              scopes=('project', 'site')),
 
     # --- built-in wrappers for the standard sections -----------------------
     # Addable=False: they exist on every page from the start and are toggled
@@ -580,13 +707,54 @@ _TYPES = [
     BlockType('builtin_join', u'Join this project', u'users', _n_builtin,
               u'The join button, QR code and share link.',
               builtin=True, addable=False),
+
+    # --- built-in wrappers for the site (hub) page --------------------------
+    # Same pattern, scope 'site'. With every override field EMPTY these render
+    # the hub's original hardcoded, `_()`-translated markup -- a never-edited
+    # hub stays exactly as it always was (see the _n_site_* docnote).
+    BlockType('site_hero', u'Hero banner', u'globe', _n_site_hero,
+              u'The banner at the top of the Citizen Science home page. '
+              u'Leave the fields empty to keep the standard translated text.',
+              builtin=True, addable=False, scopes=('site',),
+              has_editor=True),
+    BlockType('site_initiatives', u'Initiatives', u'layers', _n_builtin,
+              u'The grid of Citizen Science initiatives, kept up to date '
+              u'for you.',
+              builtin=True, addable=False, scopes=('site',)),
+    BlockType('site_projects', u'Projects', u'pin', _n_site_projects,
+              u'The most recently approved projects, newest first.',
+              builtin=True, addable=False, scopes=('site',),
+              has_editor=True),
+    BlockType('site_news', u'Latest News', u'news', _n_site_news,
+              u'The most recent published news across the portal.',
+              builtin=True, addable=False, scopes=('site',),
+              has_editor=True),
+    BlockType('site_about', u'About Citizen Science', u'doc', _n_site_about,
+              u'The image-plus-text section about Citizen Science. Leave '
+              u'the fields empty to keep the standard translated text.',
+              builtin=True, addable=False, scopes=('site',),
+              has_editor=True),
+    BlockType('site_glance', u'At a Glance', u'gauge', _n_builtin,
+              u'The four portal-wide counters, computed for you.',
+              builtin=True, addable=False, scopes=('site',)),
+    BlockType('site_cta', u'Propose a project', u'bulb', _n_site_cta,
+              u'The call-to-action band at the bottom. Leave the fields '
+              u'empty to keep the standard translated text.',
+              builtin=True, addable=False, scopes=('site',),
+              has_editor=True),
 ]
 
 BLOCK_TYPES = dict((block_type.key, block_type) for block_type in _TYPES)
 
-# Order matters: it drives the "Add a block" palette in the editor.
-ADDABLE_TYPES = [t.key for t in _TYPES if t.addable]
-BUILTIN_TYPES = [t.key for t in _TYPES if t.builtin]
+
+def addable_types(scope='project'):
+    """The palette for ``scope``, in registry order (which IS the UI order)."""
+    return [t.key for t in _TYPES if t.addable and scope in t.scopes]
+
+
+# Legacy aliases (project scope). Order matters: it drives the palette.
+ADDABLE_TYPES = addable_types('project')
+BUILTIN_TYPES = [t.key for t in _TYPES if t.builtin and 'project' in t.scopes]
 
 # The page every project has until its manager changes it -- exactly the
 # section order the landing had before it became block-driven.
@@ -599,10 +767,34 @@ DEFAULT_BLOCK_TYPES = (
     'builtin_join',
 )
 
+# The hub page until a sysadmin changes it -- exactly the section order
+# citizen-science.html had before it became block-driven.
+SITE_DEFAULT_BLOCK_TYPES = (
+    'site_hero',
+    'site_initiatives',
+    'site_projects',
+    'site_news',
+    'site_about',
+    'site_glance',
+    'site_cta',
+)
+
+# ensure_builtins / default pages, keyed by scope.
+BUILTIN_TYPES_BY_SCOPE = {
+    'project': DEFAULT_BLOCK_TYPES,
+    'site': SITE_DEFAULT_BLOCK_TYPES,
+}
+
 
 def default_blocks():
     """A fresh copy of the default page (never share mutable module state)."""
     return normalize_blocks([{'type': key} for key in DEFAULT_BLOCK_TYPES])
+
+
+def default_site_blocks():
+    """A fresh copy of the default hub page (matches the pre-block hub)."""
+    return normalize_blocks(
+        [{'type': key} for key in SITE_DEFAULT_BLOCK_TYPES])
 
 
 # --------------------------------------------------------------------------- #
@@ -795,7 +987,7 @@ def parse_op(raw):
     return match.group(1), (match.group(2) or u'')[:64]
 
 
-def apply_op(blocks, raw_op, convert_html=None):
+def apply_op(blocks, raw_op, convert_html=None, scope='project'):
     """Apply one editor operation. Returns ``(blocks, anchor_block_id)``.
 
     Out-of-range indices and no-op moves (up from the top, down from the
@@ -805,6 +997,9 @@ def apply_op(blocks, raw_op, convert_html=None):
     ``convert_html`` is the legacy description a ``convert`` op moves into a new
     text block; the caller supplies it because this module never touches the
     database.
+
+    ``scope`` gates only the ``add`` op: a forged ``add:chart`` POST against
+    the site editor (or ``add:site_hero`` against a project) is a no-op.
     """
     blocks = list(blocks or [])
     name, argument = parse_op(raw_op)
@@ -814,7 +1009,8 @@ def apply_op(blocks, raw_op, convert_html=None):
 
     if name == 'add':
         block_type = BLOCK_TYPES.get(argument)
-        if block_type is None or not block_type.addable:
+        if block_type is None or not block_type.addable \
+                or scope not in block_type.scopes:
             return blocks, None
         if sum(1 for b in blocks if b['type'] == argument) \
                 >= block_type.max_instances:
@@ -883,15 +1079,17 @@ def _first_builtin_index(blocks):
     return len(blocks or [])
 
 
-def ensure_builtins(blocks):
-    """Append any built-in block missing from ``blocks`` (hidden by default).
+def ensure_builtins(blocks, scope='project'):
+    """Append any built-in block of ``scope`` missing from ``blocks`` (hidden).
 
     A page saved before a new built-in existed must still be able to show it,
-    and a PM who somehow lost one should be able to switch it back on.
+    and a PM who somehow lost one should be able to switch it back on. Only
+    the given scope's builtins are considered -- a project page must never
+    grow site sections, nor the other way round.
     """
     blocks = list(blocks or [])
     present = {block['type'] for block in blocks}
-    for key in DEFAULT_BLOCK_TYPES:
+    for key in BUILTIN_TYPES_BY_SCOPE.get(scope, DEFAULT_BLOCK_TYPES):
         if key not in present:
             block = normalize_block({'type': key, 'hidden': True})
             if block is not None:

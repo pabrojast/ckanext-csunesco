@@ -1,0 +1,26 @@
+{#
+  Site builtin: the "About Citizen Science" image-plus-text section.
+
+  Empty overrides render the original `_()`-translated copy. `html` was
+  sanitized with sanitize_page_html BEFORE storage (that is what makes
+  `| safe` legitimate); `image_url` is charset-restricted by the normalizer.
+
+  Vars: block, ctx.
+#}
+<section class="cs-section cs-about" aria-labelledby="title-{{ block.id }}"
+         id="block-{{ block.id }}">
+  <div class="cs-about-media">
+    <img loading="lazy" alt="{{ block.alt }}"
+         src="{{ block.image_url or '/csunesco/images/about-citizen-science.png' }}">
+  </div>
+  <div class="cs-about-text">
+    <h2 id="title-{{ block.id }}" class="cs-section-title">{{ block.title or _("About Citizen Science") }}</h2>
+    {% if block.html %}
+      <div class="cs-rich-text">{{ block.html | safe }}</div>
+    {% else %}
+      <p>
+        {{ _("Citizen Science engages communities in observing, monitoring and analysing their environment. It expands the reach of professional research, fills critical data gaps, and supports informed decision-making, while fostering ownership of solutions and inclusive participation aligned with UNESCO's mandate.") }}
+      </p>
+    {% endif %}
+  </div>
+</section>

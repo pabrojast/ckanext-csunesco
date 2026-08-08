@@ -1,0 +1,15 @@
+{#
+  Site builtin: the "Propose a project" call-to-action band.
+
+  Empty overrides render the original `_()`-translated copy.
+
+  Vars: block, ctx.
+#}
+<section class="cs-section cs-cta-band" id="block-{{ block.id }}"
+         aria-label="{{ block.title or _('Propose a project') }}">
+  <p>{{ block.text or _("Leading a community water-monitoring effort?") }}</p>
+  <a class="cs-btn cs-btn-primary"
+     href="{{ block.cta_url or h.url_for('csunesco.project_new') }}">
+    {{ block.cta_label or _("Propose a project") }}
+  </a>
+</section>

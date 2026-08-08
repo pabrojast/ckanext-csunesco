@@ -1,0 +1,21 @@
+{# Editor: hub About-section overrides. Empty fields keep the standard
+   translated copy. Vars: block, index, project, drops. #}
+<div class="cs-field cs-pb-pair">
+  <span>
+    <label for="b{{ index }}-about-image">{{ _("Image URL") }}</label>
+    <input type="text" id="b{{ index }}-about-image" name="blocks[{{ index }}][image_url]"
+           value="{{ block.image_url }}" placeholder="https://… {{ _('or') }} /csunesco/images/…">
+    {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='image_url' %}
+  </span>
+  <span>
+    <label for="b{{ index }}-about-alt">{{ _("Image description (alt text)") }}</label>
+    <input type="text" id="b{{ index }}-about-alt" name="blocks[{{ index }}][alt]"
+           value="{{ block.alt }}">
+  </span>
+</div>
+<div class="cs-field">
+  <label for="b{{ index }}-about-html">{{ _("Text") }}</label>
+  <textarea id="b{{ index }}-about-html" name="blocks[{{ index }}][html]" rows="6"
+            class="cs-pb-richtext">{{ block.html }}</textarea>
+  <p class="cs-hint">{{ _("Leave empty to keep the standard translated text.") }}</p>
+</div>

@@ -1,0 +1,23 @@
+{#
+  Site builtin: the hub hero banner.
+
+  Empty overrides render the original `_()`-translated banner -- a
+  never-edited hub is byte-identical to the pre-block one. `image_url` was
+  charset-restricted by the normalizer (no quotes/parens/whitespace), which
+  is what makes the CSS url('...') interpolation safe.
+
+  Vars: block, ctx.
+#}
+<section class="section-title" aria-labelledby="cs-title"
+         id="block-{{ block.id }}"
+         {%- if block.image_url %}
+         style="--cs-site-hero-img: url('{{ block.image_url }}')"
+         {%- endif %}>
+  <div class="section-title-overlay" aria-hidden="true"></div>
+  <div class="section-title-content">
+    <h1 id="cs-title">{{ block.heading or _("UNESCO Citizen Science") }}</h1>
+    <p class="section-title-description">
+      {{ block.tagline or _("Explore IHP-WINS Citizen Science initiatives and community-led water monitoring projects around the world.") }}
+    </p>
+  </div>
+</section>
