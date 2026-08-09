@@ -31,6 +31,8 @@
       {{ _("This was not saved: use the dataset's short name (no spaces), or paste its full link.") }}
     {%- elif drop.reason == 'bad_field_name' -%}
       {{ _("This was not saved: use the column name exactly as it appears in the data — letters, numbers, - and _ only.") }}
+    {%- elif drop.reason == 'bad_image_url' -%}
+      {{ _("This image was not saved: use a full https:// image address (or an internal path starting with /), without spaces or quotes.") }}
     {%- else -%}
       {{ _("This value was not saved.") }}
     {%- endif %}

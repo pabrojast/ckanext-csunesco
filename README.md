@@ -113,6 +113,8 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | POST | `/citizen-science/admin/data/bulk-approve` | Approve a checkbox selection of data sources (≤20, per-row auth; suggested/default org) | sysadmin **or** initiative admin (per row) |
 | GET·POST | `/citizen-science/project/<slug>/page` | Project-page editor (one endpoint for every block operation) | sysadmin, initiative admin **or** that project's admin |
 | GET | `/citizen-science/project/<slug>/page/preview` | Render the unpublished draft through the public template | same as the editor |
+| GET·POST | `/citizen-science/page` | Site (hub) page editor — same workbench, scope `site` | sysadmin |
+| GET | `/citizen-science/page/preview` | Render the unpublished hub draft through the public hub template | sysadmin |
 | GET | `/citizen-science/data/<id>/series` | Aggregated chart series for an **approved** data source (TTL-cached) | public |
 | GET | `/citizen-science/data/<id>/fields` | Chartable field list of an **approved** data source | public |
 | POST | `/citizen-science/admin/page/<project_id>/approve` · `/reject` | Moderate a project page (approve requires the `draft_hash` shown in the panel) | sysadmin **or** the project's initiative admin |
@@ -144,6 +146,8 @@ enumerate accounts.
 | `csunesco_project_page_show` | public (read; the draft only for a manager/reviewer) |
 | `csunesco_project_page_update`, `csunesco_project_page_submit` | sysadmin, initiative admin **or** project admin |
 | `csunesco_project_page_approve`, `csunesco_project_page_reject` | sysadmin **or** the project's initiative admin |
+| `csunesco_site_page_show` | public (read; the draft only for a sysadmin asking for it) |
+| `csunesco_site_page_update`, `csunesco_site_page_publish` | sysadmin (publish is direct — the site page never queues) |
 | `csunesco_data_source_create` | sysadmin, initiative admin **or** project admin — **always** creates `pending`; idempotent per `(project, form)` |
 | `csunesco_admin_pending_list` | sysadmin, any initiative admin **or** any project admin |
 | `csunesco_project_approve`, `csunesco_project_reject` | sysadmin **or** the project's initiative admin |
@@ -326,6 +330,50 @@ a default template plus a custom one.
   re-checked against *this* project's approved set on every render, and a Terria
   URL is re-validated against the configured allowlist, so a source rejected
   later (or JSON copied from another project) simply renders nothing.
+- **Automatic sections are still the author's.** Every built-in accepts a
+  custom heading and an optional intro paragraph (envelope `title` + payload
+  `intro`); the editor labels them "automatic" and says what stays editable,
+  and managers get a per-section "Edit section" pencil on the public page that
+  deep-links into the editor with that block open.
+
+### The site (hub) page
+
+`/citizen-science` itself is a block page since the hub became editable. It
+reuses the same machinery with scope `site`:
+
+- **Storage** is the sentinel row `project_id='__site__'` in `cs_project_page`
+  (`db.SITE_PAGE_ID`) — zero schema change, same draft/published lifecycle.
+  The review queue defensively excludes it: the site page never queues.
+- **Actions**: `csunesco_site_page_show` (public, published only),
+  `csunesco_site_page_update` / `csunesco_site_page_publish` (sysadmin;
+  publish is direct). Editor at `/citizen-science/page`, preview at
+  `/citizen-science/page/preview` — the same one-form, JS-free workbench.
+- **Seven site built-ins** (`site_hero`, `site_initiatives`, `site_projects`,
+  `site_news`, `site_about`, `site_glance`, `site_cta`) whose fields are
+  optional *overrides*: while empty they render the hub's original
+  `_()`-translated markup, so a never-edited hub is identical to the
+  pre-block one (and stays translated — filled overrides become monolingual
+  authored content). Portable author blocks (text, image+text, images, video,
+  counters, content list, datasets, highlight) can be added; the data-bound
+  types (chart, observation map, ask-the-data, map viewer) are project-only.
+- **Scope is enforced at the edges only** — `apply_op('add')`,
+  `ensure_builtins(scope)`, the palette and `visible_blocks(blocks, scope)`.
+  `normalize_blocks` stays total and scope-agnostic, so a cross-scope block
+  forged into stored JSON is kept harmlessly and simply never renders.
+
+### Legacy CS Toolbox projects
+
+The regional projects of the retiring `cstoolbox.quartex.co.za` site ship as
+seed data (`constants.LEGACY_PROJECTS`) with their banner images bundled under
+`public/csunesco/images/project-<slug>.jpg` (never hotlinked — the site is
+being decommissioned). `ckan csunesco seed-legacy-projects` creates the seven
+of them (Cape Winelands, Kruger2Canyons, Marico, Vhembe → Be Resilient; Cuba,
+Seychelles → Island Watch; Ghana → River Watch) as approved projects with
+cover image and description; re-runs fill **only empty fields** so later admin
+edits survive, and `--force` re-imposes the seed values (never touching
+status, trusted, landing content or extras). Projects carry a native
+`image_url` column (https URL or internal `/path`, charset-restricted so it is
+safe inside CSS `url('…')`), shown on cards and as the landing hero.
 
 ### Trusted projects & bulk review (P2)
 
@@ -432,6 +480,7 @@ ckan.auth.create_user_via_web = true
 ```bash
 ckan -c /etc/ckan/default/ckan.ini csunesco init-db          # also self-heals on load
 ckan -c /etc/ckan/default/ckan.ini csunesco seed-initiatives # the 4 initiative groups
+ckan -c /etc/ckan/default/ckan.ini csunesco seed-legacy-projects  # the 7 legacy CS Toolbox projects (idempotent; --force re-imposes)
 ckan -c /etc/ckan/default/ckan.ini csunesco stats-refresh    # observation counters (cron-able)
 ```
 
