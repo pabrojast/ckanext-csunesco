@@ -1557,11 +1557,11 @@ def list_data_sources(project_id=None, status=None, limit=50, offset=0):
     return total, rows
 
 
-def pending_data_sources(limit=20, offset=0, initiative_groups=None):
-    """Pending data sources in scope. ``(total, [dict, ...])``.
+def _data_sources_by_status(status, limit, offset, initiative_groups):
+    """Data sources in ``status`` within scope. ``(total, [dict, ...])``.
 
-    ``initiative_groups=None`` means "every pending source" (sysadmin scope); a
-    list restricts to sources whose project belongs to those initiatives
+    ``initiative_groups=None`` means "every source" (sysadmin scope); a list
+    restricts to sources whose project belongs to those initiatives
     (initiative-admin scope) and an EMPTY list always returns zero. Rows are
     decorated with their project title/slug for the review tab.
     """
@@ -1569,7 +1569,7 @@ def pending_data_sources(limit=20, offset=0, initiative_groups=None):
     query = (
         Session.query(CsDataSource, CsProject.title, CsProject.slug)
         .outerjoin(CsProject, CsProject.id == CsDataSource.project_id)
-        .filter(CsDataSource.status == 'pending')
+        .filter(CsDataSource.status == status)
     )
     if initiative_groups is not None:
         if not initiative_groups:
@@ -1589,6 +1589,22 @@ def pending_data_sources(limit=20, offset=0, initiative_groups=None):
         item['project_slug'] = slug
         results.append(item)
     return total, results
+
+
+def pending_data_sources(limit=20, offset=0, initiative_groups=None):
+    """Pending data sources in scope. ``(total, [dict, ...])``."""
+    return _data_sources_by_status('pending', limit, offset, initiative_groups)
+
+
+def approved_data_sources(limit=20, offset=0, initiative_groups=None):
+    """APPROVED (connected) data sources in scope. ``(total, [dict, ...])``.
+
+    Same scoping and shape as :func:`pending_data_sources`. The review panel
+    health-checks these: a form can be made private or unpublished in the app
+    long after approval, and until now the only symptom was a chart card on the
+    public project page that quietly stopped drawing.
+    """
+    return _data_sources_by_status('approved', limit, offset, initiative_groups)
 
 
 def _count_pending_data_sources(initiative_groups=None):

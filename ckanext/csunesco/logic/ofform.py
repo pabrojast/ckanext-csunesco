@@ -53,6 +53,9 @@ MAX_CACHE_ENTRIES = 32
 # each one holds a CKAN worker for 15 s. Short enough that recovery is quick,
 # long enough that a dead upstream stops costing worker time.
 FAILURE_CACHE_TTL = 30
+# How long a review-panel PROBE result (ok or not) is remembered, under its own
+# cache key. See :func:`probe_form` for why this exists and why it is short.
+PROBE_CACHE_TTL = 45
 
 _cache = {}
 _cache_lock = threading.Lock()
@@ -179,10 +182,17 @@ def _fetch(path, timeout=REQUEST_TIMEOUT):
     except OfformError:
         raise
     except urllib.error.HTTPError as error:
-        log.warning('csunesco: ofform fetch failed (HTTP %s)', error.code)
+        # The path names the form and the endpoint. Without it the log says a
+        # fetch failed but not WHICH form went dark -- and a 404 here almost
+        # always means one specific form stopped being public+published in the
+        # app, which is exactly the thing an operator needs to be told. Safe to
+        # log: this module builds ``path`` from an int, never from client input.
+        log.warning('csunesco: ofform fetch failed (HTTP %s) for %s',
+                    error.code, path)
         raise OfformError('HTTP %s' % error.code)
     except Exception as error:
-        log.warning('csunesco: ofform fetch failed (%s)', type(error).__name__)
+        log.warning('csunesco: ofform fetch failed (%s) for %s',
+                    type(error).__name__, path)
         raise OfformError('network error')
 
 
@@ -205,11 +215,18 @@ def fetch_dashboard_data(form_id, timeout=REQUEST_TIMEOUT):
             _cache_failure(key, str(error))
         raise
     except (ValueError, UnicodeDecodeError):
-        log.warning('csunesco: ofform dashboard-data was not valid JSON')
-        _cache_failure(key, 'invalid upstream response')
+        log.warning('csunesco: ofform dashboard-data was not valid JSON '
+                    '(form %s)', form_id)
+        # Same rule as the OfformError branch above: a SHORT-timeout probe must
+        # never blacklist the upstream for the proxies. These two branches
+        # ignored it, so one garbled response during a review-panel probe could
+        # poison the proxy cache for FAILURE_CACHE_TTL.
+        if remember_failure:
+            _cache_failure(key, 'invalid upstream response')
         raise OfformError('invalid upstream response')
     if not isinstance(data, dict):
-        _cache_failure(key, 'invalid upstream response')
+        if remember_failure:
+            _cache_failure(key, 'invalid upstream response')
         raise OfformError('invalid upstream response')
     _cache_set(key, data)
     return data
@@ -284,13 +301,36 @@ def probe_form(form_id):
 
     ``{'ok': False}`` when the form is unreachable, not public or ofform is
     not configured -- the reviewer sees a clear warning instead of approving a
-    source that would 502. Short timeout + shared TTL cache.
+    source that would 502. Short timeout + its own TTL cache.
+
+    That cache is the point: a probe FAILURE is deliberately not remembered by
+    :func:`fetch_dashboard_data` (its short timeout must never blacklist the
+    upstream for the proxies), so without a memo of its own the panel re-dialled
+    every dark form on every single render -- eight dead forms x PROBE_TIMEOUT
+    is a 48-second dashboard. The key is disjoint from the payload cache's, so
+    the proxies' negative cache is still never poisoned by a probe.
     """
     try:
-        data = fetch_dashboard_data(form_id, timeout=PROBE_TIMEOUT)
+        key = ('probe', _coerce_form_id(form_id))
     except OfformError:
         return {'ok': False}
-    return summarize_dashboard(data)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+    try:
+        result = summarize_dashboard(
+            fetch_dashboard_data(form_id, timeout=PROBE_TIMEOUT))
+    except OfformError:
+        result = {'ok': False}
+    # Deliberately SHORTER than the payload TTL: the shared cache evicts by
+    # nearest expiry, so a burst of probe entries from one dashboard render is
+    # the first thing dropped rather than the ~1.6 MB parsed payloads
+    # MAX_CACHE_ENTRIES exists to protect. Losing a probe costs one re-dial;
+    # losing a payload costs a full upstream fetch on the next public page view.
+    # ``cache_ttl()`` is operator-configurable, and that ordering argument only
+    # holds while the probe TTL is the shorter of the two.
+    _cache_set(key, result, ttl=min(PROBE_CACHE_TTL, cache_ttl()))
+    return result
 
 
 # ---------------------------------------------------------------------------

@@ -26,6 +26,29 @@ GENERIC_ERROR = 'Something went wrong. Please try again.'
 # for this long, which keeps repeat map interactions cheap.
 _CACHE_CONTROL = 'public, max-age=60'
 
+# Machine-readable failure reasons in the JSON error envelope. The HTTP status
+# stays 502 for BOTH -- the request really did fail at the gateway, and 503
+# would claim THIS server is down when it is fine -- and the reason is what
+# lets a chart tell "the app's form went dark, it will come back" apart from
+# "something in the portal broke". Same shape as the chat envelope's ``status``
+# below, which the browser already parses on a non-OK response; the GeoJSON
+# proxy is also consumed by Terria, and an extra JSON key is ignorable where a
+# changed status code would alter its retry and caching behaviour.
+#
+# NOT translated, and never displayed: the reason is compared literally in JS,
+# which paints its OWN already-translated data-label-*. The CSV proxy's
+# text/plain body IS read by a human, so that one keeps tk._().
+UPSTREAM_UNAVAILABLE = 'upstream_unavailable'
+INTERNAL_ERROR = 'internal_error'
+UNAVAILABLE_MESSAGE = 'The data source is temporarily unavailable.'
+
+
+def _upstream_error(reason):
+    """502 JSON envelope tagged so the client can word its own message."""
+    return Response(
+        json.dumps({'error': UNAVAILABLE_MESSAGE, 'reason': reason}),
+        status=502, mimetype='application/json')
+
 
 def _context():
     return {'model': model, 'session': model.Session, 'user': tk.g.user}
@@ -67,7 +90,9 @@ def data_source_csv(id):
     try:
         text = ofform.fetch_csv(source['form_id'])
     except ofform.OfformError:
-        return Response(tk._('The data source is temporarily unavailable.'),
+        # text/plain a human may actually read in a browser tab, so unlike the
+        # JSON envelopes this one stays translated.
+        return Response(tk._(UNAVAILABLE_MESSAGE),
                         status=502, mimetype='text/plain')
     response = Response(text, mimetype='text/csv')
     response.headers['Content-Disposition'] = (
@@ -86,9 +111,7 @@ def data_source_geojson(id):
         data = ofform.fetch_dashboard_data(source['form_id'])
         geojson = ofform.rows_to_geojson(data)
     except ofform.OfformError:
-        return Response(
-            json.dumps({'error': 'The data source is temporarily unavailable.'}),
-            status=502, mimetype='application/json')
+        return _upstream_error(UPSTREAM_UNAVAILABLE)
     # Piggyback: the freshly fetched data keeps the project's observation
     # counters current (every landing-page map view refreshes them). Fail-soft.
     try:
@@ -104,10 +127,12 @@ def data_source_geojson(id):
 def _json_action(action_name, data_dict):
     """Run a read action and return its result as a JSON response.
 
-    Upstream trouble collapses to a generic 502, exactly like the CSV/GeoJSON
-    proxy: a chart that cannot load must say so without leaking anything about
-    the upstream. Deliberately does NOT piggyback ``refresh_project_stats`` --
-    a page with six chart blocks would otherwise do six DB writes per view.
+    Upstream trouble and an unexpected exception both answer 502 -- neither
+    leaks a detail about the upstream -- but they carry different ``reason``
+    codes, so the chart JS can tell a temporary source outage from a bug on our
+    side and word its message accordingly. Deliberately does NOT piggyback
+    ``refresh_project_stats`` -- a page with six chart blocks would otherwise do
+    six DB writes per view.
     """
     from ckanext.csunesco.logic import ofform
     try:
@@ -118,14 +143,13 @@ def _json_action(action_name, data_dict):
         return Response(json.dumps({'error': error.error_dict}),
                         status=400, mimetype='application/json')
     except ofform.OfformError:
-        return Response(
-            json.dumps({'error': 'The data source is temporarily unavailable.'}),
-            status=502, mimetype='application/json')
+        # Not our bug: the CS Toolbox form is unreachable, unpublished or no
+        # longer public. Already logged with its form id by ofform._fetch, at
+        # the rate the negative cache allows.
+        return _upstream_error(UPSTREAM_UNAVAILABLE)
     except Exception:
         log.warning('csunesco: %s failed', action_name)
-        return Response(
-            json.dumps({'error': 'The data source is temporarily unavailable.'}),
-            status=502, mimetype='application/json')
+        return _upstream_error(INTERNAL_ERROR)
     response = Response(json.dumps(result), mimetype='application/json')
     response.headers['Cache-Control'] = _CACHE_CONTROL
     return response

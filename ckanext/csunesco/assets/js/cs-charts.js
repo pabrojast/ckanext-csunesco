@@ -10,7 +10,7 @@
  * Because the labels are ready-made period keys, no date adapter is needed --
  * the x axis is a plain category axis.
  *
- * Progressive enhancement throughout: every chart container already contains a
+ * Progressive enhancement throughout: the figure's caption already carries a
  * CSV download link, so a reader without JavaScript (or with a failing upstream)
  * still gets the data instead of an empty box.
  *
@@ -78,11 +78,49 @@
       container.insertBefore(node, container.firstChild);
     }
     node.textContent = text;
+    // The server-rendered placeholder is the NO-JS state. Once we have anything
+    // to say, it must go: leaving it up printed "The chart could not be
+    // loaded.The chart appears here." side by side in the same card.
+    container.classList.add("has-message");
   }
 
   function clearMessage(container) {
     var node = container.querySelector(".cs-chart-message");
     if (node) { node.parentNode.removeChild(node); }
+    container.classList.remove("has-message");
+  }
+
+  // The proxy tags an upstream outage explicitly (views_data.UPSTREAM_
+  // UNAVAILABLE) so a reader is told the SOURCE is away and will be back,
+  // instead of a message that reads like a bug on this portal. Compared
+  // literally -- this string is a machine channel and is never translated.
+  var UPSTREAM_UNAVAILABLE = "upstream_unavailable";
+
+  /** Which data-label-* answers a failed load: outage vs "our problem". */
+  function errorMessage(container, reason) {
+    if (reason === UPSTREAM_UNAVAILABLE) {
+      var label = container.getAttribute("data-label-unavailable");
+      if (label) { return label; }
+    }
+    return container.getAttribute("data-label-error") || "";
+  }
+
+  /**
+   * Reject, carrying the proxy's reason code when it sent one.
+   *
+   * `response.ok` stays the ONLY gate for "did it work": the body is read here
+   * purely to CHOOSE the wording, so a garbled or hostile response can never
+   * make a failure look like data.
+   */
+  function failure(response) {
+    return response.json().then(
+      function (body) { return body; },
+      function () { return {}; }
+    ).then(function (body) {
+      var error = new Error("HTTP " + response.status);
+      error.csReason = body && body.reason;
+      throw error;
+    });
   }
 
   /** Build the series URL from the block's configuration. */
@@ -258,18 +296,15 @@
 
     fetch(url, { credentials: "same-origin" })
       .then(function (response) {
-        if (!response.ok) { throw new Error("HTTP " + response.status); }
-        return response.json();
+        return response.ok ? response.json() : failure(response);
       })
       .then(function (payload) {
         if (!paint(container, payload)) {
           message(container, container.getAttribute("data-label-empty") || "");
         }
       })
-      .catch(function () {
-        // The CSV link is already in the container, so the reader still has a
-        // way to the data.
-        message(container, container.getAttribute("data-label-error") || "");
+      .catch(function (error) {
+        message(container, errorMessage(container, error && error.csReason));
       })
       .then(function () {
         container.setAttribute("aria-busy", "false");

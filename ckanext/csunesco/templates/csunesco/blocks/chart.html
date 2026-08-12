@@ -36,6 +36,10 @@
            data-label-other="{{ _('Other') }}"
            data-label-loading="{{ _('Loading chart…') }}"
            data-label-empty="{{ _('No observations to chart yet.') }}"
+           {# Two different failures, two different sentences: the source being
+              away is temporary and not the reader's problem, so say so and
+              point at the download rather than implying the page is broken. #}
+           data-label-unavailable="{{ _('This data is temporarily unavailable. The chart will appear here again once its source is back.') }}"
            data-label-error="{{ _('The chart could not be loaded.') }}">
         <noscript>
           <p class="cs-empty">{{ _("Charts need JavaScript. You can download the data instead.") }}</p>

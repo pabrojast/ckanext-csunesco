@@ -11,6 +11,7 @@ The active tab is preserved across the PRG via a URL fragment (``#tab-...``) so 
 reviewer stays on the list they were working through.
 """
 import logging
+import time
 
 from flask import request, redirect
 
@@ -69,6 +70,55 @@ def _redirect_dashboard(tab):
     return redirect('{0}#tab-{1}'.format(url, tab))
 
 
+# Health probes on the data tab: a dark form costs PROBE_TIMEOUT of wall clock,
+# and the incident this exists for is EIGHT of them at once. The real ceiling is
+# the wall-clock budget, and it is deliberately the SELF-HEALING one: rows past
+# it carry no ``probe`` key and render no chip, but ofform's probe cache
+# (PROBE_CACHE_TTL) makes the already-checked rows free on the next render, so
+# the budget reaches further each time and the strip fills in within a refresh
+# or two. The row cap is only a backstop against an absurd list; it is kept at
+# the panel's page size ON PURPOSE -- lowering it below PANEL_PAGE_SIZE would
+# permanently hide the chip on the tail of a full pending page, and unlike the
+# budget that truncation never heals.
+HEALTH_PROBE_MAX = PANEL_PAGE_SIZE
+HEALTH_PROBE_BUDGET = 6.0
+
+
+def _probe_rows(rows, limit=HEALTH_PROBE_MAX, budget=HEALTH_PROBE_BUDGET):
+    """Decorate ``rows`` with ``probe``/``app_url`` under a wall-clock budget.
+
+    Fail-soft per row: one bad form id must never cost the reviewer their
+    queues. Returns the rows actually probed.
+    """
+    try:
+        from ckanext.csunesco.logic import ofform
+    except Exception:
+        log.warning('csunesco: data-source probes unavailable')
+        return []
+    deadline = time.monotonic() + budget
+    probed = []
+    for row in rows[:limit]:
+        if time.monotonic() >= deadline:
+            break
+        try:
+            row['probe'] = ofform.probe_form(row.get('form_id'))
+            row['app_url'] = ofform.public_form_url(row.get('form_id'))
+        except Exception:
+            log.warning('csunesco: data-source probe failed for form %s',
+                        row.get('form_id'))
+        else:
+            probed.append(row)
+    return probed
+
+
+def _health_rank(row):
+    """Sort key: unreachable first, then answering, then not probed."""
+    probe = row.get('probe')
+    if probe is None:
+        return 2
+    return 0 if not probe.get('ok') else 1
+
+
 # ---------------------------------------------------------------------------
 # Dashboard (GET)
 # ---------------------------------------------------------------------------
@@ -119,14 +169,20 @@ def admin_dashboard():
         # Review context per pending source: is the form live/public, how many
         # observations, date range -- plus an "open in the app" link. Probes
         # are short-timeout + TTL-cached; any failure degrades to a warning
-        # chip, never an error page.
-        try:
-            from ckanext.csunesco.logic import ofform
-            for row in data['data_requests']:
-                row['probe'] = ofform.probe_form(row.get('form_id'))
-                row['app_url'] = ofform.public_form_url(row.get('form_id'))
-        except Exception:
-            log.warning('csunesco: data-source probes unavailable')
+        # chip, never an error page. Budgeted: this list was unbounded, so a
+        # dead upstream made the panel wait on every single pending row.
+        _probe_rows(data['data_requests'])
+
+    # Connected sources are probed too. Approving one is not the end of the
+    # story: a form can go private or unpublished in the app long after review,
+    # and nothing on the portal said so -- the charts, maps and downloads on the
+    # public project page just started failing. Unreachable first: the
+    # actionable rows belong at the top of a list nobody scrolls.
+    data_connected = []
+    if can_review_initiative:
+        data_connected = data.get('data_connected') or []
+        _probe_rows(data_connected)
+        data_connected.sort(key=_health_rank)   # stable: keeps created-desc
 
     # The panel doubles as the manager's home, so it also answers "where are my
     # projects?" -- the one question the rest of the UI could not. Fail-soft:
@@ -163,12 +219,12 @@ def admin_dashboard():
         'can_review_projects': can_review_initiative,
         'can_review_data': can_review_initiative,
         'can_review_pages': can_review_initiative,
-        'admin_initiatives': admin_initiatives,
         'project_requests': data.get('project_requests', []),
         'join_requests': data.get('join_requests', []),
         'content_requests': data.get('content_requests', []),
         'content_moderated': data.get('content_moderated', []),
         'data_requests': data.get('data_requests', []),
+        'data_connected': data_connected,
         'page_requests': data.get('page_requests', []),
         'counts': data.get('counts', {}),
         'organizations': organizations,

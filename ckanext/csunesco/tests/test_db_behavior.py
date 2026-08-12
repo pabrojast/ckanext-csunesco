@@ -332,6 +332,58 @@ def test_data_source_dictize_merges_extras(session):
     assert db.data_source_dictize(None) is None
 
 
+def _seed_sources_for_health(session):
+    """One project + one source per status, for the connected/pending split."""
+    project = db.CsProject()
+    project.id = 'p-health'
+    project.title = 'River monitoring'
+    project.slug = 'river-monitoring'
+    project.initiative_group = 'ihp-wins'
+    session.add(project)
+    for index, status in enumerate(('pending', 'approved', 'rejected')):
+        source = db.CsDataSource()
+        source.project_id = 'p-health'
+        source.form_id = 10 + index
+        source.title = status.title()
+        source.status = status
+        session.add(source)
+    session.commit()
+
+
+def test_approved_data_sources_lists_only_connected_rows(session):
+    _seed_sources_for_health(session)
+
+    total, rows = db.approved_data_sources()
+
+    assert total == 1
+    assert [r['status'] for r in rows] == ['approved']
+    # Decorated for the panel: names, not UUIDs.
+    assert rows[0]['project_title'] == 'River monitoring'
+    assert rows[0]['project_slug'] == 'river-monitoring'
+
+
+def test_pending_data_sources_is_unchanged_by_the_shared_helper(session):
+    """Regresión del refactor: ambas listas salen del mismo helper ahora."""
+    _seed_sources_for_health(session)
+
+    total, rows = db.pending_data_sources()
+
+    assert total == 1
+    assert [r['status'] for r in rows] == ['pending']
+    assert rows[0]['project_title'] == 'River monitoring'
+
+
+def test_connected_scope_honours_initiative_groups(session):
+    """Misma regla que la cola de pendientes: lista vacía = cero filas, nunca
+    'todas'."""
+    _seed_sources_for_health(session)
+
+    assert db.approved_data_sources(initiative_groups=[]) == (0, [])
+    total, rows = db.approved_data_sources(initiative_groups=['ihp-wins'])
+    assert (total, len(rows)) == (1, 1)
+    assert db.approved_data_sources(initiative_groups=['other'])[0] == 0
+
+
 class _FakeUser:
     def __init__(self, user_id, sysadmin):
         self.id = user_id

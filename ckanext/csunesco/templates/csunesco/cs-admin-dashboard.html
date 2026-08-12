@@ -16,7 +16,8 @@
   Vars: my_projects (list), admin_initiatives (list of group names),
         is_sysadmin, can_review_projects, can_review_data (bools),
         project_requests, join_requests, content_requests, data_requests
-        (lists), counts (dict).
+        (lists), counts (dict), data_connected (approved sources, each with a
+        live `probe` when the view had budget to check it).
 #}
 
 {% block subtitle %}{{ _("Approval panel") }}{% endblock %}
@@ -522,6 +523,55 @@
           </button>
         {% else %}
           <p class="cs-empty cs-wb-empty">{{ h.csunesco_icon('inbox', 22) }} {{ _("No data sources are awaiting review.") }}</p>
+        {% endif %}
+
+        {#
+          Connected sources -- a health strip, not a queue. Review is a
+          snapshot: a form can be made private or unpublished in the app months
+          later, and every chart, map and CSV on that project page dies with it.
+          This band is the only place that says so. Only the rows the view
+          actually probed within its budget carry a chip.
+        #}
+        {% if data_connected %}
+          <h3 class="cs-wb-palette-title">{{ _("Connected data sources") }}</h3>
+          <table class="cs-admin-table">
+            <thead>
+              <tr>
+                <th scope="col">{{ _("Title") }}</th>
+                <th scope="col">{{ _("Project") }}</th>
+                <th scope="col">{{ _("App form") }}</th>
+                <th scope="col">{{ _("Health") }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for d in data_connected %}
+                <tr>
+                  <td data-label="{{ _('Title') }}"><strong>{{ d.title }}</strong></td>
+                  <td data-label="{{ _('Project') }}">{{ d.project_title or d.project_id }}</td>
+                  <td data-label="{{ _('App form') }}">#{{ d.form_id }}</td>
+                  <td data-label="{{ _('Health') }}">
+                    {% if d.probe and not d.probe.ok %}
+                      {# Amber, not the pending queue's red REJECTED badge: an
+                         approved source going dark is a warning, not a verdict. #}
+                      <span class="cs-wb-chip cs-wb-chip-work">
+                        {{ h.csunesco_icon('alert', 13) }} {{ _("Not answering") }}
+                      </span>
+                      <br><span class="cs-muted">{{ _("Its charts and CSV downloads on the project page are failing. Check the form is still public and published in the app.") }}</span>
+                      {% if d.app_url %}
+                        <br><a class="cs-link" href="{{ d.app_url }}" target="_blank" rel="noopener noreferrer">{{ _("Open in the app") }} ↗</a>
+                      {% endif %}
+                    {% elif d.probe %}
+                      <span class="cs-muted">
+                        ✓ {{ _("%(n)s observations", n=d.probe.total) }}{% if d.probe.last_date %} · {{ _("last") }} {{ d.probe.last_date }}{% endif %}
+                      </span>
+                    {% else %}
+                      <span class="cs-muted">{{ _("Not checked on this load") }}</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         {% endif %}
       </div>
     {% endif %}

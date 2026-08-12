@@ -24,6 +24,11 @@ from ckanext.csunesco.logic.action import current_user_id
 
 DEFAULT_LIST_LIMIT = 20
 MAX_LIST_LIMIT = 100
+# The connected-sources health strip is a canary, not a queue: it is not paged,
+# and every row costs a live probe in the view. Bounding it here keeps the strip
+# to the most recent connections rather than growing without limit as the portal
+# does. Must stay <= views_admin.HEALTH_PROBE_MAX, or the tail never gets a chip.
+CONNECTED_LIST_LIMIT = 12
 
 # Per-request cache key on the Flask/CKAN ``g`` (counts depend on the user, so an
 # lru_cache would be wrong -- ``g`` is naturally scoped to one request/user).
@@ -128,6 +133,8 @@ def csunesco_admin_pending_list(context, data_dict):
         _mod_count, content_moderated = db.moderated_content(
             None, limit, offset)
         _data_count, data_requests = db.pending_data_sources(limit, offset)
+        _conn_count, data_connected = db.approved_data_sources(
+            CONNECTED_LIST_LIMIT, 0)
         _page_count, page_requests = db.pending_pages(limit, offset)
     else:
         # Initiative admins review the projects + data sources of THEIR
@@ -137,6 +144,8 @@ def csunesco_admin_pending_list(context, data_dict):
                 initiative_groups, limit, offset)
             _data_count, data_requests = db.pending_data_sources(
                 limit, offset, initiative_groups=initiative_groups)
+            _conn_count, data_connected = db.approved_data_sources(
+                CONNECTED_LIST_LIMIT, 0, initiative_groups=initiative_groups)
             # Pages are scoped by initiative like data sources: a plain project
             # admin cannot approve their own page, so it must not reach them.
             _page_count, page_requests = db.pending_pages(
@@ -144,6 +153,7 @@ def csunesco_admin_pending_list(context, data_dict):
         else:
             project_requests = []
             data_requests = []
+            data_connected = []
             page_requests = []
         scope = project_ids or []
         _join_count, join_requests = _pending_join_requests(
@@ -162,6 +172,10 @@ def csunesco_admin_pending_list(context, data_dict):
         # rejected one restored. Additive key -- existing consumers unaffected.
         'content_moderated': content_moderated,
         'data_requests': data_requests,
+        # Additive: approved sources whose upstream form the panel health-checks.
+        # Deliberately NOT part of ``counts`` -- an unreachable source is not
+        # work "waiting for review" and must not inflate the header badge.
+        'data_connected': data_connected,
         'page_requests': page_requests,
         # Identical numbers to the header badge (single cached source).
         'counts': _get_pending_counts(context),

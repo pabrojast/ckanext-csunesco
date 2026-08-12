@@ -621,6 +621,217 @@ def test_ofform_fetch_fails_closed_without_base_url(monkeypatch):
         ofform._fetch('/public/forms/1/export.csv')
 
 
+def test_ofform_fetch_logs_which_form_failed(monkeypatch, caplog):
+    """Un 404 aquí casi siempre significa que UN form dejó de ser público.
+
+    Sin el path en el log, el operador ve "fetch failed" y no sabe cuál de los
+    doce forms conectados se apagó -- que es justo el dato accionable.
+    """
+    import logging
+    import urllib.error
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    monkeypatch.setitem(
+        tk.config, ofform.BASE_URL_OPTION, 'https://ofform.example')
+
+    def boom(*args, **kwargs):
+        raise urllib.error.HTTPError(
+            'https://ofform.example', 404, 'Not Found', {}, None)
+
+    monkeypatch.setattr(ofform.urllib.request, 'urlopen', boom)
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(ofform.OfformError):
+            ofform._fetch('/public/forms/11/dashboard-data')
+    assert '/public/forms/11/dashboard-data' in caplog.text
+    assert '404' in caplog.text
+
+
+def test_ofform_fetch_logs_the_path_on_network_error(monkeypatch, caplog):
+    import logging
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    monkeypatch.setitem(
+        tk.config, ofform.BASE_URL_OPTION, 'https://ofform.example')
+
+    def boom(*args, **kwargs):
+        raise OSError('connection reset')
+
+    monkeypatch.setattr(ofform.urllib.request, 'urlopen', boom)
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(ofform.OfformError):
+            ofform._fetch('/public/forms/3/export.csv')
+    assert '/public/forms/3/export.csv' in caplog.text
+
+
+# --------------------------------------------------------------------------- #
+# Proxy de datos: una fuente caída NO es un bug nuestro, y se dice distinto    #
+# --------------------------------------------------------------------------- #
+
+def test_an_upstream_outage_is_tagged_so_the_chart_can_say_so():
+    """El chart JS elige la frase mirando ``reason``.
+
+    Si esta clave desaparece, el visitante lee "the chart could not be loaded"
+    (culpa nuestra) en vez de "the data is temporarily away".
+    """
+    views_data = pytest.importorskip('ckanext.csunesco.logic.views_data')
+    response = views_data._upstream_error(views_data.UPSTREAM_UNAVAILABLE)
+    # 502, no 503: el que falló fue el gateway, no ESTE servidor -- y el proxy
+    # de GeoJSON lo consume Terria, cuyo reintento/caché sí depende del status.
+    assert response.status_code == 502
+    payload = json.loads(response.get_data(as_text=True))
+    assert payload['reason'] == 'upstream_unavailable'
+    assert payload['error'] == views_data.UNAVAILABLE_MESSAGE
+
+
+def test_our_own_bug_is_not_blamed_on_the_upstream():
+    views_data = pytest.importorskip('ckanext.csunesco.logic.views_data')
+    payload = json.loads(
+        views_data._upstream_error(
+            views_data.INTERNAL_ERROR).get_data(as_text=True))
+    assert payload['reason'] == 'internal_error'
+
+
+def test_reason_codes_are_never_translated():
+    """Se comparan literalmente en JS: traducirlos rompería la función en todos
+    los locales que no sean inglés, en silencio."""
+    views_data = pytest.importorskip('ckanext.csunesco.logic.views_data')
+    for reason in (views_data.UPSTREAM_UNAVAILABLE, views_data.INTERNAL_ERROR):
+        assert isinstance(reason, str)
+        assert reason == reason.lower()
+        assert ' ' not in reason
+
+
+# --------------------------------------------------------------------------- #
+# Panel de revisión: sondear fuentes caídas no puede costarle el panel a nadie #
+# --------------------------------------------------------------------------- #
+
+def test_probing_stops_at_the_row_cap(monkeypatch):
+    views_admin = pytest.importorskip('ckanext.csunesco.logic.views_admin')
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    calls = []
+    monkeypatch.setattr(ofform, 'probe_form',
+                        lambda form_id: calls.append(form_id) or {'ok': False})
+    monkeypatch.setattr(ofform, 'public_form_url', lambda form_id: None)
+    rows = [{'form_id': n} for n in range(views_admin.HEALTH_PROBE_MAX + 10)]
+
+    views_admin._probe_rows(rows)
+
+    assert len(calls) == views_admin.HEALTH_PROBE_MAX
+    assert 'probe' not in rows[views_admin.HEALTH_PROBE_MAX]
+
+
+def test_the_row_cap_never_truncates_a_full_page_of_pending_rows():
+    """El tope de filas NO se auto-cura (a diferencia del presupuesto): si baja
+    de la página del panel, la cola de pendientes pierde chips para siempre."""
+    views_admin = pytest.importorskip('ckanext.csunesco.logic.views_admin')
+    admin = pytest.importorskip('ckanext.csunesco.logic.action.admin')
+    assert views_admin.HEALTH_PROBE_MAX >= views_admin.PANEL_PAGE_SIZE
+    assert admin.CONNECTED_LIST_LIMIT <= views_admin.HEALTH_PROBE_MAX
+
+
+def test_probing_stops_when_the_budget_is_spent(monkeypatch):
+    """Ocho forms muertos x PROBE_TIMEOUT es un panel de 48 s. El presupuesto
+    de reloj es el techo que lo impide."""
+    import time as _time
+    views_admin = pytest.importorskip('ckanext.csunesco.logic.views_admin')
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+
+    def slow(form_id):
+        _time.sleep(0.02)
+        return {'ok': False}
+
+    monkeypatch.setattr(ofform, 'probe_form', slow)
+    monkeypatch.setattr(ofform, 'public_form_url', lambda form_id: None)
+    rows = [{'form_id': n} for n in range(12)]
+
+    probed = views_admin._probe_rows(rows, budget=0.05)
+
+    assert 0 < len(probed) < len(rows)
+
+
+def test_a_bad_row_never_costs_the_panel(monkeypatch):
+    views_admin = pytest.importorskip('ckanext.csunesco.logic.views_admin')
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+
+    def flaky(form_id):
+        if form_id == 1:
+            raise RuntimeError('upstream on fire')
+        return {'ok': True, 'total': 3}
+
+    monkeypatch.setattr(ofform, 'probe_form', flaky)
+    monkeypatch.setattr(ofform, 'public_form_url', lambda form_id: None)
+    rows = [{'form_id': 0}, {'form_id': 1}, {'form_id': 2}]
+
+    probed = views_admin._probe_rows(rows)
+
+    assert len(probed) == 2
+    assert rows[2]['probe'] == {'ok': True, 'total': 3}
+
+
+def test_unreachable_sources_sort_to_the_top():
+    views_admin = pytest.importorskip('ckanext.csunesco.logic.views_admin')
+    rows = [{'probe': {'ok': True}}, {}, {'probe': {'ok': False}}]
+    rows.sort(key=views_admin._health_rank)
+    assert rows[0]['probe'] == {'ok': False}
+    assert rows[-1] == {}
+
+
+# --------------------------------------------------------------------------- #
+# El probe tiene su propia memoria: sin ella, cada render re-marca los muertos #
+# --------------------------------------------------------------------------- #
+
+def test_a_dark_form_is_probed_once_not_once_per_render(monkeypatch):
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    ofform.cache_clear()
+    calls = []
+
+    def boom(path, timeout=None):
+        calls.append(path)
+        raise ofform.OfformError('HTTP 404')
+
+    monkeypatch.setattr(ofform, '_fetch', boom)
+    try:
+        results = [ofform.probe_form(7) for _ in range(5)]
+        assert all(r == {'ok': False} for r in results)
+        assert len(calls) == 1
+    finally:
+        ofform.cache_clear()
+
+
+def test_the_probe_memo_never_blocks_the_proxy(monkeypatch):
+    """Clave de caché disjunta: un probe corto que falla no puede dejar sin
+    datos a los proxys, que sí tienen tiempo de sobra."""
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    ofform.cache_clear()
+    calls = []
+
+    def boom(path, timeout=None):
+        calls.append(timeout)
+        raise ofform.OfformError('HTTP 404')
+
+    monkeypatch.setattr(ofform, '_fetch', boom)
+    try:
+        assert ofform.probe_form(7) == {'ok': False}
+        with pytest.raises(ofform.OfformError):
+            ofform.fetch_dashboard_data(7)
+        # El proxy SÍ salió a la red: no heredó el veredicto del probe.
+        assert len(calls) == 2
+    finally:
+        ofform.cache_clear()
+
+
+def test_a_short_probe_cannot_poison_the_cache_with_garbage(monkeypatch):
+    """Las ramas de JSON inválido ignoraban ``remember_failure``."""
+    ofform = pytest.importorskip('ckanext.csunesco.logic.ofform')
+    ofform.cache_clear()
+    monkeypatch.setattr(ofform, '_fetch',
+                        lambda path, timeout=None: b'not json at all')
+    try:
+        with pytest.raises(ofform.OfformError):
+            ofform.fetch_dashboard_data(7, timeout=ofform.PROBE_TIMEOUT)
+        assert ofform._cache_get(('dashboard', 7)) is None
+    finally:
+        ofform.cache_clear()
+
+
 # ---------------------------------------------------------------------------
 # ofform client: la caché tiene que proteger de verdad a los workers
 # ---------------------------------------------------------------------------

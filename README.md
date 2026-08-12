@@ -268,9 +268,24 @@ Four tabs:
    suggested/default org). If
    dataset creation fails (e.g. missing `dataset_owner_org` or portal-schema
    fields), the row **stays pending** and can be retried after fixing config.
-   Data truncates at ofform's 20 000-row export cap. If a form owner later
-   reverts the form to private in the app, the proxy starts returning 502 for
-   that source.
+   Data truncates at ofform's 20 000-row export cap.
+
+   Below the queue, **Connected data sources** health-checks the sources that are
+   ALREADY approved, unreachable ones first. Review is only a snapshot: if a form
+   owner later reverts the form to private (or unpublishes it) in the app, the
+   proxy starts returning 502 for that source and every chart, map and CSV on the
+   project page stops working — this strip is what makes that visible instead of
+   silent. Probing is bounded by a wall-clock budget per render and memoised
+   (`PROBE_CACHE_TTL`), so a dead upstream cannot hold the panel hostage; rows
+   not reached on a given load show "Not checked on this load" and fill in on the
+   next one.
+
+   The proxies tag that failure so the browser can word it correctly: the JSON
+   error envelope carries `reason: "upstream_unavailable"` (the app's form went
+   dark) or `reason: "internal_error"` (a bug on our side), both still HTTP 502.
+   A chart block turns the first into "this data is temporarily unavailable"
+   rather than blaming the portal. The reason codes are a machine channel and are
+   never translated.
 
 5. **Pages to review** (sysadmin or initiative admin) — project pages a manager
    published. Each row links to a **Preview** of that exact draft and carries

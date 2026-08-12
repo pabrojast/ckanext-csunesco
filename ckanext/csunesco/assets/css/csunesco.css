@@ -1552,6 +1552,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Any two visible children -- the no-JS <noscript> line and the placeholder,
+     say -- must not run together into one sentence. */
+  gap: 0.5rem;
 }
 
 .cs-chart canvas { max-width: 100%; }
@@ -1564,10 +1567,12 @@
   text-align: center;
 }
 
-/* The placeholder is only for the pre-render / failed / no-JS states. The CSV
-   link now lives in the figcaption, so nothing has to be offset out of the
-   card to stay reachable. */
-.cs-chart.is-rendered .cs-chart-fallback { display: none; }
+/* The placeholder is only for the NO-JS state. The CSV link now lives in the
+   figcaption, so nothing has to be offset out of the card to stay reachable.
+   `has-message` covers loading/empty/failed -- without it the failure state
+   printed the placeholder next to the real message, in the same flex row. */
+.cs-chart.is-rendered .cs-chart-fallback,
+.cs-chart.has-message .cs-chart-fallback { display: none; }
 
 .cs-chart-legend {
   display: flex;
