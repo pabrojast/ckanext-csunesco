@@ -627,7 +627,9 @@
                        knows whether to expect embedded media or a typo fix. #}
                     {% for kind in row.requires_review or [] %}
                       {% set spec = h.csunesco_block_type(kind) %}
-                      <span class="cs-status-badge cs-status-pending">{{ _(spec.label) if spec else kind }}</span>
+                      <span class="cs-status-badge cs-status-pending">
+                        {% if kind == 'project_cover' %}{{ _("Project cover") }}{% else %}{{ _(spec.label) if spec else kind }}{% endif %}
+                      </span>
                     {% endfor %}
                   </td>
                   <td data-label="{{ _('Decision') }}">

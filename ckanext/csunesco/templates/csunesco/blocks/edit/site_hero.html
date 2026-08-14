@@ -11,9 +11,12 @@
   <input type="text" id="b{{ index }}-hero-tagline" name="blocks[{{ index }}][tagline]"
          value="{{ block.tagline }}">
 </div>
-<div class="cs-field">
-  <label for="b{{ index }}-hero-image">{{ _("Background image URL") }}</label>
-  <input type="text" id="b{{ index }}-hero-image" name="blocks[{{ index }}][image_url]"
-         value="{{ block.image_url }}" placeholder="https://… {{ _('or') }} /csunesco/images/…">
-  {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='image_url' %}
-</div>
+{% snippet "csunesco/blocks/edit/_image_picker.html",
+           input_id='b%s-hero-image' | format(index),
+           url_name='blocks[%s][image_url]' | format(index),
+           upload_name='blocks[%s][image_upload]' | format(index),
+           clear_name='blocks[%s][image_clear]' | format(index),
+           value=block.image_url, fallback='/csunesco/images/cs-hero.png',
+           label=_("Background image URL"),
+           clear_label=_("Restore the standard background image"),
+           drops=drops, url_field='image_url', upload_field='image_upload' %}

@@ -675,7 +675,7 @@ def test_an_http_image_url_is_reported_against_its_block_and_slot():
     ]}])
     assert len(drops) == 1
     drop = drops[0]
-    assert drop['field'] == 'url' and drop['reason'] == 'not_https'
+    assert drop['field'] == 'url' and drop['reason'] == 'bad_image_url'
     assert drop['item'] == 1
     # The recorded id must be the one the template renders, or the editor
     # cannot open or anchor the right block.
@@ -927,6 +927,57 @@ def test_site_hero_overrides_normalize_and_drop_unsafe_images():
                              report=report)
     assert out[0]['image_url'] == ''
     assert report.drops[0]['reason'] == 'bad_image_url'
+
+
+def test_gallery_accepts_uploaded_internal_paths_without_narrowing_https():
+    out = b.normalize_block({'type': 'image', 'items': [
+        {'url': '/uploads/csunesco/one.webp'},
+        {'url': 'https://example.test/a(1).jpg?size=wide'},
+    ]})
+    assert [item['url'] for item in out['items']] == [
+        '/uploads/csunesco/one.webp',
+        'https://example.test/a(1).jpg?size=wide',
+    ]
+
+
+def test_site_initiative_images_are_canonical_optional_overrides():
+    out = b.normalize_block({'type': 'site_initiatives', 'intro': 'Choose',
+                             'items': [
+        {'name': 'riverwatch',
+         'image_url': '/uploads/csunesco/river.jpg'},
+        {'name': 'not-an-initiative',
+         'image_url': '/uploads/csunesco/forged.jpg'},
+        {'name': 'riverwatch',
+         'image_url': '/uploads/csunesco/duplicate.jpg'},
+    ]})
+    assert out['intro'] == 'Choose'
+    assert out['items'] == [{
+        'name': 'riverwatch',
+        'image_url': '/uploads/csunesco/river.jpg',
+    }]
+
+
+def test_old_site_initiatives_payload_keeps_empty_override_list():
+    out = b.normalize_block({'type': 'site_initiatives',
+                             'intro': 'Still automatic'})
+    assert out['items'] == []
+    assert out['intro'] == 'Still automatic'
+
+
+def test_raw_form_parser_keeps_nested_file_values_until_upload_resolution():
+    marker = object()
+    raw = b.raw_blocks_from_form([
+        ('blocks[2][type]', 'image'),
+        ('blocks[2][items][4][url]', 'https://example.test/old.jpg'),
+    ], [('blocks[2][items][4][upload]', marker)])
+    assert raw[0]['type'] == 'image'
+    assert raw[0]['items'][4]['upload'] is marker
+
+
+def test_cover_review_can_disable_the_trusted_fast_path():
+    assert b.page_initial_status(False, True, b.default_blocks()) == 'approved'
+    assert b.page_initial_status(
+        False, True, b.default_blocks(), additional_review=True) == 'pending'
 
 
 def test_site_limits_are_clamped():

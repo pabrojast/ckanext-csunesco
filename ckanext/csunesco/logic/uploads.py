@@ -1,0 +1,214 @@
+# encoding: utf-8
+"""Image-upload orchestration for the page builder.
+
+The block model stores URLs only. This module is the narrow CKAN-dependent
+bridge that turns multipart file controls into same-origin FileStore URLs
+*before* block normalization and page-action validation run.
+
+Uploads are immutable: replacing an image only changes the draft reference.
+The old file may still be used by the published page (or pasted elsewhere), so
+automatic deletion would make draft editing capable of breaking live pages.
+"""
+import os
+
+import ckan.lib.uploader as ckan_uploader
+import ckan.plugins.toolkit as tk
+
+
+UPLOAD_TO = 'csunesco'
+PUBLIC_PREFIX = '/uploads/{0}/'.format(UPLOAD_TO)
+MAX_UPLOADS_PER_REQUEST = 12
+
+
+class PageImageUploadError(Exception):
+    """A bounded list of editor-addressable upload failures."""
+
+    def __init__(self, problems):
+        super().__init__('Page image upload failed')
+        self.problems = list(problems or [])
+
+
+def uploads_enabled():
+    """Whether CKAN's classic FileStore is ready for a web upload."""
+    configured = tk.config.get('ckan.uploads_enabled')
+    if configured is not None and not tk.asbool(configured):
+        return False
+    return bool(tk.config.get('ckan.storage_path'))
+
+
+def max_image_size():
+    """Configured per-image limit in MiB (CKAN's default is 2)."""
+    try:
+        return int(tk.config.get('ckan.max_image_size') or 2)
+    except (TypeError, ValueError):
+        return 2
+
+
+def _truthy(value):
+    return value is True or (
+        isinstance(value, str)
+        and value.strip().lower() in ('1', 'true', 'on', 'yes'))
+
+
+def _has_file(value):
+    return bool(value is not None and getattr(value, 'filename', None))
+
+
+def _problem(block, field, reason, item=None):
+    return {
+        'block': (block or {}).get('id'),
+        'field': field,
+        'item': item,
+        'reason': reason,
+        'value': u'',
+    }
+
+
+def _reason_for(error):
+    messages = []
+    for values in getattr(error, 'error_dict', {}).values():
+        if isinstance(values, (list, tuple)):
+            messages.extend(str(value) for value in values)
+        elif values:
+            messages.append(str(values))
+    text = ' '.join(messages).lower()
+    return 'upload_too_large' if 'too large' in text else 'upload_bad_type'
+
+
+class UploadBatch(object):
+    """Prepared uploads plus rollback information for one page POST."""
+
+    def __init__(self):
+        self._jobs = []
+        self._written = []
+        self.project_image_url = None
+
+    def add_picker(self, target, url_field, upload_field, clear_field,
+                   block=None, item=None, error_field='image_upload'):
+        """Apply clear semantics or stage one non-empty file input."""
+        upload = target.pop(upload_field, None)
+        clear = target.pop(clear_field, None)
+        if _has_file(upload):
+            self._jobs.append({
+                'target': target,
+                'url_field': url_field,
+                'upload': upload,
+                'block': block,
+                'item': item,
+                'error_field': error_field,
+            })
+        elif _truthy(clear):
+            target[url_field] = u''
+
+    def prepare_blocks(self, raw_blocks):
+        for block in raw_blocks or []:
+            block_type = block.get('type')
+            if block_type in ('site_hero', 'site_about', 'media_text'):
+                self.add_picker(block, 'image_url', 'image_upload',
+                                'image_clear', block=block)
+            elif block_type in ('image', 'site_initiatives'):
+                items = block.get('items') or {}
+                if isinstance(items, dict):
+                    ordered = [items[key] for key in sorted(items)]
+                elif isinstance(items, list):
+                    ordered = items
+                else:
+                    ordered = []
+                url_field = ('url' if block_type == 'image'
+                             else 'image_url')
+                for index, item in enumerate(ordered):
+                    if isinstance(item, dict):
+                        self.add_picker(item, url_field, 'upload', 'clear',
+                                        block=block, item=index)
+        return raw_blocks
+
+    def prepare_project_cover(self, url, upload=None, clear=None):
+        holder = {
+            'project_image_url': url or u'',
+            'project_image_upload': upload,
+            'project_image_clear': clear,
+        }
+        self.add_picker(holder, 'project_image_url', 'project_image_upload',
+                        'project_image_clear', block=None,
+                        error_field='project_image_upload')
+        self._project_holder = holder
+
+    def write(self):
+        if len(self._jobs) > MAX_UPLOADS_PER_REQUEST:
+            raise PageImageUploadError([
+                _problem(job.get('block'), job.get('error_field'),
+                         'too_many_uploads', job.get('item'))
+                for job in self._jobs[:1]
+            ])
+        if self._jobs and not uploads_enabled():
+            raise PageImageUploadError([
+                _problem(job.get('block'), job.get('error_field'),
+                         'uploads_disabled', job.get('item'))
+                for job in self._jobs[:1]
+            ])
+
+        prepared = []
+        try:
+            # CKAN validates declared and content-detected MIME types here.
+            # Prepare every job before writing the first file so a bad second
+            # picker cannot leave the first one orphaned.
+            for job in self._jobs:
+                data = {'url': u'', 'upload': job['upload']}
+                upload = ckan_uploader.get_uploader(UPLOAD_TO)
+                upload.update_data_dict(data, 'url', 'upload', 'clear')
+                if not data.get('url'):
+                    raise tk.ValidationError(
+                        {'upload': [tk._('The image could not be uploaded.')]})
+                prepared.append((job, upload, data['url']))
+
+            for job, upload, filename in prepared:
+                upload.upload(max_image_size())
+                filepath = getattr(upload, 'filepath', None)
+                if filepath:
+                    self._written.append(filepath)
+                job['target'][job['url_field']] = PUBLIC_PREFIX + filename
+        except tk.ValidationError as error:
+            self.rollback()
+            job = job if 'job' in locals() else (self._jobs[0] if self._jobs
+                                                  else {})
+            raise PageImageUploadError([
+                _problem(job.get('block'), job.get('error_field'),
+                         _reason_for(error), job.get('item'))
+            ])
+        except Exception:
+            self.rollback()
+            raise PageImageUploadError([
+                _problem((self._jobs[0] if self._jobs else {}).get('block'),
+                         (self._jobs[0] if self._jobs else {}).get(
+                             'error_field', 'image_upload'), 'upload_failed')
+            ])
+
+        if hasattr(self, '_project_holder'):
+            self.project_image_url = self._project_holder[
+                'project_image_url']
+        return self
+
+    def rollback(self):
+        """Delete only files created by this request, never older assets."""
+        storage = tk.config.get('ckan.storage_path')
+        expected = (os.path.realpath(os.path.join(
+            storage, 'storage', 'uploads', UPLOAD_TO)) if storage else None)
+        for filepath in self._written:
+            try:
+                real = os.path.realpath(filepath)
+                if expected and os.path.commonpath((expected, real)) == expected:
+                    os.remove(real)
+            except (OSError, ValueError):
+                pass
+        self._written = []
+
+
+def process_page_images(raw_blocks, project_cover=None):
+    """Resolve all multipart controls and return the rollback-capable batch."""
+    batch = UploadBatch()
+    batch.prepare_blocks(raw_blocks)
+    if project_cover is not None:
+        batch.prepare_project_cover(
+            project_cover.get('url'), project_cover.get('upload'),
+            project_cover.get('clear'))
+    return batch.write()

@@ -1,0 +1,54 @@
+{#
+  Shared URL + FileStore image picker. It remains fully usable without JS:
+  the file is uploaded on the next ordinary form submit. JavaScript only swaps
+  the thumbnail immediately.
+
+  Vars: input_id, url_name, upload_name, clear_name, value, label,
+        fallback, clear_label, drops, url_field, upload_field, item.
+#}
+{% set current = value or fallback or '' %}
+<div class="cs-image-picker" data-image-picker
+     data-image-fallback="{{ fallback or '' }}">
+  <div class="cs-image-picker-preview">
+    <img data-image-preview alt="" referrerpolicy="no-referrer"
+         {% if current %}src="{{ current }}"{% else %}hidden{% endif %}>
+    <span data-image-empty{% if current %} hidden{% endif %}>{{ _("No image selected") }}</span>
+  </div>
+  {% if h.csunesco_uploads_enabled() %}
+    <div class="cs-field">
+      <label for="{{ input_id }}-upload">{{ _("Upload image") }}</label>
+      <input type="file" id="{{ input_id }}-upload" name="{{ upload_name }}"
+             accept="image/jpeg,image/png,image/webp" data-image-file>
+      <p class="cs-hint">
+        {{ _("JPEG, PNG or WebP, up to %(size)s MB.", size=h.csunesco_image_upload_max_size()) }}
+      </p>
+      {% if item is defined %}
+        {% snippet "csunesco/blocks/edit/_drop.html", drops=drops,
+                   field=upload_field, item=item %}
+      {% else %}
+        {% snippet "csunesco/blocks/edit/_drop.html", drops=drops,
+                   field=upload_field %}
+      {% endif %}
+    </div>
+  {% else %}
+    <p class="cs-hint">
+      {{ _("File uploads are not configured on this portal; paste an https:// image address instead.") }}
+    </p>
+  {% endif %}
+  <div class="cs-field">
+    <label for="{{ input_id }}-url">{{ label }}</label>
+    <input type="text" id="{{ input_id }}-url" name="{{ url_name }}"
+           value="{{ value or '' }}" placeholder="https://…" data-image-url>
+    {% if item is defined %}
+      {% snippet "csunesco/blocks/edit/_drop.html", drops=drops,
+                 field=url_field, item=item %}
+    {% else %}
+      {% snippet "csunesco/blocks/edit/_drop.html", drops=drops,
+                 field=url_field %}
+    {% endif %}
+  </div>
+  <label class="cs-pb-toggle">
+    <input type="checkbox" name="{{ clear_name }}" value="on" data-image-clear>
+    {{ clear_label }}
+  </label>
+</div>

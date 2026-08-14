@@ -48,15 +48,51 @@ def _require_project(data_dict):
     return project
 
 
-def draft_hash(blocks):
+_MISSING = object()
+
+
+def draft_hash(blocks, project_image_url=_MISSING):
     """A stable fingerprint of a draft, used for optimistic concurrency.
 
     The review panel echoes this back with the approve request; approving a
     draft whose hash has moved on is refused, so a manager who keeps editing
     after submitting can never have an unseen version published on them.
     """
-    payload = blocks_module.blocks_to_json(blocks or [])
+    if project_image_url is _MISSING:
+        payload = blocks_module.blocks_to_json(blocks or [])
+    else:
+        payload = json.dumps({
+            'blocks': blocks or [],
+            'project_image_url': project_image_url or u'',
+        }, ensure_ascii=False, separators=(',', ':'), sort_keys=True)
     return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+
+def _page_extras(page):
+    extras = db._load_json(page.extras, {})
+    return extras if isinstance(extras, dict) else {}
+
+
+def _validated_project_image(value):
+    try:
+        return validators.csunesco_valid_image_url(value or u'') or u''
+    except tk.Invalid as error:
+        raise tk.ValidationError({'project_image_url': [str(error)]})
+
+
+def _review_requirements(blocks, cover_changed=False):
+    kinds = blocks_module.blocks_requiring_review(blocks)
+    if cover_changed and 'project_cover' not in kinds:
+        kinds.append('project_cover')
+    return kinds
+
+
+def _publish_project_cover(project, extras):
+    if 'draft_project_image_url' not in extras:
+        return
+    project.image_url = extras['draft_project_image_url'] or None
+    project.modified = _utcnow()
+    db.Session.add(project)
 
 
 def _validate_policy(blocks):
@@ -182,8 +218,16 @@ def csunesco_project_page_update(context, data_dict):
     page = db.get_or_create_project_page(project.id, created_by=user_id)
     withdrawn = page.status == 'pending'
 
+    extras = _page_extras(page)
+    if 'project_image_url' in data_dict:
+        extras['draft_project_image_url'] = _validated_project_image(
+            data_dict.get('project_image_url'))
+
     page.draft_json = blocks_module.blocks_to_json(blocks)
-    page.draft_hash = draft_hash(blocks)
+    page.draft_hash = draft_hash(
+        blocks, extras['draft_project_image_url']) \
+        if 'draft_project_image_url' in extras else draft_hash(blocks)
+    page.extras = json.dumps(extras)
     page.status = u'draft'
     page.modified = _utcnow()
     if withdrawn:
@@ -222,8 +266,14 @@ def csunesco_project_page_submit(context, data_dict):
     blocks = blocks_module.blocks_from_json(page.draft_json)
     _validate_policy(blocks)
 
+    extras = _page_extras(page)
+    draft_cover = extras.get('draft_project_image_url', _MISSING)
+    cover_changed = (draft_cover is not _MISSING
+                     and (draft_cover or None) != project.image_url)
+    requirements = _review_requirements(blocks, cover_changed)
     status = blocks_module.page_initial_status(
-        auth._is_sysadmin(context), bool(project.trusted), blocks)
+        auth._is_sysadmin(context), bool(project.trusted), blocks,
+        additional_review=cover_changed)
 
     now = _utcnow()
     user_id = current_user_id(context)
@@ -231,10 +281,7 @@ def csunesco_project_page_submit(context, data_dict):
     page.submitted_at = now
     # Stashed here rather than recomputed in the review panel: describing a row
     # would otherwise mean parsing every pending page's draft JSON.
-    extras = db._load_json(page.extras, {})
-    if not isinstance(extras, dict):
-        extras = {}
-    extras['requires_review'] = blocks_module.blocks_requiring_review(blocks)
+    extras['requires_review'] = requirements
     extras['submitted_by_name'] = _user_display_name(user_id)
     extras['first_publication'] = page.published_json is None
     page.extras = json.dumps(extras)
@@ -242,6 +289,7 @@ def csunesco_project_page_submit(context, data_dict):
     page.modified = now
     if status == 'approved':
         page.published_json = page.draft_json
+        _publish_project_cover(project, extras)
         page.published_at = now
         page.reviewed_by = user_id
         page.reviewed_at = now
@@ -253,7 +301,7 @@ def csunesco_project_page_submit(context, data_dict):
 
     result = db.page_dictize(page, include_draft=True)
     result['published'] = status == 'approved'
-    result['requires_review'] = blocks_module.blocks_requiring_review(blocks)
+    result['requires_review'] = requirements
     return result
 
 
@@ -280,7 +328,9 @@ def csunesco_project_page_approve(context, data_dict):
             'before approving.')]})
 
     now = _utcnow()
+    extras = _page_extras(page)
     page.published_json = page.draft_json
+    _publish_project_cover(project, extras)
     page.published_at = now
     page.status = u'approved'
     page.reviewed_by = current_user_id(context)

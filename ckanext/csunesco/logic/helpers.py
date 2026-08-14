@@ -242,6 +242,18 @@ def csunesco_blocks_need_review(blocks):
     return bool(blocks_module.blocks_requiring_review(blocks))
 
 
+def csunesco_uploads_enabled():
+    """Whether the page editor may offer a working file picker."""
+    from ckanext.csunesco.logic import uploads
+    return uploads.uploads_enabled()
+
+
+def csunesco_image_upload_max_size():
+    """Configured per-file image limit in MiB for editor hint text."""
+    from ckanext.csunesco.logic import uploads
+    return uploads.max_image_size()
+
+
 def csunesco_block_content(ctx, block):
     """Rows a ``content_list`` block should render (resolved in the view).
 

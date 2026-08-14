@@ -1868,6 +1868,51 @@
 
 .cs-pb-items { display: grid; gap: 0.75rem; }
 
+.cs-image-picker {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  margin-bottom: var(--space-unit);
+  border: 1px solid #dbe4ee;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.cs-image-picker .cs-field { margin-bottom: 0; }
+
+.cs-image-picker-preview {
+  display: grid;
+  place-items: center;
+  min-height: 110px;
+  overflow: hidden;
+  border: 1px dashed #b8c7d8;
+  border-radius: 8px;
+  background: #fff;
+  color: #66788a;
+  font-size: 0.88rem;
+}
+
+.cs-image-picker-preview img {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+}
+
+.cs-image-picker input[type="file"] { max-width: 100%; }
+
+.cs-project-cover-editor {
+  margin-bottom: calc(var(--space-unit) * 1.25);
+  padding: var(--space-unit);
+  border: 1px solid var(--wb-line, #d8e1eb);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.cs-project-cover-editor > .cs-hint {
+  margin-bottom: var(--space-unit);
+}
+
 .cs-pb-item {
   border: 1px solid #e6ecf3;
   border-radius: 10px;

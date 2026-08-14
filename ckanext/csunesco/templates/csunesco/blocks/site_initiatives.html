@@ -9,11 +9,14 @@
   {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
   <div class="cs-initiative-grid">
     {% for initiative in h.csunesco_initiatives() %}
+      {% set matches = block['items'] | selectattr('name', 'equalto', initiative.name) | list %}
+      {% set override = matches[0] if matches else {} %}
+      {% set fallback_image = '/csunesco/images/initiative-' ~ initiative.name ~ '.png' %}
       <article class="cs-initiative-card">
         <a class="cs-initiative-card-link"
            href="{{ h.url_for('csunesco.initiative_index', name=initiative.name) }}">
           <img class="cs-initiative-card-img" loading="lazy" alt=""
-               src="/csunesco/images/initiative-{{ initiative.name }}.png">
+               src="{{ override.image_url or fallback_image }}">
           <span class="cs-initiative-card-text">
             <h3 class="cs-card-title">{{ initiative.title }}</h3>
             <span class="cs-card-cta">{{ _("View projects") }} &rarr;</span>

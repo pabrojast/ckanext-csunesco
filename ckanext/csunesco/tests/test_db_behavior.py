@@ -20,6 +20,7 @@ try:
     from sqlalchemy.exc import IntegrityError
     import ckan  # noqa: F401  -- ensure the real CKAN model layer is importable
     from ckanext.csunesco import db
+    from ckanext.csunesco.logic.action import page as page_action
     HAVE_CKAN = True
 except Exception:  # pragma: no cover - environment without CKAN
     HAVE_CKAN = False
@@ -751,6 +752,65 @@ def test_site_page_row_round_trips(session):
     assert result['project_id'] == db.SITE_PAGE_ID
     assert result['published_blocks'] is None
     assert result['draft_blocks'][0]['type'] == 'site_hero'
+
+
+def test_page_dictize_never_leaks_draft_project_cover_to_public(session):
+    page = db.get_or_create_project_page('project-cover', created_by='u1')
+    page.extras = json.dumps({
+        'draft_project_image_url': '/uploads/csunesco/draft.jpg',
+        'requires_review': ['project_cover'],
+    })
+    session.commit()
+
+    public = db.page_dictize(page, include_draft=False)
+    manager = db.page_dictize(page, include_draft=True)
+    assert 'draft_project_image_url' not in public
+    assert manager['draft_project_image_url'] == \
+        '/uploads/csunesco/draft.jpg'
+
+
+def test_project_cover_follows_page_review_before_reaching_public(
+        session, monkeypatch):
+    project = db.CsProject()
+    project.slug = 'reviewed-cover'
+    project.title = 'Reviewed cover'
+    project.status = 'approved'
+    project.trusted = False
+    project.image_url = '/uploads/csunesco/old.jpg'
+    session.add(project)
+    session.commit()
+
+    monkeypatch.setattr(page_action.tk, 'check_access',
+                        lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(page_action.auth, 'can_manage_project',
+                        lambda _context, _project_id: True)
+    monkeypatch.setattr(page_action.auth, '_is_sysadmin',
+                        lambda _context: False)
+    monkeypatch.setattr(page_action, 'current_user_id',
+                        lambda _context: 'manager')
+
+    updated = page_action.csunesco_project_page_update(
+        {}, {'project_id': project.id,
+             'blocks': page_action.blocks_module.default_blocks(),
+             'project_image_url': '/uploads/csunesco/new.jpg'})
+    assert updated['draft_project_image_url'].endswith('/new.jpg')
+    assert db.get_project(project.id).image_url.endswith('/old.jpg')
+
+    submitted = page_action.csunesco_project_page_submit(
+        {}, {'project_id': project.id})
+    assert submitted['published'] is False
+    assert 'project_cover' in submitted['requires_review']
+    assert db.get_project(project.id).image_url.endswith('/old.jpg')
+
+    page_action.csunesco_project_page_approve(
+        {}, {'project_id': project.id, 'draft_hash': updated['draft_hash']})
+    assert db.get_project(project.id).image_url.endswith('/new.jpg')
+
+
+def test_draft_hash_changes_when_only_project_cover_changes():
+    blocks = page_action.blocks_module.default_blocks()
+    assert page_action.draft_hash(blocks, '/uploads/csunesco/a.jpg') != \
+        page_action.draft_hash(blocks, '/uploads/csunesco/b.jpg')
 
 
 def test_pending_counts_key_set_never_drifts(session):

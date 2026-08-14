@@ -25,13 +25,14 @@
     {% set item = items[slot] if slot < items | length else {} %}
     <fieldset class="cs-pb-item cs-pb-item-inline">
       <legend>{{ _("Image %(n)s", n=slot + 1) }}</legend>
-      <span>
-        <label for="b{{ index }}-i{{ slot }}-url">{{ _("Image URL (https)") }}</label>
-        <input type="url" id="b{{ index }}-i{{ slot }}-url"
-               name="blocks[{{ index }}][items][{{ slot }}][url]"
-               value="{{ item.url or '' }}" placeholder="https://…/photo.jpg">
-        {% snippet "csunesco/blocks/edit/_drop.html", drops=drops, field='url', item=slot %}
-      </span>
+      {% snippet "csunesco/blocks/edit/_image_picker.html",
+                 input_id='b%s-i%s-image' | format(index, slot),
+                 url_name='blocks[%s][items][%s][url]' | format(index, slot),
+                 upload_name='blocks[%s][items][%s][upload]' | format(index, slot),
+                 clear_name='blocks[%s][items][%s][clear]' | format(index, slot),
+                 value=item.url or '', label=_("Image URL (https)"),
+                 clear_label=_("Remove this image"), drops=drops,
+                 url_field='url', upload_field='image_upload', item=slot %}
       <span>
         <label for="b{{ index }}-i{{ slot }}-alt">{{ _("Description for screen readers") }}</label>
         <input type="text" id="b{{ index }}-i{{ slot }}-alt"

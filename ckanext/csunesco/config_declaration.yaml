@@ -1,0 +1,12 @@
+version: 1
+groups:
+  - annotation: Citizen Science image uploads
+    options:
+      - key: ckan.upload.csunesco.types
+        type: list
+        default: image
+        description: Broad MIME families accepted by the Citizen Science page editor.
+      - key: ckan.upload.csunesco.mimetypes
+        type: list
+        default: image/jpeg image/png image/webp
+        description: Exact image MIME types accepted by the Citizen Science page editor.

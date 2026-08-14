@@ -5,7 +5,7 @@
  * is the primary one: add / move / delete / hide / save / publish are all real
  * submit buttons posting to the same endpoint. This file only makes that nicer.
  *
- * Three enhancements:
+ * Four enhancements:
  *   1. A small formatting toolbar over a contenteditable mirror of each
  *      textarea. The TEXTAREA remains the field that submits -- a
  *      contenteditable posts nothing, so it can never be the source of truth.
@@ -16,6 +16,7 @@
  *      neither name nor value, so disable-on-submit would otherwise swallow the
  *      operation. `op_js` is a SEPARATE name from the buttons' `op` on purpose;
  *      sharing one made the server's answer depend on DOM order.
+ *   4. Immediate local previews for image uploads and pasted image URLs.
  *
  * The server re-parses, re-validates and re-sanitizes everything regardless.
  */
@@ -315,6 +316,66 @@
     });
   }
 
+  /** Immediate thumbnail feedback for the URL + upload controls. */
+  function initImagePickers(form) {
+    var pickers = form.querySelectorAll("[data-image-picker]");
+    Array.prototype.forEach.call(pickers, function (picker) {
+      var preview = picker.querySelector("[data-image-preview]");
+      var empty = picker.querySelector("[data-image-empty]");
+      var file = picker.querySelector("[data-image-file]");
+      var url = picker.querySelector("[data-image-url]");
+      var clear = picker.querySelector("[data-image-clear]");
+      var objectUrl = null;
+
+      function show(src) {
+        if (!preview || !empty) { return; }
+        if (src) {
+          preview.src = src;
+          preview.hidden = false;
+          empty.hidden = true;
+        } else {
+          preview.removeAttribute("src");
+          preview.hidden = true;
+          empty.hidden = false;
+        }
+      }
+
+      if (file) {
+        file.addEventListener("change", function () {
+          if (objectUrl) { window.URL.revokeObjectURL(objectUrl); }
+          objectUrl = null;
+          if (file.files && file.files[0]) {
+            objectUrl = window.URL.createObjectURL(file.files[0]);
+            if (clear) { clear.checked = false; }
+            show(objectUrl);
+          }
+        });
+      }
+      if (url) {
+        url.addEventListener("input", function () {
+          if (file) { file.value = ""; }
+          if (objectUrl) { window.URL.revokeObjectURL(objectUrl); }
+          objectUrl = null;
+          if (clear) { clear.checked = false; }
+          show(url.value.trim() || picker.getAttribute("data-image-fallback"));
+        });
+      }
+      if (clear) {
+        clear.addEventListener("change", function () {
+          if (clear.checked) {
+            if (file) { file.value = ""; }
+            if (objectUrl) { window.URL.revokeObjectURL(objectUrl); }
+            objectUrl = null;
+            show(picker.getAttribute("data-image-fallback"));
+          } else {
+            show((url && url.value.trim()) ||
+                 picker.getAttribute("data-image-fallback"));
+          }
+        });
+      }
+    });
+  }
+
   function init() {
     var form = document.getElementById("cs-page-form");
     if (!form) { return; }
@@ -324,6 +385,7 @@
     initUnsavedGuard(form);
     initToggleAll(form);
     initSpineSpy();
+    initImagePickers(form);
   }
 
   if (document.readyState === "loading") {

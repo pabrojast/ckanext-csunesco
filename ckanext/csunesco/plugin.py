@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 _tables_ensured = False
 
 
+@tk.blanket.config_declarations
 class CsunescoPlugin(p.SingletonPlugin):
     """Citizen Science (UNESCO/IHP-WINS) plugin."""
 
@@ -126,6 +127,9 @@ class CsunescoPlugin(p.SingletonPlugin):
             'csunesco_block_content': helpers.csunesco_block_content,
             'csunesco_block_datasets': helpers.csunesco_block_datasets,
             'csunesco_video_embed_url': helpers.csunesco_video_embed_url,
+            'csunesco_uploads_enabled': helpers.csunesco_uploads_enabled,
+            'csunesco_image_upload_max_size':
+                helpers.csunesco_image_upload_max_size,
         }
 
     # IClick

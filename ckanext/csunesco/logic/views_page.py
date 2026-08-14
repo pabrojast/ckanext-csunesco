@@ -33,6 +33,7 @@ import ckan.model as model
 from ckanext.csunesco import db
 from ckanext.csunesco.logic import blocks as blocks_module
 from ckanext.csunesco.logic import page_render
+from ckanext.csunesco.logic import uploads
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ def _initial_blocks(page):
 
 
 def _render_editor(project, page, blocks, errors=None, notice=None,
-                   drops=None, scope='project'):
+                   drops=None, scope='project', project_image_url=None):
     """Render the editor (shared by the project pages and the site page).
 
     ``drops`` is what normalization threw away on the last save, indexed by
@@ -108,7 +109,11 @@ def _render_editor(project, page, blocks, errors=None, notice=None,
     action URL and publish copy from ``scope``.
     """
     by_block = {}
+    project_image_drops = {}
     for drop in drops or []:
+        if drop.get('block') is None:
+            project_image_drops.setdefault(drop['field'], []).append(drop)
+            continue
         by_block.setdefault(drop['block'], {}) \
                 .setdefault(drop['field'], []).append(drop)
     attention = set(by_block)
@@ -119,6 +124,9 @@ def _render_editor(project, page, blocks, errors=None, notice=None,
     known = {block['id'] for block in blocks}
     open_ids = set(attention)
     open_ids.update(id for id in request.args.getlist('open')[:8] if id in known)
+    if scope == 'project' and project_image_url is None:
+        project_image_url = (page or {}).get(
+            'draft_project_image_url', (project or {}).get('image_url') or '')
     return tk.render('csunesco/project_page_form.html', extra_vars={
         'project': project,
         'scope': scope,
@@ -131,6 +139,8 @@ def _render_editor(project, page, blocks, errors=None, notice=None,
         'open_ids': open_ids & known,
         'palette': tk.h.csunesco_block_palette(scope),
         'max_blocks': blocks_module.MAX_BLOCKS,
+        'project_image_url': project_image_url or '',
+        'project_image_drops': project_image_drops,
     })
 
 
@@ -178,8 +188,26 @@ def project_page_edit(slug):
     raw_op = blocks_module.choose_op(request.form.get('op'),
                                      request.form.get('op_js'))
     report = blocks_module.DropReport()
-    blocks = blocks_module.blocks_from_form(request.form.items(multi=True),
-                                           report=report)
+    raw_blocks = blocks_module.raw_blocks_from_form(
+        request.form.items(multi=True), request.files.items(multi=True))
+    project_cover = {
+        'url': request.form.get('project_image_url') or '',
+        'upload': request.files.get('project_image_upload'),
+        'clear': request.form.get('project_image_clear'),
+    }
+    try:
+        upload_batch = uploads.process_page_images(
+            raw_blocks, project_cover=project_cover)
+    except uploads.PageImageUploadError as error:
+        blocks = blocks_module.ensure_builtins(
+            blocks_module.normalize_blocks(raw_blocks, report=report))
+        return _render_editor(
+            project, page, blocks,
+            errors={'uploads': [tk._('One or more images could not be saved.')]},
+            drops=report.drops + error.problems,
+            project_image_url=project_cover['url'])
+
+    blocks = blocks_module.normalize_blocks(raw_blocks, report=report)
     blocks = blocks_module.ensure_builtins(blocks)
     op_name, _argument = blocks_module.parse_op(raw_op)
     blocks, anchor = blocks_module.apply_op(
@@ -190,18 +218,27 @@ def project_page_edit(slug):
 
     try:
         result = tk.get_action('csunesco_project_page_update')(
-            _context(), {'project_id': project['id'], 'blocks': blocks})
+            _context(), {'project_id': project['id'], 'blocks': blocks,
+                         'project_image_url':
+                             upload_batch.project_image_url})
     except tk.NotAuthorized:
+        upload_batch.rollback()
         return _not_authorized_response()
     except tk.ValidationError as error:
+        upload_batch.rollback()
         # Re-render (no redirect) so the manager keeps their unsaved edits.
         return _render_editor(project, page, blocks,
-                              errors=error.error_dict or {}, drops=drops)
+                              errors=error.error_dict or {}, drops=drops,
+                              project_image_url=
+                                  upload_batch.project_image_url)
     except Exception:
+        upload_batch.rollback()
         log.warning('csunesco: page draft could not be saved')
         return _render_editor(project, page, blocks,
                               errors={'message': GENERIC_ERROR},
-                              drops=drops)
+                              drops=drops,
+                              project_image_url=
+                                  upload_batch.project_image_url)
 
     # "Save and publish" is save-then-submit, so the reviewer always sees the
     # version the manager was looking at when they pressed the button.
@@ -214,12 +251,16 @@ def project_page_edit(slug):
         except tk.ValidationError as error:
             return _render_editor(project, page, blocks,
                                   errors=error.error_dict or {},
-                                  drops=drops)
+                                  drops=drops,
+                                  project_image_url=
+                                      upload_batch.project_image_url)
         except Exception:
             log.warning('csunesco: page could not be submitted')
             return _render_editor(project, page, blocks,
                                   errors={'message': GENERIC_ERROR},
-                                  drops=drops)
+                                  drops=drops,
+                                  project_image_url=
+                                      upload_batch.project_image_url)
         if outcome.get('published'):
             tk.h.flash_success(tk._('Your page is live.'))
         else:
@@ -286,6 +327,8 @@ def project_page_preview(slug):
     project.pop('region_geojson', None)
 
     page = _load_page(project['id'])
+    if page and 'draft_project_image_url' in page:
+        project['image_url'] = page.get('draft_project_image_url') or None
     # The preview shows HIDDEN blocks too, marked -- otherwise a manager
     # cannot check what they switched off without switching it back on.
     blocks = [block for block in _initial_blocks(page)
@@ -355,8 +398,20 @@ def site_page_edit():
     raw_op = blocks_module.choose_op(request.form.get('op'),
                                      request.form.get('op_js'))
     report = blocks_module.DropReport()
-    blocks = blocks_module.blocks_from_form(request.form.items(multi=True),
-                                            report=report)
+    raw_blocks = blocks_module.raw_blocks_from_form(
+        request.form.items(multi=True), request.files.items(multi=True))
+    try:
+        upload_batch = uploads.process_page_images(raw_blocks)
+    except uploads.PageImageUploadError as error:
+        blocks = blocks_module.ensure_builtins(
+            blocks_module.normalize_blocks(raw_blocks, report=report),
+            scope='site')
+        return _render_editor(
+            None, page, blocks,
+            errors={'uploads': [tk._('One or more images could not be saved.')]},
+            drops=report.drops + error.problems, scope='site')
+
+    blocks = blocks_module.normalize_blocks(raw_blocks, report=report)
     blocks = blocks_module.ensure_builtins(blocks, scope='site')
     op_name, _argument = blocks_module.parse_op(raw_op)
     blocks, anchor = blocks_module.apply_op(blocks, raw_op, scope='site')
@@ -367,12 +422,15 @@ def site_page_edit():
         tk.get_action('csunesco_site_page_update')(
             _context(), {'blocks': blocks})
     except tk.NotAuthorized:
+        upload_batch.rollback()
         return _not_authorized_response()
     except tk.ValidationError as error:
+        upload_batch.rollback()
         return _render_editor(None, page, blocks,
                               errors=error.error_dict or {}, drops=drops,
                               scope='site')
     except Exception:
+        upload_batch.rollback()
         log.warning('csunesco: site page draft could not be saved')
         return _render_editor(None, page, blocks,
                               errors={'message': GENERIC_ERROR},

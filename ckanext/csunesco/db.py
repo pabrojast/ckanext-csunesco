@@ -1663,6 +1663,8 @@ def page_dictize(page, include_draft=False):
     extras = _load_json(page.extras, {})
     if isinstance(extras, dict):
         for key, value in extras.items():
+            if key.startswith('draft_') and not include_draft:
+                continue
             result.setdefault(key, value)
     return result
 

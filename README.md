@@ -331,6 +331,11 @@ a default template plus a custom one.
   dataset reference with spaces, a chart field name that is not a column) is
   reported back beside the field that produced it. The report never changes
   what is stored.
+- **Images accept an upload or an HTTPS URL.** JPEG, PNG and WebP uploads use
+  CKAN's FileStore and its `ckan.max_image_size` limit; stored page JSON still
+  contains only a same-origin `/uploads/csunesco/...` URL. Project covers join
+  the page draft/review lifecycle, so a card on the hub never changes before
+  the corresponding page version is published.
 - **Charts are aggregated server-side.** `csunesco_data_source_series` buckets
   observations by an auto-chosen period, caps the series at 8 and rounds the
   values, turning a ~1.6 MB dashboard payload into ~3 KB of dense arrays. The
@@ -371,6 +376,9 @@ reuses the same machinery with scope `site`:
   authored content). Portable author blocks (text, image+text, images, video,
   counters, content list, datasets, highlight) can be added; the data-bound
   types (chart, observation map, ask-the-data, map viewer) are project-only.
+- The hero, About illustration and each initiative card expose the same
+  upload-or-URL picker. Empty overrides continue to use the bundled images, so
+  pages saved before this feature render unchanged.
 - **Scope is enforced at the edges only** — `apply_op('add')`,
   `ensure_builtins(scope)`, the palette and `visible_blocks(blocks, scope)`.
   `normalize_blocks` stays total and scope-agnostic, so a cross-scope block
@@ -468,8 +476,6 @@ Related module map: `logic/chat.py` (pure — tools, validation, prompt, card),
   implementation.
 - Auto-enqueue the data-source request when approving an app-originated
   project that already has published forms.
-- Image **uploads** for the gallery block (today its URLs are https links, the
-  same convention as the `media` field on content).
 
 ## Requirements
 

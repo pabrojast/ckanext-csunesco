@@ -33,6 +33,16 @@
       {{ _("This was not saved: use the column name exactly as it appears in the data — letters, numbers, - and _ only.") }}
     {%- elif drop.reason == 'bad_image_url' -%}
       {{ _("This image was not saved: use a full https:// image address (or an internal path starting with /), without spaces or quotes.") }}
+    {%- elif drop.reason == 'upload_too_large' -%}
+      {{ _("This image was not saved because the file is too large. Select it again after reducing its size.") }}
+    {%- elif drop.reason == 'upload_bad_type' -%}
+      {{ _("This image was not saved: upload a real JPEG, PNG or WebP file, then select it again.") }}
+    {%- elif drop.reason == 'uploads_disabled' -%}
+      {{ _("This image was not saved because file uploads are not configured on this portal.") }}
+    {%- elif drop.reason == 'too_many_uploads' -%}
+      {{ _("Too many images were selected at once. Upload no more than 12 per save.") }}
+    {%- elif drop.reason == 'upload_failed' -%}
+      {{ _("This image could not be stored. Select it again and retry.") }}
     {%- else -%}
       {{ _("This value was not saved.") }}
     {%- endif %}

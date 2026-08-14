@@ -32,6 +32,9 @@ services:
       CKAN_SOLR_URL: http://solr:8983/solr/ckan
       CKAN_REDIS_URL: redis://redis:6379/1
       CKAN_SITE_URL: http://localhost:5000
+      # Persistent FileStore used by page-builder image uploads.
+      CKAN_STORAGE_PATH: /var/lib/ckan
+      CKAN__UPLOADS_ENABLED: "true"
       # Enable the plugin (keep the CKAN defaults + csunesco). `envvars` must be
       # here for the CKAN___* options below to reach the config at all -- without
       # it they sit in the environment and are silently ignored, which makes the
@@ -57,6 +60,8 @@ services:
       - db
       - solr
       - redis
+    volumes:
+      - ckan_storage:/var/lib/ckan
     # Live-edit alternative to the baked image (add `:z` on SELinux hosts):
     # volumes:
     #   - .:/plugin:z
@@ -88,3 +93,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+volumes:
+  ckan_storage:

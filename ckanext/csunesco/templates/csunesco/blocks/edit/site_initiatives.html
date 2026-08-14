@@ -1,0 +1,24 @@
+{# Editor: optional image override for each canonical initiative. #}
+<div class="cs-pb-items">
+  {% for initiative in h.csunesco_initiatives() %}
+    {% set matches = block['items'] | selectattr('name', 'equalto', initiative.name) | list %}
+    {% set override = matches[0] if matches else {} %}
+    <fieldset class="cs-pb-item">
+      <legend>{{ initiative.title }}</legend>
+      <input type="hidden"
+             name="blocks[{{ index }}][items][{{ loop.index0 }}][name]"
+             value="{{ initiative.name }}">
+      {% snippet "csunesco/blocks/edit/_image_picker.html",
+                 input_id='b%s-initiative-%s' | format(index, loop.index0),
+                 url_name='blocks[%s][items][%s][image_url]' | format(index, loop.index0),
+                 upload_name='blocks[%s][items][%s][upload]' | format(index, loop.index0),
+                 clear_name='blocks[%s][items][%s][clear]' | format(index, loop.index0),
+                 value=override.image_url or '',
+                 fallback='/csunesco/images/initiative-%s.png' | format(initiative.name),
+                 label=_("Image URL"),
+                 clear_label=_("Restore the standard initiative image"),
+                 drops=drops, url_field='image_url',
+                 upload_field='image_upload', item=loop.index0 %}
+    </fieldset>
+  {% endfor %}
+</div>

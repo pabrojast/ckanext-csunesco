@@ -30,6 +30,7 @@ import re
 import uuid
 from urllib.parse import urlparse
 
+from ckanext.csunesco import constants
 from ckanext.csunesco.logic.sanitize import sanitize_page_html
 
 # --------------------------------------------------------------------------- #
@@ -192,6 +193,23 @@ def _image_url(value):
     if parsed.scheme != 'https' or not parsed.netloc:
         return u''
     return text
+
+
+def _image_src_url(value):
+    """An https URL or internal path for an HTML ``img[src]``.
+
+    Unlike :func:`_image_url`, this does not apply the CSS-string charset
+    restriction to remote URLs. Gallery images are interpolated into an HTML
+    attribute (where Jinja escapes them), and historically accepted every
+    well-formed https URL. Uploaded images need the internal-path addition
+    without making an existing gallery URL suddenly invalid.
+    """
+    text = _plain(value, MAX_URL)
+    if not text:
+        return u''
+    if _INTERNAL_PATH_RE.match(text):
+        return text
+    return _https_url(text)
 
 
 def _link_url(value):
@@ -377,8 +395,8 @@ def _n_stats(raw, report=None):
 def _n_image(raw, report=None):
     items = []
     for index, item in enumerate(_items(raw.get('items'), 12)):
-        url = _kept(report, 'url', _https_url, item.get('url'),
-                    'not_https', item=index)
+        url = _kept(report, 'url', _image_src_url, item.get('url'),
+                    'bad_image_url', item=index)
         if not url:
             continue
         items.append({
@@ -557,6 +575,34 @@ def _n_site_about(raw, report=None):
     }
 
 
+_INITIATIVE_NAMES = frozenset(
+    initiative['name'] for initiative in constants.CS_INITIATIVES)
+
+
+def _n_site_initiatives(raw, report=None):
+    """Optional image overrides for the four canonical initiatives.
+
+    Old pages contain only ``intro`` and therefore normalize to an empty item
+    list, preserving the bundled-image fallback byte for byte. Unknown names
+    are ignored so a forged JSON row can never create a fifth card.
+    """
+    items = []
+    seen = set()
+    for index, item in enumerate(_items(raw.get('items'), 12)):
+        name = _plain(item.get('name'), 100)
+        if name not in _INITIATIVE_NAMES or name in seen:
+            continue
+        seen.add(name)
+        image_url = _kept(report, 'image_url', _image_url,
+                          item.get('image_url'), 'bad_image_url', item=index)
+        if image_url:
+            items.append({'name': name, 'image_url': image_url})
+    return {
+        'intro': _plain(raw.get('intro'), MAX_SECTION_INTRO),
+        'items': items,
+    }
+
+
 def _n_site_cta(raw, report=None):
     return {
         'text': _plain(raw.get('text'), 300),
@@ -723,10 +769,12 @@ _TYPES = [
               u'Leave the fields empty to keep the standard translated text.',
               builtin=True, addable=False, scopes=('site',),
               has_editor=True),
-    BlockType('site_initiatives', u'Initiatives', u'layers', _n_builtin,
+    BlockType('site_initiatives', u'Initiatives', u'layers',
+              _n_site_initiatives,
               u'The grid of Citizen Science initiatives, kept up to date '
               u'for you.',
-              builtin=True, addable=False, scopes=('site',)),
+              builtin=True, addable=False, scopes=('site',),
+              has_editor=True),
     BlockType('site_projects', u'Projects', u'pin', _n_site_projects,
               u'The most recently approved projects, newest first.',
               builtin=True, addable=False, scopes=('site',),
@@ -933,15 +981,15 @@ _FORM_KEY_RE = re.compile(
     r'^blocks\[(\d+)\]\[([A-Za-z0-9_]+)\](?:\[(\d+)\]\[([A-Za-z0-9_]+)\])?$')
 
 
-def blocks_from_form(pairs, report=None):
-    """Parse ``blocks[N][field]`` form pairs into a normalized block list.
+def raw_blocks_from_form(pairs, file_pairs=None):
+    """Parse form and file pairs into ordered, unnormalized block dicts.
 
-    ``pairs`` is an iterable of ``(key, value)`` -- e.g.
-    ``request.form.items(multi=True)``, so repeated keys survive. Keys that do
-    not match the grammar are ignored.
+    File inputs use the same nested naming grammar as text controls. Keeping
+    them in the raw tree lets the CKAN-dependent upload layer replace them with
+    internal URLs before this CKAN-free module normalizes the result.
     """
     by_index = {}
-    for key, value in pairs or ():
+    for key, value in list(pairs or ()) + list(file_pairs or ()):
         match = _FORM_KEY_RE.match(key or '')
         if match is None:
             continue
@@ -955,8 +1003,18 @@ def blocks_from_form(pairs, report=None):
                 items = {}
                 block[field] = items
             items.setdefault(int(sub_index), {})[sub_field] = value
-    ordered = [by_index[index] for index in sorted(by_index)]
-    return normalize_blocks(ordered, report=report)
+    return [by_index[index] for index in sorted(by_index)]
+
+
+def blocks_from_form(pairs, report=None, file_pairs=None):
+    """Parse ``blocks[N][field]`` form pairs into a normalized block list.
+
+    ``pairs`` is an iterable of ``(key, value)`` -- e.g.
+    ``request.form.items(multi=True)``, so repeated keys survive. Keys that do
+    not match the grammar are ignored.
+    """
+    return normalize_blocks(
+        raw_blocks_from_form(pairs, file_pairs=file_pairs), report=report)
 
 
 # --------------------------------------------------------------------------- #
@@ -1115,7 +1173,8 @@ def blocks_requiring_review(blocks):
                    and BLOCK_TYPES[block['type']].requires_review})
 
 
-def page_initial_status(is_sysadmin, trusted, blocks):
+def page_initial_status(is_sysadmin, trusted, blocks,
+                        additional_review=False):
     """``'approved'`` (publish now) or ``'pending'`` (queue for review).
 
     Mirrors ``content.content_initial_status`` and keeps its most important
@@ -1127,6 +1186,6 @@ def page_initial_status(is_sysadmin, trusted, blocks):
     """
     if is_sysadmin:
         return 'approved'
-    if trusted and not blocks_requiring_review(blocks):
+    if trusted and not additional_review and not blocks_requiring_review(blocks):
         return 'approved'
     return 'pending'

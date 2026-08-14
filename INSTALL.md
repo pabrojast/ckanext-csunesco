@@ -111,6 +111,23 @@ sent to the provider; raw observation rows never leave the portal. The per-user
 daily cap (`llm_daily_quota`, `0` disables it) is a cost fence — the action is
 already restricted to authenticated users.
 
+## 7. Enable page image uploads
+
+The page editor always accepts HTTPS image URLs. To also let authors upload
+JPEG, PNG and WebP files, enable CKAN's FileStore and mount its path on
+persistent storage:
+
+```ini
+ckan.uploads_enabled = true
+ckan.storage_path = /var/lib/ckan/default
+ckan.max_image_size = 2
+```
+
+The CKAN process must be able to create and write
+`storage/uploads/csunesco/` below that path. Uploaded images are public and
+receive unique filenames; replacing an image changes the page reference but
+does not delete the older file because a published page may still use it.
+
 ## Verify
 
 Two complementary options, both in this repo:
@@ -153,6 +170,8 @@ bash .mix/verify.sh
   redeploys safe even if that step is skipped.
 - Serve behind HTTPS and set `ckan.site_url` accordingly so the join **link/QR**
   codes on project landing pages resolve to the public URL.
+- Persist `ckan.storage_path` across deploys if page image uploads are enabled;
+  an ephemeral container filesystem will lose uploaded images on restart.
 - To connect the **CS Toolbox (ofform)** PWA to this plugin, see
   [`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
 

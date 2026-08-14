@@ -184,7 +184,8 @@
     re-parses and re-validates everything regardless, and reports what it threw
     away next to the field (blocks/edit/_drop.html).
   #}
-  <form method="post" class="cs-pb-form" id="cs-page-form" novalidate
+  <form method="post" enctype="multipart/form-data"
+        class="cs-pb-form" id="cs-page-form" novalidate
         action="{{ h.url_for('csunesco.site_page_edit') if is_site else h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
     {{ h.csrf_input() }}
     {#
@@ -208,6 +209,27 @@
     <button type="submit" name="op" value="save" class="cs-visually-hidden">
       {{ _("Save draft") }}
     </button>
+
+    {% if not is_site %}
+      <section class="cs-project-cover-editor" aria-labelledby="cs-project-cover-title">
+        <h2 id="cs-project-cover-title" class="cs-wb-palette-title">
+          {{ _("Project cover") }}
+        </h2>
+        <p class="cs-hint">
+          {{ _("This image is used in the project banner and in project cards on the Citizen Science home page. It follows the same draft and review process as this page.") }}
+        </p>
+        {% snippet "csunesco/blocks/edit/_image_picker.html",
+                   input_id='project-cover',
+                   url_name='project_image_url',
+                   upload_name='project_image_upload',
+                   clear_name='project_image_clear',
+                   value=project_image_url, label=_("Cover image URL"),
+                   clear_label=_("Remove the project cover"),
+                   drops=project_image_drops,
+                   url_field='project_image_url',
+                   upload_field='project_image_upload' %}
+      </section>
+    {% endif %}
 
     <ol class="cs-pb-list">
       {% for block in blocks %}
