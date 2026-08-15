@@ -53,6 +53,20 @@ cs-data-chat-js:
   contents:
     - js/cs-data-chat.js
 
+# The staged project form (/project/new and /project/<slug>/edit): the stage
+# wizard and the country chip picker. A bundle of its own rather than more
+# csunesco-js, which ships on every admin page while this is needed by exactly
+# two routes. Both enhancements are optional -- without this file the page is a
+# plain long form that still submits in one POST.
+cs-project-form-js:
+  filters: rjsmin
+  output: js/cs-project-form.js
+  extra:
+    preload:
+      - csunesco/csunesco-js
+  contents:
+    - js/cs-project-form.js
+
 # The project-page editor: rich-text toolbar, reorder, chart field picker.
 # Preloads csunesco-js so it can reuse its shared helpers.
 cs-page-editor-js:

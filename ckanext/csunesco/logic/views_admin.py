@@ -18,6 +18,7 @@ from flask import request, redirect
 import ckan.plugins.toolkit as tk
 import ckan.model as model
 
+from ckanext.csunesco.logic import views
 from ckanext.csunesco.logic.sanitize import sanitize_html
 
 log = logging.getLogger(__name__)
@@ -212,6 +213,13 @@ def admin_dashboard():
             project['page_state'] = 'draft'
 
 
+    # The review table printed the raw group slug ("be-resilient"). Decorate
+    # the rows here, the same way the public listing does, rather than reaching
+    # for the member-state title helper -- that one is a generic Group lookup
+    # and using it on an initiative only works by accident.
+    project_requests = views._decorate_projects(
+        data.get('project_requests', []))
+
     return tk.render('csunesco/cs-admin-dashboard.html', extra_vars={
         'my_projects': my_projects,
         'admin_initiatives': admin_initiatives,
@@ -219,7 +227,7 @@ def admin_dashboard():
         'can_review_projects': can_review_initiative,
         'can_review_data': can_review_initiative,
         'can_review_pages': can_review_initiative,
-        'project_requests': data.get('project_requests', []),
+        'project_requests': project_requests,
         'join_requests': data.get('join_requests', []),
         'content_requests': data.get('content_requests', []),
         'content_moderated': data.get('content_moderated', []),

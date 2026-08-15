@@ -976,7 +976,39 @@ def test_projects_administered_lists_only_active_admin_memberships(session):
     assert got[0]['title'] == 'Mine'
     assert got[0]['status'] == 'approved'
     assert got[0]['initiative_group'] == 'riverwatch'
-    assert set(got[0]) == {'id', 'slug', 'title', 'status', 'initiative_group'}
+    # rejection_reason rides along so the "Your projects" card can say WHY a
+    # request was turned down, next to the button that sends it back.
+    assert set(got[0]) == {'id', 'slug', 'title', 'status',
+                           'initiative_group', 'rejection_reason'}
+
+
+def test_projects_administered_includes_projects_you_merely_authored(session):
+    """Authorship counts, not just membership.
+
+    The admin membership row is inserted by ``csunesco_project_approve``, so
+    until a request is approved its author matches no membership at all. This
+    query is what the approval panel's "Your projects" band is built from, so
+    a membership-only match hid a person's own pending and rejected requests
+    from them -- including the rejection reason and the way to resubmit.
+    """
+    authored = _project(session, 'authored', 'Authored', status='rejected')
+    authored.created_by = 'u1'
+    other = _project(session, 'theirs', 'Theirs', status='rejected')
+    other.created_by = 'u2'
+    session.commit()
+
+    got = db.projects_administered('u1')
+    assert [p['slug'] for p in got] == ['authored']
+
+
+def test_projects_administered_does_not_duplicate_author_and_admin(session):
+    """Being BOTH the author and an admin member must yield one row."""
+    project = _project(session, 'both', 'Both')
+    project.created_by = 'u1'
+    _member(session, project.id, 'u1')
+    session.commit()
+
+    assert [p['slug'] for p in db.projects_administered('u1')] == ['both']
 
 
 def test_projects_administered_includes_pending_and_rejected(session):

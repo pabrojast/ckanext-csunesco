@@ -41,7 +41,7 @@ _ALLOWED_GEOJSON_TYPES = {
 }
 
 # Parent group whose active children define the set of valid member states.
-MEMBER_STATES_GROUP = 'member-states'
+MEMBER_STATES_GROUP = constants.MEMBER_STATES_GROUP
 
 
 def _initiative_names():
@@ -288,19 +288,56 @@ def csunesco_valid_iso_date(value):
             '2026-07-16T09:30)'))
 
 
-def csunesco_end_after_start(key, data, errors, context):
-    """navl full-schema validator: an event's ``end_date`` must be later.
+def _end_after(key, data, errors, start_field, allow_equal):
+    """Shared body: flag ``end`` that does not follow ``start_field``.
 
-    Runs after the individual date validators have coerced both values to
-    ``datetime``. No-op when either side is missing (a missing ``end_date`` is
-    handled by ``not_empty`` for events); only flags the ``end <= start`` case.
+    No-op when either side is missing -- a required ``end_date`` is
+    ``not_empty``'s business, not this validator's.
+
+    BOTH sides are coerced here rather than trusting that the per-key date
+    validators already ran. navl walks the flattened keys in sorted order, so
+    ``end_date`` is always validated BEFORE ``publish_date`` or ``start_date``:
+    by the time this runs ``end`` is a ``datetime`` while the start field is
+    still the raw string off the form, and comparing those two raises
+    ``TypeError: '<' not supported between instances of 'datetime.datetime'
+    and 'str'`` -- a 500, not a field error.
     """
     end = data.get(key)
-    start = data.get(('publish_date',))
+    start = data.get((start_field,))
     if not end or not start:
         return
-    if end <= start:
+    try:
+        end = csunesco_valid_iso_date(end)
+        start = csunesco_valid_iso_date(start)
+    except tk.Invalid:
+        # An unparseable start date is the start field's own error to report;
+        # adding a second, confusing message here would help nobody.
+        return
+    if not end or not start:
+        return
+    if (end < start) if allow_equal else (end <= start):
         errors[key].append(tk._('End date must be after the start date'))
+
+
+def csunesco_end_after_start(key, data, errors, context):
+    """An event's ``end_date`` must be strictly later than ``publish_date``."""
+    _end_after(key, data, errors, 'publish_date', allow_equal=False)
+
+
+def csunesco_end_after(start_field, allow_equal=False):
+    """Build an "end follows start" validator for an arbitrary start field.
+
+    A content event pairs ``publish_date``/``end_date``; a project pairs
+    ``start_date``/``end_date``. Same rule, different neighbour -- so the field
+    name is a parameter instead of a second copy of the comparison.
+
+    ``allow_equal`` exists because the two cases differ genuinely: an event
+    that ends the instant it starts is a data-entry mistake, but a project that
+    runs for a single day legitimately has ``start_date == end_date``.
+    """
+    def validator(key, data, errors, context):
+        _end_after(key, data, errors, start_field, allow_equal)
+    return validator
 
 
 def csunesco_valid_media_list(value):

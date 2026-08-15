@@ -42,6 +42,18 @@ def project_new():
     return views.project_new()
 
 
+def project_edit(slug):
+    """Staged project-details editor (GET) / save the changes (POST)."""
+    from ckanext.csunesco.logic import views
+    return views.project_edit(slug)
+
+
+def project_resubmit(slug):
+    """POST: send a rejected project back to the review queue."""
+    from ckanext.csunesco.logic import views
+    return views.project_resubmit(slug)
+
+
 def project_landing(slug):
     """Public landing page for a single project."""
     from ckanext.csunesco.logic import views
@@ -332,6 +344,10 @@ csunesco_bp.add_url_rule('/projects', 'project_list', project_list,
                          methods=['GET'])
 csunesco_bp.add_url_rule('/project/new', 'project_new', project_new,
                          methods=['GET', 'POST'])
+csunesco_bp.add_url_rule('/project/<slug>/edit', 'project_edit', project_edit,
+                         methods=['GET', 'POST'])
+csunesco_bp.add_url_rule('/project/<slug>/resubmit', 'project_resubmit',
+                         project_resubmit, methods=['POST'])
 csunesco_bp.add_url_rule('/project/<slug>', 'project_landing', project_landing,
                          methods=['GET'])
 csunesco_bp.add_url_rule(

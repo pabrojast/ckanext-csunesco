@@ -20,6 +20,45 @@ CS_INITIATIVES = [
 # CKAN group type used for the initiative groups above.
 CS_INITIATIVE_GROUP_TYPE = 'group'
 
+# The stages of the project form (/citizen-science/project/new and .../edit).
+#
+# ONE definition drives the step indicator, the server-side "which stage holds
+# the first error" jump, and the scaffold test that asserts the template's
+# ``data-step`` blocks still agree with this list. Titles and hints are English
+# source strings; the template runs them through ``_()``.
+#
+# ``fields`` must stay in sync with ``logic.schema.project_request_schema()``
+# minus ``slug`` (which is derived from the title and never shown) -- that is
+# what the scaffold test checks, so a field added to the schema and forgotten
+# here fails loudly instead of silently never rendering.
+PROJECT_FORM_STEPS = [
+    {'step': 1, 'key': 'essentials', 'title': u'The essentials',
+     'hint': u'What the project is called, and which initiative it belongs '
+             u'to.',
+     'fields': ('title', 'initiative')},
+    {'step': 2, 'key': 'where', 'title': u'Where it happens',
+     'hint': u'The countries involved, any biosphere reserve, and the region '
+             u'shown on the map.',
+     'fields': ('countries', 'biosphere_reserve', 'region_geojson')},
+    {'step': 3, 'key': 'about', 'title': u'What it is about',
+     'hint': u'A short summary, and how volunteers take part.',
+     'fields': ('short_description', 'how_to_participate')},
+    {'step': 4, 'key': 'participation', 'title': u'Taking part',
+     'hint': u'When the project runs and who it is for.',
+     'fields': ('start_date', 'end_date', 'open_participation',
+                'target_group')},
+    {'step': 5, 'key': 'contact', 'title': u'Contact and materials',
+     'hint': u'Who to reach, plus a reference document and a cover image.',
+     'fields': ('contact_person', 'contact_email', 'project_document_url',
+                'image_url')},
+]
+
+# The parent CKAN group whose ACTIVE child groups are the valid member states
+# (water-family pattern). It lived as a private copy in four modules -- db,
+# validators, helpers and views -- each carrying a "keep in sync with the
+# others" comment, which is the shape of a literal that eventually drifts.
+MEMBER_STATES_GROUP = 'member-states'
+
 # The regional projects of the retired CS Toolbox site
 # (cstoolbox.quartex.co.za), seeded as regular APPROVED ``cs_project`` rows by
 # ``ckan csunesco seed-legacy-projects``. Banner images were downloaded from

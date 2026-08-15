@@ -50,6 +50,13 @@
     {% endif %}
   </section>
 
+  {# ---- The project's own details, from the project form. OUTSIDE the block
+        loop for the same reason the hero is: this is the project's identity,
+        not composed page content, and a manager must not be able to hide the
+        countries or the contact address by reordering their page. Renders
+        nothing when the project has none of these fields set. --------- #}
+  {% snippet "csunesco/snippets/project_facts.html", project=project %}
+
   {# ---- Trusted toggle (sysadmin-only policy lever, P2): trusted projects
         publish news/events without review. Deliberately OUTSIDE the block
         loop -- it is an admin control, not page content, so a manager can
@@ -81,6 +88,13 @@
       <a class="cs-btn cs-btn-secondary cs-btn-sm"
          href="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
         {{ _("Edit this page") }}
+      </a>
+      {# The page editor composes the BODY; this one fixes the project's own
+         details (title, countries, contact...), which used to be unchangeable
+         once the request had been submitted. #}
+      <a class="cs-btn cs-btn-secondary cs-btn-sm"
+         href="{{ h.url_for('csunesco.project_edit', slug=project.slug) }}">
+        {{ _("Edit details") }}
       </a>
     </p>
   {% endif %}

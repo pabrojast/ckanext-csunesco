@@ -30,8 +30,11 @@ log = logging.getLogger(__name__)
 # Single generic message for unexpected failures -- never leak internals.
 GENERIC_ERROR = 'Something went wrong. Please try again.'
 
-# The parent group whose active children are the valid member states.
-MEMBER_STATES_GROUP = 'member-states'
+# Shown against the cover-image field when the upload batch rejects the file.
+# One message rather than a per-reason map: views_page does the same, and the
+# picker's own hint already states the accepted formats and size.
+UPLOAD_ERROR = 'The cover image could not be saved. Check the file format ' \
+               'and size, then select it again.'
 
 # Server-side page size for the public project listing.
 PROJECTS_PER_PAGE = 12
@@ -77,31 +80,28 @@ def _decorate_projects(projects):
 
 
 def _member_state_choices():
-    """Member-state options for the country multi-select (empty on any error).
+    """``(choices, available)`` for the country picker.
 
-    Reads the active child groups of the ``member-states`` parent group through
-    the core ``group_show`` action (water-family pattern) so the view never
-    queries the DB directly. Fails soft: an un-seeded deployment just yields an
-    empty option list and the form still works.
+    Delegates to ``csunesco_member_state_list`` so the view never queries the DB
+    directly (water-family pattern).
+
+    This used to call ``group_show(include_groups=True)`` and read
+    ``child['title'] or child['name']``. CKAN's child-group dictization returns
+    ``title: None``, so the fallback fired for EVERY option and the form listed
+    raw slugs -- ``afghanistan``, ``-land-islands`` -- instead of ``Afghanistan``
+    and ``Åland Islands``. The action reads the titles in one query.
+
+    ``available`` is False ONLY when the list could not be read at all. An
+    un-seeded portal (empty but readable) and a broken one render identically
+    today -- both an empty box that reads as a broken form -- so the template
+    says which it is. Neither blocks submission: countries are optional.
     """
     try:
-        parent = tk.get_action('group_show')(
-            _context(),
-            {'id': MEMBER_STATES_GROUP, 'include_groups': True},
-        )
+        result = tk.get_action('csunesco_member_state_list')(_context(), {})
     except Exception:
-        # An unseeded portal legitimately has no member-state group, but so
-        # does a broken one -- and either way the project-request form renders
-        # an empty country picker that looks like a bug in the form.
         log.warning('csunesco: member-state choices unavailable')
-        return []
-    choices = []
-    for child in (parent.get('groups') or []):
-        name = child.get('name')
-        if not name:
-            continue
-        choices.append({'name': name, 'title': child.get('title') or name})
-    return sorted(choices, key=lambda c: c['title'].lower())
+        return [], False
+    return result.get('member_states') or [], True
 
 
 # ---------------------------------------------------------------------------
@@ -322,21 +322,47 @@ def project_geojson(slug):
 # Write views (Post/Redirect/Get)
 # ---------------------------------------------------------------------------
 
-def _render_project_form(data, errors, success=False):
-    """Render the project-request form with echoed values + field errors."""
+def _first_error_step(errors):
+    """The lowest-numbered stage carrying a field error (1 when there is none).
+
+    Computed on the SERVER so a re-render after a failed POST paints the right
+    stage in the very first frame: no flash of stage 1, and the wizard script
+    reads its current stage from the DOM instead of keeping a counter that can
+    drift out of step with it.
+    """
+    bad = set(errors or {})
+    for step in constants.PROJECT_FORM_STEPS:
+        if bad.intersection(step['fields']):
+            return step['step']
+    return 1
+
+
+def _render_project_form(data, errors, success=False, mode='new',
+                         project=None):
+    """Render the staged project form, for BOTH create and edit.
+
+    One template, one ``mode`` flag -- the shape ``views_content`` already uses
+    for its content form.
+    """
+    choices, states_available = _member_state_choices()
     return tk.render('csunesco/project_request.html', extra_vars={
+        'mode': mode,
+        'project': project,
         'data': data,
         'errors': errors,
         'success': success,
         'initiatives': constants.CS_INITIATIVES,
-        'member_states': _member_state_choices(),
+        'member_states': choices,
+        'member_states_available': states_available,
+        'steps': constants.PROJECT_FORM_STEPS,
+        'open_step': _first_error_step(errors),
     })
 
 
 def _read_project_form():
-    """Read the project-request POST into an action ``data_dict``."""
+    """Read the project form POST into an action ``data_dict``."""
     form = request.form
-    return {
+    data = {
         'title': (form.get('title') or '').strip(),
         'initiative': (form.get('initiative') or '').strip(),
         'countries': [c for c in form.getlist('countries') if c],
@@ -346,6 +372,71 @@ def _read_project_form():
         'project_document_url':
             (form.get('project_document_url') or '').strip(),
         'image_url': (form.get('image_url') or '').strip(),
+        'how_to_participate': (form.get('how_to_participate') or '').strip(),
+        'start_date': (form.get('start_date') or '').strip(),
+        'end_date': (form.get('end_date') or '').strip(),
+        'target_group': (form.get('target_group') or '').strip(),
+        'contact_person': (form.get('contact_person') or '').strip(),
+        'contact_email': (form.get('contact_email') or '').strip(),
+    }
+    # An UNCHECKED checkbox submits nothing at all, which is indistinguishable
+    # from "this form did not carry the field" -- the exact bug that once made
+    # every sysadmin content edit silently un-feature its row. The hidden
+    # marker proves the control was rendered, so an absent box means an
+    # explicit False rather than "leave it alone".
+    if form.get('open_participation_present'):
+        data['open_participation'] = bool(form.get('open_participation'))
+    return data
+
+
+def _resolve_cover(form, files):
+    """Run the shared image picker for the project's cover image.
+
+    ``process_page_images([], project_cover=...)`` is the page editor's upload
+    batch with no block jobs, so the MIME check, the size cap, the per-request
+    limit and the rollback are literally the same code rather than a second
+    implementation that drifts.
+
+    Returns ``(batch, problems)``. The BATCH is returned, not just its URL:
+    every later failure path has to call ``batch.rollback()`` or a validation
+    error leaves an orphaned file in the FileStore.
+    """
+    from ckanext.csunesco.logic import uploads
+    cover = {
+        'url': (form.get('image_url') or '').strip(),
+        'upload': files.get('image_upload'),
+        'clear': form.get('image_clear'),
+    }
+    try:
+        return uploads.process_page_images([], project_cover=cover), None
+    except uploads.PageImageUploadError as error:
+        return None, error.problems
+
+
+def _project_to_form(project):
+    """A dictized project -> the ``data`` shape the template echoes back.
+
+    Two traps are encoded here. The column is ``initiative_group`` but the
+    schema and the form both call it ``initiative``; and the extras dates come
+    back as ISO strings, which is exactly what ``<input type="date">`` wants --
+    sliced to 10 characters in case an older row stored a full datetime.
+    """
+    return {
+        'title': project.get('title') or '',
+        'initiative': project.get('initiative_group') or '',
+        'countries': project.get('countries') or [],
+        'biosphere_reserve': project.get('biosphere_reserve') or '',
+        'region_geojson': project.get('region_geojson') or '',
+        'short_description': project.get('short_description') or '',
+        'how_to_participate': project.get('how_to_participate') or '',
+        'start_date': (project.get('start_date') or '')[:10],
+        'end_date': (project.get('end_date') or '')[:10],
+        'open_participation': bool(project.get('open_participation')),
+        'target_group': project.get('target_group') or '',
+        'contact_person': project.get('contact_person') or '',
+        'contact_email': project.get('contact_email') or '',
+        'project_document_url': project.get('project_document_url') or '',
+        'image_url': project.get('image_url') or '',
     }
 
 
@@ -362,13 +453,20 @@ def project_new():
         return _not_authorized_response()
 
     data_dict = _read_project_form()
+    batch, problems = _resolve_cover(request.form, request.files)
+    if problems:
+        return _render_project_form(data_dict, {'image_url': [UPLOAD_ERROR]})
+    data_dict['image_url'] = batch.project_image_url
     try:
         tk.get_action('csunesco_project_request_create')(_context(), data_dict)
     except tk.NotAuthorized:
+        batch.rollback()
         return _not_authorized_response()
     except tk.ValidationError as error:
+        batch.rollback()
         return _render_project_form(data_dict, error.error_dict or {})
     except Exception:
+        batch.rollback()
         log.warning('csunesco: project request could not be created')
         return _render_project_form(data_dict, {'message': GENERIC_ERROR})
 
@@ -376,6 +474,96 @@ def project_new():
     tk.h.flash_success(tk._(
         'Your project request has been submitted and is awaiting review.'))
     return tk.redirect_to('csunesco.project_new', submitted=1)
+
+
+def project_edit(slug):
+    """GET the staged form pre-filled for ``slug``; POST saves the changes.
+
+    Reuses the very same template as ``project_new`` in ``mode='edit'`` -- the
+    fields, their stages and their validation are identical, only the target
+    action differs.
+    """
+    if not tk.g.user:
+        return _not_authorized_response()
+
+    context = _context()
+    try:
+        # include_geojson is LOAD-BEARING: csunesco_project_show strips the
+        # region unless asked for it, and an edit form that rendered an empty
+        # textarea would post an empty string and silently wipe the project's
+        # region on the first save.
+        project = tk.get_action('csunesco_project_show')(
+            context, {'slug': slug, 'include_geojson': True})
+    except tk.ObjectNotFound:
+        return tk.abort(404, tk._('Project not found'))
+    except tk.NotAuthorized:
+        return _not_authorized_response()
+    except Exception:
+        log.warning('csunesco: project editor could not resolve the project')
+        return tk.abort(404, tk._('Project not found'))
+
+    # NOT csunesco_can_manage_project: that is membership-based, and the
+    # author of a pending or rejected request has no membership row yet --
+    # they would be locked out of correcting their own submission.
+    if not tk.h.csunesco_can_edit_project(project):
+        return _not_authorized_response()
+
+    if request.method == 'GET':
+        return _render_project_form(_project_to_form(project), {},
+                                    mode='edit', project=project)
+
+    # --- POST ---------------------------------------------------------------
+    data_dict = _read_project_form()
+    batch, problems = _resolve_cover(request.form, request.files)
+    if problems:
+        return _render_project_form(data_dict, {'image_url': [UPLOAD_ERROR]},
+                                    mode='edit', project=project)
+    data_dict['image_url'] = batch.project_image_url
+    data_dict['id'] = project['id']
+    try:
+        tk.get_action('csunesco_project_update')(context, data_dict)
+    except tk.NotAuthorized:
+        batch.rollback()
+        return _not_authorized_response()
+    except tk.ValidationError as error:
+        batch.rollback()
+        return _render_project_form(data_dict, error.error_dict or {},
+                                    mode='edit', project=project)
+    except Exception:
+        batch.rollback()
+        log.warning('csunesco: project could not be updated')
+        return _render_project_form(data_dict, {'message': GENERIC_ERROR},
+                                    mode='edit', project=project)
+
+    tk.h.flash_success(tk._('Your project details have been saved.'))
+    return tk.redirect_to('csunesco.project_landing', slug=project['slug'])
+
+
+def project_resubmit(slug):
+    """POST: put a rejected project back in the review queue, then PRG."""
+    if not tk.g.user:
+        return _not_authorized_response()
+
+    context = _context()
+    try:
+        tk.get_action('csunesco_project_resubmit')(context, {'slug': slug})
+    except tk.ObjectNotFound:
+        return tk.abort(404, tk._('Project not found'))
+    except tk.NotAuthorized:
+        return _not_authorized_response()
+    except tk.ValidationError:
+        # The only validation this action raises is the status guard, so the
+        # message can be specific without leaking anything.
+        tk.h.flash_error(tk._('Only rejected projects can be resubmitted.'))
+        return tk.redirect_to('csunesco.admin_dashboard')
+    except Exception:
+        log.warning('csunesco: project could not be resubmitted')
+        tk.h.flash_error(tk._(GENERIC_ERROR))
+        return tk.redirect_to('csunesco.admin_dashboard')
+
+    tk.h.flash_success(tk._(
+        'Your project has been sent back for review.'))
+    return tk.redirect_to('csunesco.admin_dashboard')
 
 
 def join_project(slug):

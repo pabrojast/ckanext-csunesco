@@ -17,6 +17,19 @@ workflow — see [`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
   River Watch, C4Water) are CKAN groups; CS projects are first-class rows with a
   request → approve/reject lifecycle (`csunesco_project_*`). Join requests use
   the same moderation pattern (`csunesco_join_*`).
+- **Staged project form** — `/citizen-science/project/new` asks for a project in
+  **five stages** (the essentials → where it happens → what it is about →
+  taking part → contact and materials) with a progress bar, per-stage checks and
+  a searchable, chip-based country picker. It degrades to one plain long form
+  without JavaScript, and the same template backs
+  `/citizen-science/project/<slug>/edit`, so a title or a country can finally be
+  corrected after submission — **editing never re-opens moderation**. The
+  detail fields it added (`how_to_participate`, `start_date`, `end_date`,
+  `open_participation`, `target_group`, `contact_person`, `contact_email`) live
+  in the row's existing `extras` JSON column, so there is **no migration**, and
+  they surface on the landing page and in the review panel through one shared
+  `snippets/project_facts.html`. Every one of them is optional: the CS Toolbox
+  app posts to the same action with a fixed payload that mentions none of them.
 - **Landing pages** — a hub at `/citizen-science`, per-initiative listings, and
   per-project landing pages with a **region map** (Leaflet + GeoJSON),
   **at-a-glance counters** (citizen scientists, observations, sites, member
@@ -96,7 +109,9 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | GET·POST | `/citizen-science/register-citizen` | Citizen Scientist self-registration (account created **pending** until email is verified) | public — gated by `ckan.auth.create_user_via_web`; reuses core `user_create` auth |
 | GET | `/citizen-science/verify/<token>` | Activate a pending account via its emailed link | public (single-use token) |
 | GET·POST | `/citizen-science/verify/resend` | Request a fresh verification link | public (generic response) |
-| GET·POST | `/citizen-science/project/new` | Propose a project (request) | authenticated |
+| GET·POST | `/citizen-science/project/new` | Propose a project (**five-stage form**) | authenticated |
+| GET·POST | `/citizen-science/project/<slug>/edit` | Correct a project's own details (same staged form; does **not** re-open review) | sysadmin, initiative admin, that project's admin **or** the author while it is unapproved |
+| POST | `/citizen-science/project/<slug>/resubmit` | Send a **rejected** project back for review | same as edit |
 | POST | `/citizen-science/project/<slug>/join` | Request to join a project | authenticated |
 | GET·POST | `/citizen-science/project/<slug>/content/new` | Add news/event to a project | sysadmin, initiative admin **or** that project's admin |
 | GET·POST | `/citizen-science/org/<org>/content/new` | Add news/event for an ORGANIZATION (no project) | sysadmin **or** an admin/editor of the org |
@@ -134,6 +149,9 @@ enumerate accounts.
 | Action | Access |
 | --- | --- |
 | `csunesco_project_list`, `csunesco_project_show`, `csunesco_project_stats_show`, `csunesco_aggregate_stats` | public (read; approved only for non-sysadmins) |
+| `csunesco_member_state_list` | public (read; the countries a project may declare — name + human title, accent-folded sort) |
+| `csunesco_project_update` | sysadmin, initiative admin, project admin **or** the author of a not-yet-approved request (never changes moderation status; `slug` is ignored) |
+| `csunesco_project_resubmit` | same set — sends a **rejected** project back to the queue (`rejected → pending`, clearing the reason and the stale review stamp). Only valid from `rejected`; approving it still needs a sysadmin/ADM |
 | `csunesco_content_list`, `csunesco_content_show` | public (read; approved only — **except** a manager reading their own project, who also sees its pending/rejected rows) |
 | — `csunesco_content_list` filters (all optional, additive) | `content_type` · `project_id`/`project`/`project_slug` · `project_ids` (list or CSV of ids/slugs, ≤50 — the "news from my projects" feed) · `organization` (id/name) · `initiative` · `status` (privileged callers only: sysadmin, the scope's managers, or an **initiative admin filtering their own initiative**) · `featured` · `q` (title+body, wildcards escaped) · `date_from`/`date_to` (over `COALESCE(publish_date, created)`) · `upcoming` (events only) · `created_by` · `source` (`app`/`ckan`, NULL-safe) · `sort` (`publish_date`\|`created`\|`title` × `asc`\|`desc`) · `include_project` (batch-decorates owner title/slug) · `include_body` · `limit`/`offset` |
 | `csunesco_project_request_create` | authenticated |

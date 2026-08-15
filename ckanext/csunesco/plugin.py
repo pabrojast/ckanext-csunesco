@@ -105,10 +105,13 @@ class CsunescoPlugin(p.SingletonPlugin):
             'csunesco_join_url': helpers.csunesco_join_url,
             'csunesco_qr_data_uri': helpers.csunesco_qr_data_uri,
             'csunesco_member_state_title': helpers.csunesco_member_state_title,
+            'csunesco_member_state_titles':
+                helpers.csunesco_member_state_titles,
             # Increment 5: admin approval panel + per-project news/events.
             'csunesco_pending_count': helpers.csunesco_pending_count,
             'csunesco_can_manage_project':
                 helpers.csunesco_can_manage_project,
+            'csunesco_can_edit_project': helpers.csunesco_can_edit_project,
             # Content management: allowlisted Terria embed for cs-map pages.
             'csunesco_terria_embed_url': helpers.csunesco_terria_embed_url,
             # Data pipeline: entry point into Data Stories (None when disabled).

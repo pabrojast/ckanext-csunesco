@@ -1073,3 +1073,160 @@ def test_content_image_picks_first_image_url():
         ['https://example.org/doc.pdf?name=x.png']) is None
     # Entradas basura se ignoran sin reventar.
     assert csunesco_content_image([None, 42, '  ', 'not a url']) is None
+
+
+# --------------------------------------------------------------------------- #
+# The staged project form: new fields, the step map and the ofform contract    #
+# --------------------------------------------------------------------------- #
+
+def _navl(data, sch):
+    """Run navl over ``data`` and return ``(validated, errors)``."""
+    return tk.navl_validate(data, sch, {'model': None, 'session': None})
+
+
+def test_project_request_schema_new_fields_are_all_optional():
+    """Every field the staged form added must be ignore_missing.
+
+    Load-bearing: the CS Toolbox (ofform) outbox POSTs to this same action with
+    a fixed payload that mentions none of them. A single required addition
+    would break every project the app creates.
+    """
+    s = schema.project_request_schema()
+    ignore_missing = tk.get_validator('ignore_missing')
+    for field in schema.PROJECT_EXTRA_FIELDS:
+        assert field in s, 'missing new field %r' % field
+        assert s[field][0] is ignore_missing, \
+            '%r must start with ignore_missing' % field
+
+
+def test_project_request_schema_still_requires_title_and_initiative():
+    s = schema.project_request_schema()
+    not_empty = tk.get_validator('not_empty')
+    assert not_empty in s['title']
+    assert not_empty in s['initiative']
+
+
+def test_project_update_schema_drops_slug():
+    """A project's URL is permanent; an edit must not be able to move it."""
+    assert 'slug' not in schema.project_update_schema()
+    assert 'slug' in schema.project_request_schema()
+
+
+def test_project_update_schema_narrows_to_present_keys():
+    """A partial API update must not be rejected for omitting ``title``."""
+    narrowed = schema.project_update_schema(['contact_email'])
+    assert set(narrowed) == {'contact_email'}
+    # ...but a key that IS sent still faces its whole rule list.
+    assert tk.get_validator('not_empty') in \
+        schema.project_update_schema(['title'])['title']
+
+
+def test_ofform_payload_still_validates_unchanged():
+    """Regression guard for the ofform contract.
+
+    This is the exact payload ofform's outbox posts
+    (backend/app/routers/cs_projects.py). It must keep validating clean, and
+    must not acquire any of the staged form's fields by accident.
+    """
+    payload = {
+        'programme_id': 'abc-123',
+        'slug': 'douro-basin',
+        'title': 'Douro Basin',
+        'short_description': 'Freshwater monitoring.',
+        'initiative': 'river-watch',
+        'countries': [],
+        'biosphere_reserve': 'Douro',
+        'region_geojson': '',
+        'project_document_url': 'https://example.org/doc.pdf',
+        'requested_by': 'ana',
+    }
+    s = schema.project_request_schema()
+    # The action whitelists to schema keys before validating; do the same here.
+    incoming = {k: payload[k] for k in s if k in payload}
+    data, errors = _navl(incoming, s)
+    assert not errors, errors
+    assert data['initiative'] == 'riverwatch'   # hyphenated alias normalized
+    for field in schema.PROJECT_EXTRA_FIELDS:
+        assert field not in data, \
+            '%r appeared from a payload that never sent it' % field
+
+
+def test_end_after_allows_equal_dates_for_a_project():
+    """A one-day project legitimately has start_date == end_date."""
+    s = schema.project_request_schema()
+    same = '2026-07-16'
+    data, errors = _navl(
+        {'title': 'T', 'initiative': 'riverwatch',
+         'start_date': same, 'end_date': same}, s)
+    assert not errors, errors
+
+
+def test_end_after_rejects_end_before_start():
+    s = schema.project_request_schema()
+    data, errors = _navl(
+        {'title': 'T', 'initiative': 'riverwatch',
+         'start_date': '2026-07-16', 'end_date': '2026-07-15'}, s)
+    assert 'end_date' in errors
+
+
+def test_event_end_after_start_still_strict():
+    """Widening the project rule must not have softened the EVENT rule.
+
+    An event that ends the instant it starts is a data-entry mistake, even
+    though a one-day project is not.
+    """
+    s = schema.content_schema('cs-event')
+    same = '2026-07-16T09:30'
+    data, errors = _navl(
+        {'title': 'E', 'content_type': 'cs-event',
+         'publish_date': same, 'end_date': same}, s)
+    assert 'end_date' in errors
+
+
+def test_contact_email_rejects_a_second_recipient():
+    """The stored value is rendered into a mailto: on the landing page."""
+    s = schema.project_request_schema()
+    data, errors = _navl(
+        {'title': 'T', 'initiative': 'riverwatch',
+         'contact_email': 'a@b.co,evil@x.y'}, s)
+    assert 'contact_email' in errors
+
+
+def test_contact_email_empty_is_accepted():
+    """ignore_missing does NOT skip '', so the validator must tolerate it."""
+    s = schema.project_request_schema()
+    data, errors = _navl(
+        {'title': 'T', 'initiative': 'riverwatch', 'contact_email': ''}, s)
+    assert not errors, errors
+
+
+def test_open_participation_false_survives_validation():
+    s = schema.project_request_schema()
+    data, errors = _navl(
+        {'title': 'T', 'initiative': 'riverwatch',
+         'open_participation': False}, s)
+    assert not errors, errors
+    assert data['open_participation'] is False
+
+
+def test_project_form_steps_cover_the_schema_exactly():
+    """The stage map and the schema must not drift apart.
+
+    A field added to the schema but not placed on a stage would validate and
+    then never render; a stage naming a field the schema dropped would render
+    an input nothing reads.
+    """
+    from ckanext.csunesco import constants
+    placed = set()
+    for step in constants.PROJECT_FORM_STEPS:
+        placed.update(step['fields'])
+    expected = set(schema.project_request_schema()) - {'slug'}
+    assert placed == expected, (
+        'only in steps: %s / only in schema: %s'
+        % (sorted(placed - expected), sorted(expected - placed)))
+
+
+def test_project_form_steps_are_numbered_one_to_five():
+    from ckanext.csunesco import constants
+    numbers = [step['step'] for step in constants.PROJECT_FORM_STEPS]
+    assert numbers == [1, 2, 3, 4, 5]

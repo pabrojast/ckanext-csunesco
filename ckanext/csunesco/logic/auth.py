@@ -63,13 +63,24 @@ def _is_project_admin(context, project_id):
                 and member.status == 'active')
 
 
-def _is_any_project_admin(context):
-    """True when the acting user is an active ``admin`` of at least one project."""
+def _has_own_projects(context):
+    """True when the acting user administers OR authored at least one project.
+
+    Gates the approval panel, which the view itself calls "the manager's home"
+    -- it is where your projects are listed. Authorship counts because the
+    admin membership row is only inserted on approval: someone whose request
+    was rejected administers nothing, so the membership-only test used to shut
+    them out of the one page that shows the rejection reason and the way back.
+
+    Reuses ``projects_administered`` (member OR creator, limit 1) rather than
+    a second predicate, so "may open the panel" and "has a row in the panel's
+    'Your projects' band" can never disagree.
+    """
     user_obj = _user_obj(context)
     if user_obj is None:
         return False
     from ckanext.csunesco import db
-    return bool(db.admin_project_ids(user_obj.id))
+    return bool(db.projects_administered(user_obj.id, limit=1))
 
 
 # --- Organization roles (org-scoped content) ---------------------------------
@@ -186,6 +197,42 @@ def can_manage_project(context, project_id):
             or _is_project_initiative_admin(context, project_id))
 
 
+def can_edit_project_details(context, project):
+    """``can_manage_project`` OR the creator of a NOT-YET-APPROVED project.
+
+    Takes the row, not an id, because both extra facts it needs -- who created
+    the project and whether it is approved -- live on it.
+
+    The widening is load-bearing rather than generous. ``can_manage_project``
+    is membership-based, and the admin membership row is inserted by
+    ``csunesco_project_approve``: until a request is approved, its own author
+    is not an admin *of it* and so could neither correct nor resubmit the
+    thing they just wrote -- exactly the two states, pending and rejected,
+    where fixing a mistake is the entire point.
+
+    Deliberately mirrors the read-side rule in
+    ``action/projects._can_view_unapproved``: the author owns their request
+    until it is approved, after which the membership row exists and the
+    ordinary manager rule takes over on its own. It grants nothing on an
+    approved project that ``can_manage_project`` did not already grant.
+    """
+    if project is None:
+        return False
+    project_id = (project.get('id') if isinstance(project, dict)
+                  else getattr(project, 'id', None))
+    if can_manage_project(context, project_id):
+        return True
+    status = (project.get('status') if isinstance(project, dict)
+              else getattr(project, 'status', None))
+    if status == 'approved':
+        return False
+    created_by = (project.get('created_by') if isinstance(project, dict)
+                  else getattr(project, 'created_by', None))
+    user_obj = _user_obj(context)
+    return bool(created_by and user_obj is not None
+                and created_by == user_obj.id)
+
+
 # ---------------------------------------------------------------------------
 # Auth functions (CKAN contract: return {'success': bool, 'msg': ...})
 # ---------------------------------------------------------------------------
@@ -281,15 +328,55 @@ def csunesco_aggregate_stats(context, data_dict):
     return {'success': True}
 
 
+@tk.auth_allow_anonymous_access
+def csunesco_member_state_list(context, data_dict):
+    # Public read: the member-state groups are public CKAN groups already.
+    return {'success': True}
+
+
+def _project_write_access(context, data_dict, message):
+    """Shared gate for the project-detail writes (update / resubmit).
+
+    Only a cheap pre-check: it can say yes on ``can_manage_project`` alone,
+    but the creator-of-an-unapproved-project case needs the row, which only
+    the action has. So an authenticated caller is let through here and the
+    action re-checks with ``can_edit_project_details`` against the RESOLVED
+    project -- defence in depth, the ``csunesco_content_create`` shape.
+    """
+    project_id = ((data_dict or {}).get('id')
+                  or (data_dict or {}).get('project_id'))
+    if project_id and can_manage_project(context, project_id):
+        return {'success': True}
+    if context.get('user'):
+        return {'success': True}
+    return {'success': False, 'msg': message}
+
+
+def csunesco_project_update(context, data_dict):
+    # Sysadmin / project admin / initiative admin, OR the creator of a project
+    # that is not approved yet. Resolved for real in the action.
+    return _project_write_access(context, data_dict, tk._(
+        'You must be logged in to edit a project'))
+
+
+def csunesco_project_resubmit(context, data_dict):
+    # Same set as editing: whoever may fix a rejected request may ask for it
+    # to be looked at again. Sending it back to review is not a review
+    # decision -- approving it still requires a sysadmin or initiative admin.
+    return _project_write_access(context, data_dict, tk._(
+        'You must be logged in to resubmit a project'))
+
+
 # ---------------------------------------------------------------------------
 # Admin approval panel + content (Increment 5)
 # ---------------------------------------------------------------------------
 
 def csunesco_admin_pending_list(context, data_dict):
-    # The panel is visible to any sysadmin, project admin OR initiative admin;
+    # The panel is visible to any sysadmin, initiative admin, or anyone with a
+    # project of their own -- administered OR merely submitted;
     # the action itself scopes what each of them actually sees.
     if (_is_sysadmin(context)
-            or _is_any_project_admin(context)
+            or _has_own_projects(context)
             or _is_any_initiative_admin(context)):
         return {'success': True}
     return {'success': False,
@@ -598,6 +685,9 @@ def get_auth_functions():
         'csunesco_project_show': csunesco_project_show,
         'csunesco_project_stats_show': csunesco_project_stats_show,
         'csunesco_aggregate_stats': csunesco_aggregate_stats,
+        'csunesco_member_state_list': csunesco_member_state_list,
+        'csunesco_project_update': csunesco_project_update,
+        'csunesco_project_resubmit': csunesco_project_resubmit,
         'csunesco_admin_pending_list': csunesco_admin_pending_list,
         'csunesco_content_create': csunesco_content_create,
         'csunesco_content_update': csunesco_content_update,

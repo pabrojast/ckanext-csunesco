@@ -1,21 +1,49 @@
 {% extends "csunesco/base.html" %}
 
 {#
-  Project-request form (increment 4): accessible single-column form that POSTs to
-  csunesco_project_request_create. Field-level errors are wired via a single
-  aria-describedby per control (hint + optional error id). CSRF token included.
-  On success the view redirects here with ?submitted=1 (PRG) and we render an
-  inline confirmation with next-steps + status text -- NOT a link to a
-  not-yet-built "my requests" page.
+  The staged project form. ONE template serves both /project/new (mode 'new')
+  and /project/<slug>/edit (mode 'edit'): the fields, their stages and their
+  validation are identical, only the target action and the wording differ.
 
-  All `{{ ... }}` output is autoescaped -- no `| safe` on user data. The inline
-  JS is progressive enhancement only; the server re-validates everything.
+  Five stages, ONE <form>, ONE POST at the end. Hidden stages still submit --
+  `display:none` only affects painting -- so the server contract is unchanged
+  from the single-page version it replaces (PRG + navl `error_dict`).
 
-  Vars: data (echoed values), errors (dict), success (bool), initiatives,
-        member_states (list of {name, title}).
+  THE JAVASCRIPT-FREE PATH IS THE PRIMARY PATH. Every stage renders visible by
+  default; hiding is gated on `.is-enhanced`, a class only the script adds. The
+  progress bar and the Back/Next buttons are `hidden` in the markup and
+  unhidden by the script, because without it they would be decoration that
+  lies. Reference platforms hide their steps unconditionally, so a no-JS user
+  can submit fields they were never able to see -- we do not.
+
+  Every `{{ ... }}` is autoescaped; no `| safe` on user data anywhere.
+
+  Vars: mode, project, data, errors, success, initiatives, member_states,
+        member_states_available, steps, open_step.
 #}
 
-{% block subtitle %}{{ _("Propose a Project") }}{% endblock %}
+{% set is_new = mode != 'edit' %}
+
+{% macro field_error(name) %}
+  {% if errors.get(name) %}
+    <p id="cs-f-{{ name }}-error" class="cs-field-error" role="alert">{{ errors[name] | join(', ') }}</p>
+  {% endif %}
+{% endmacro %}
+
+{#
+  One aria-describedby per control, as the original did: the hint id when the
+  field has one, plus the error id when it is in error. Kept in a macro so all
+  fifteen fields wire it identically -- two of them used to render no error
+  element at all, which made a failure on them invisible.
+#}
+{% macro described_by(name, has_hint) %}
+  {%- set ids = [] -%}
+  {%- if has_hint %}{% set ids = ids + ['cs-f-' ~ name ~ '-hint'] %}{% endif -%}
+  {%- if errors.get(name) %}{% set ids = ids + ['cs-f-' ~ name ~ '-error'] %}{% endif -%}
+  {%- if ids %} aria-describedby="{{ ids | join(' ') }}"{% endif -%}
+{% endmacro %}
+
+{% block subtitle %}{{ _("Propose a Project") if is_new else _("Edit project") }}{% endblock %}
 
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
@@ -35,170 +63,387 @@
     </section>
   {% else %}
     <section class="cs-hero" aria-labelledby="cs-req-title">
-      <h1 id="cs-req-title">{{ _("Propose a Citizen Science project") }}</h1>
-      <p>{{ _("Submit a project for review. Approved projects get a public landing page, a region map and a join flow.") }}</p>
+      {% if is_new %}
+        <h1 id="cs-req-title">{{ _("Propose a Citizen Science project") }}</h1>
+        <p>{{ _("Submit a project for review. Approved projects get a public landing page, a region map and a join flow.") }}</p>
+      {% else %}
+        <h1 id="cs-req-title">{{ _("Edit project details") }}</h1>
+        <p>{{ _("Change this project's details. Its web address stays the same, and editing does not send an approved project back for review.") }}</p>
+      {% endif %}
     </section>
 
-    <section class="cs-card cs-form-card" aria-labelledby="cs-req-form-title">
+    <section class="cs-card cs-form-card cs-form-card--wide" aria-labelledby="cs-req-form-title">
       <h2 id="cs-req-form-title" class="cs-form-heading">{{ _("Project details") }}</h2>
 
-      {% if errors and errors.message %}
-        <div id="cs-req-error" class="cs-form-error" role="alert">{{ errors.message }}</div>
+      {#
+        Error summary. The single-page version had none: a failure on a field
+        further down the page gave no signal at the top, and with stages that
+        would be a field you cannot even see. Focused by the script on load.
+      #}
+      {% set ns = namespace(items=[]) %}
+      {% for step in steps %}
+        {% for name in step.fields %}
+          {% if errors.get(name) %}
+            {% set ns.items = ns.items + [(name, step.step, errors[name] | join(', '))] %}
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+
+      {% if errors.message or ns.items %}
+        <div id="cs-form-errors" class="cs-form-error cs-error-summary" role="alert" tabindex="-1">
+          <h3 class="cs-error-summary-title">{{ _("There is a problem") }}</h3>
+          {% if errors.message %}<p>{{ errors.message }}</p>{% endif %}
+          {% if ns.items %}
+            <ul>
+              {% for name, step_no, message in ns.items %}
+                <li><a href="#cs-f-{{ name }}" data-step="{{ step_no }}">{{ message }}</a></li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
       {% endif %}
 
-      <form method="post" action="{{ h.url_for('csunesco.project_new') }}"
-            class="cs-form" id="cs-project-form" novalidate>
+      <form method="post"
+            action="{{ h.url_for('csunesco.project_new') if is_new else h.url_for('csunesco.project_edit', slug=project.slug) }}"
+            enctype="multipart/form-data"
+            class="cs-form cs-wizard" id="cs-project-form" novalidate>
         {{ h.csrf_input() }}
 
-        {# ---- Title ---------------------------------------------------- #}
-        <div class="cs-field">
-          <label for="cs-title">{{ _("Project title") }} <span class="cs-req" aria-hidden="true">*</span></label>
-          <input type="text" id="cs-title" name="title" value="{{ data.title or '' }}"
-                 required aria-required="true"
-                 {% if errors.title %}aria-invalid="true"{% endif %}
-                 aria-describedby="{% if errors.title %}cs-title-error{% endif %}">
-          {% if errors.title %}
-            <p id="cs-title-error" class="cs-field-error" role="alert">{{ errors.title | join(', ') }}</p>
-          {% endif %}
-        </div>
-
-        {# ---- Initiative ----------------------------------------------- #}
-        <div class="cs-field">
-          <label for="cs-initiative">{{ _("Initiative") }} <span class="cs-req" aria-hidden="true">*</span></label>
-          <select id="cs-initiative" name="initiative" required aria-required="true"
-                  {% if errors.initiative %}aria-invalid="true"{% endif %}
-                  aria-describedby="{% if errors.initiative %}cs-initiative-error{% endif %}">
-            <option value="">{{ _("Select an initiative") }}</option>
-            {% for initiative in initiatives %}
-              <option value="{{ initiative.name }}"
-                      {% if initiative.name == data.initiative %}selected{% endif %}>
-                {{ initiative.title }}
-              </option>
+        {#
+          Hidden until the script runs: with no JS there are no stages to
+          progress through, so a progress bar would be a lie.
+        #}
+        <div class="cs-wizard-progress" id="cs-wizard-progress" hidden>
+          <div class="cs-wizard-bar" id="cs-wizard-bar" role="progressbar"
+               aria-valuemin="1" aria-valuemax="{{ steps | length }}"
+               aria-valuenow="{{ open_step }}"
+               aria-label="{{ _('Form progress') }}">
+            <div class="cs-wizard-bar-fill" id="cs-wizard-bar-fill"></div>
+          </div>
+          <ol class="cs-wizard-steps" id="cs-wizard-steps">
+            {% for step in steps %}
+              <li data-step="{{ step.step }}"
+                  {% if step.step == open_step %}aria-current="step"{% endif %}>
+                <span class="cs-wizard-step-no">{{ step.step }}</span>
+                <span class="cs-wizard-step-label">{{ _(step.title) }}</span>
+              </li>
             {% endfor %}
-          </select>
-          {% if errors.initiative %}
-            <p id="cs-initiative-error" class="cs-field-error" role="alert">{{ errors.initiative | join(', ') }}</p>
-          {% endif %}
+          </ol>
         </div>
+        <p class="cs-visually-hidden" aria-live="polite" id="cs-wizard-live"></p>
 
-        {# ---- Countries (searchable multi-select) ---------------------- #}
-        <div class="cs-field">
-          <label for="cs-countries">{{ _("Countries (member states)") }}</label>
-          <input type="search" id="cs-countries-filter" class="cs-multiselect-filter"
-                 placeholder="{{ _('Type to filter the list…') }}"
-                 aria-controls="cs-countries" autocomplete="off"
-                 aria-label="{{ _('Filter countries') }}">
-          <select id="cs-countries" name="countries" multiple size="6"
-                  {% if errors.countries %}aria-invalid="true"{% endif %}
-                  aria-describedby="cs-countries-hint{% if errors.countries %} cs-countries-error{% endif %}">
-            {% for state in member_states %}
-              <option value="{{ state.name }}"
-                      {% if state.name in (data.countries or []) %}selected{% endif %}>
-                {{ state.title }}
-              </option>
-            {% endfor %}
-          </select>
-          <p id="cs-countries-hint" class="cs-hint">{{ _("Hold Ctrl/Cmd to select multiple. Use the box above to narrow the list.") }}</p>
-          {% if errors.countries %}
-            <p id="cs-countries-error" class="cs-field-error" role="alert">{{ errors.countries | join(', ') }}</p>
-          {% endif %}
-        </div>
+        {# ================= 1. The essentials ============================== #}
+        {% set step = steps[0] %}
+        <section class="cs-step{% if open_step == 1 %} is-active{% endif %}"
+                 data-step="1" role="group" aria-labelledby="cs-step-1-title">
+          <h3 class="cs-step-title" id="cs-step-1-title" tabindex="-1">
+            {{ _("Step 1 of 5") }} — {{ _(step.title) }}
+          </h3>
+          <p class="cs-hint">{{ _(step.hint) }}</p>
 
-        {# ---- Biosphere reserve ---------------------------------------- #}
-        <div class="cs-field">
-          <label for="cs-biosphere">{{ _("Biosphere reserve") }}</label>
-          <input type="text" id="cs-biosphere" name="biosphere_reserve"
-                 value="{{ data.biosphere_reserve or '' }}"
-                 aria-describedby="cs-biosphere-hint">
-          <p id="cs-biosphere-hint" class="cs-hint">{{ _("Optional. Associated UNESCO biosphere reserve, if any.") }}</p>
-        </div>
+          <div class="cs-field">
+            <label for="cs-f-title">{{ _("Project title") }} <span class="cs-req" aria-hidden="true">*</span></label>
+            <input type="text" id="cs-f-title" name="title" value="{{ data.title or '' }}"
+                   required aria-required="true" maxlength="200"
+                   {% if errors.title %}aria-invalid="true"{% endif %}
+                   {{- described_by('title', false) }}>
+            {{ field_error('title') }}
+          </div>
 
-        {# ---- Region GeoJSON ------------------------------------------- #}
-        <div class="cs-field">
-          <label for="cs-geojson">{{ _("Region (GeoJSON)") }}</label>
-          <textarea id="cs-geojson" name="region_geojson" rows="5"
-                    {% if errors.region_geojson %}aria-invalid="true"{% endif %}
-                    aria-describedby="cs-geojson-hint{% if errors.region_geojson %} cs-geojson-error{% endif %}">{{ data.region_geojson or '' }}</textarea>
-          <p id="cs-geojson-hint" class="cs-hint">{{ _("Optional. Paste a GeoJSON Feature, FeatureCollection, Polygon or MultiPolygon.") }}</p>
-          {% if errors.region_geojson %}
-            <p id="cs-geojson-error" class="cs-field-error" role="alert">{{ errors.region_geojson | join(', ') }}</p>
-          {% endif %}
-        </div>
+          <div class="cs-field">
+            <label for="cs-f-initiative">{{ _("Initiative") }} <span class="cs-req" aria-hidden="true">*</span></label>
+            <select id="cs-f-initiative" name="initiative" required aria-required="true"
+                    {% if errors.initiative %}aria-invalid="true"{% endif %}
+                    {{- described_by('initiative', false) }}>
+              <option value="">{{ _("Select an initiative") }}</option>
+              {% for initiative in initiatives %}
+                <option value="{{ initiative.name }}"
+                        {% if initiative.name == data.initiative %}selected{% endif %}>
+                  {{ initiative.title }}
+                </option>
+              {% endfor %}
+            </select>
+            {{ field_error('initiative') }}
+          </div>
 
-        {# ---- Short description ---------------------------------------- #}
-        <div class="cs-field">
-          <label for="cs-short-desc">{{ _("Short description") }}</label>
-          <textarea id="cs-short-desc" name="short_description" rows="4"
-                    aria-describedby="cs-short-desc-hint">{{ data.short_description or '' }}</textarea>
-          <p id="cs-short-desc-hint" class="cs-hint">{{ _("A one-paragraph summary shown on cards and the landing hero.") }}</p>
-        </div>
+          <div class="cs-wizard-nav" hidden>
+            <button type="button" class="cs-btn cs-btn-primary cs-wizard-next">{{ _("Next") }}</button>
+          </div>
+        </section>
 
-        {# ---- Document URL --------------------------------------------- #}
-        <div class="cs-field">
-          <label for="cs-doc-url">{{ _("Project document URL") }}</label>
-          <input type="url" id="cs-doc-url" name="project_document_url"
-                 value="{{ data.project_document_url or '' }}"
-                 {% if errors.project_document_url %}aria-invalid="true"{% endif %}
-                 aria-describedby="cs-doc-url-hint{% if errors.project_document_url %} cs-doc-url-error{% endif %}">
-          <p id="cs-doc-url-hint" class="cs-hint">{{ _("Optional. Link (http/https) to a proposal or reference document.") }}</p>
-          {% if errors.project_document_url %}
-            <p id="cs-doc-url-error" class="cs-field-error" role="alert">{{ errors.project_document_url | join(', ') }}</p>
-          {% endif %}
-        </div>
+        {# ================= 2. Where it happens ============================ #}
+        {% set step = steps[1] %}
+        <section class="cs-step{% if open_step == 2 %} is-active{% endif %}"
+                 data-step="2" role="group" aria-labelledby="cs-step-2-title">
+          <h3 class="cs-step-title" id="cs-step-2-title" tabindex="-1">
+            {{ _("Step 2 of 5") }} — {{ _(step.title) }}
+          </h3>
+          <p class="cs-hint">{{ _(step.hint) }}</p>
 
-        {# ---- Cover image URL ------------------------------------------ #}
-        <div class="cs-field">
-          <label for="cs-image-url">{{ _("Cover image URL") }}</label>
-          <input type="url" id="cs-image-url" name="image_url"
-                 value="{{ data.image_url or '' }}"
-                 {% if errors.image_url %}aria-invalid="true"{% endif %}
-                 aria-describedby="cs-image-url-hint{% if errors.image_url %} cs-image-url-error{% endif %}">
-          <p id="cs-image-url-hint" class="cs-hint">{{ _("Optional. An https image shown as the project's banner and card cover.") }}</p>
-          {% if errors.image_url %}
-            <p id="cs-image-url-error" class="cs-field-error" role="alert">{{ errors.image_url | join(', ') }}</p>
-          {% endif %}
-        </div>
+          {#
+            The country picker. The <select multiple> is the SOURCE OF TRUTH for
+            what gets submitted, in both the plain and the enhanced path: the
+            script hides it (never disables it -- a disabled control is dropped
+            from the POST, which on an edit would wipe every country) and drives
+            it by flipping option.selected. So there is exactly one name on the
+            page and no chance of the chips and the payload disagreeing.
+          #}
+          {#
+            The picker's own strings live here, not in the bundle, so they go
+            through this page's translation catalogue.
 
-        <div class="cs-form-actions">
-          <button type="submit" id="cs-req-submit" class="cs-btn cs-btn-primary">
-            <span class="cs-btn-label">{{ _("Submit for review") }}</span>
-            <span class="cs-btn-spinner" aria-hidden="true" hidden></span>
-          </button>
-        </div>
+            Placeholders are {name} / {count}, NOT %s / %n: Jinja's `_()`
+            always runs `result % variables` on what gettext returns, so a
+            literal % in a translated string raises
+            "TypeError: not enough arguments for format string" and takes the
+            whole page down with a 500. The JS substitutes these itself.
+          #}
+          <div class="cs-field cs-countrypicker" data-countrypicker
+               data-label-remove="{{ _('Remove') }}"
+               data-label-empty="{{ _('No countries selected yet.') }}"
+               data-label-search="{{ _('Type to search…') }}"
+               data-label-added="{{ _('{name} added, {count} selected') }}"
+               data-label-removed="{{ _('{name} removed, {count} selected') }}"
+               data-label-matches="{{ _('{count} countries match') }}">
+            <label for="cs-f-countries">{{ _("Countries (member states)") }}</label>
+
+            {% if not member_states_available %}
+              <p class="cs-form-error" role="status">
+                {{ _("The member-state list could not be loaded right now. You can save without countries and add them later.") }}
+              </p>
+            {% elif not member_states %}
+              <p class="cs-hint">
+                {{ _("No member states are configured on this portal yet. You can save without countries; an administrator can add them later.") }}
+              </p>
+            {% endif %}
+
+            <select id="cs-f-countries" name="countries" multiple size="8"
+                    {% if errors.countries %}aria-invalid="true"{% endif %}
+                    {{- described_by('countries', true) }}>
+              {% for state in member_states %}
+                <option value="{{ state.name }}"
+                        {% if state.name in (data.countries or []) %}selected{% endif %}>{{ state.title }}</option>
+              {% endfor %}
+            </select>
+            <p id="cs-f-countries-hint" class="cs-hint"
+               data-hint-enhanced="{{ _('Search, then use Enter to add or remove a country.') }}">
+              {{ _("Hold Ctrl/Cmd to select more than one.") }}
+            </p>
+            {{ field_error('countries') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-biosphere_reserve">{{ _("Biosphere reserve") }}</label>
+            <input type="text" id="cs-f-biosphere_reserve" name="biosphere_reserve"
+                   value="{{ data.biosphere_reserve or '' }}" maxlength="200"
+                   {% if errors.biosphere_reserve %}aria-invalid="true"{% endif %}
+                   {{- described_by('biosphere_reserve', true) }}>
+            <p id="cs-f-biosphere_reserve-hint" class="cs-hint">{{ _("Optional. Associated UNESCO biosphere reserve, if any.") }}</p>
+            {{ field_error('biosphere_reserve') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-region_geojson">{{ _("Region (GeoJSON)") }}</label>
+            <textarea id="cs-f-region_geojson" name="region_geojson" rows="5"
+                      {% if errors.region_geojson %}aria-invalid="true"{% endif %}
+                      {{- described_by('region_geojson', true) }}>{{ data.region_geojson or '' }}</textarea>
+            <p id="cs-f-region_geojson-hint" class="cs-hint">{{ _("Optional. Paste a GeoJSON Feature, FeatureCollection, Polygon or MultiPolygon.") }}</p>
+            {{ field_error('region_geojson') }}
+          </div>
+
+          <div class="cs-wizard-nav" hidden>
+            <button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _("Back") }}</button>
+            <button type="button" class="cs-btn cs-btn-primary cs-wizard-next">{{ _("Next") }}</button>
+          </div>
+        </section>
+
+        {# ================= 3. What it is about ============================ #}
+        {% set step = steps[2] %}
+        <section class="cs-step{% if open_step == 3 %} is-active{% endif %}"
+                 data-step="3" role="group" aria-labelledby="cs-step-3-title">
+          <h3 class="cs-step-title" id="cs-step-3-title" tabindex="-1">
+            {{ _("Step 3 of 5") }} — {{ _(step.title) }}
+          </h3>
+          <p class="cs-hint">{{ _(step.hint) }}</p>
+
+          <div class="cs-field">
+            <label for="cs-f-short_description">{{ _("Short description") }}</label>
+            <textarea id="cs-f-short_description" name="short_description" rows="4"
+                      maxlength="2000"
+                      {% if errors.short_description %}aria-invalid="true"{% endif %}
+                      {{- described_by('short_description', true) }}>{{ data.short_description or '' }}</textarea>
+            <p id="cs-f-short_description-hint" class="cs-hint">{{ _("A one-paragraph summary shown on cards and the landing hero.") }}</p>
+            {{ field_error('short_description') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-how_to_participate">{{ _("How to take part") }}</label>
+            <textarea id="cs-f-how_to_participate" name="how_to_participate" rows="4"
+                      maxlength="4000"
+                      {% if errors.how_to_participate %}aria-invalid="true"{% endif %}
+                      {{- described_by('how_to_participate', true) }}>{{ data.how_to_participate or '' }}</textarea>
+            <p id="cs-f-how_to_participate-hint" class="cs-hint">{{ _("Optional. What a volunteer actually does, and what they need to bring or install.") }}</p>
+            {{ field_error('how_to_participate') }}
+          </div>
+
+          <div class="cs-wizard-nav" hidden>
+            <button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _("Back") }}</button>
+            <button type="button" class="cs-btn cs-btn-primary cs-wizard-next">{{ _("Next") }}</button>
+          </div>
+        </section>
+
+        {# ================= 4. Taking part ================================= #}
+        {% set step = steps[3] %}
+        <section class="cs-step{% if open_step == 4 %} is-active{% endif %}"
+                 data-step="4" role="group" aria-labelledby="cs-step-4-title">
+          <h3 class="cs-step-title" id="cs-step-4-title" tabindex="-1">
+            {{ _("Step 4 of 5") }} — {{ _(step.title) }}
+          </h3>
+          <p class="cs-hint">{{ _(step.hint) }}</p>
+
+          <div class="cs-field">
+            <label for="cs-f-start_date">{{ _("Start date") }}</label>
+            <input type="date" id="cs-f-start_date" name="start_date"
+                   value="{{ data.start_date or '' }}"
+                   {% if errors.start_date %}aria-invalid="true"{% endif %}
+                   {{- described_by('start_date', true) }}>
+            <p id="cs-f-start_date-hint" class="cs-hint">{{ _("Optional. When the project started, or is due to start.") }}</p>
+            {{ field_error('start_date') }}
+          </div>
+
+          <div class="cs-field">
+            {#
+              The cross-field message is carried on the element rather than
+              built in the script, so it goes through the same translation
+              catalogue as everything else on the page.
+            #}
+            <label for="cs-f-end_date">{{ _("End date") }}</label>
+            <input type="date" id="cs-f-end_date" name="end_date"
+                   value="{{ data.end_date or '' }}"
+                   data-cs-msg-end-before-start="{{ _('End date must not be before the start date') }}"
+                   {% if errors.end_date %}aria-invalid="true"{% endif %}
+                   {{- described_by('end_date', true) }}>
+            <p id="cs-f-end_date-hint" class="cs-hint">{{ _("Optional. Leave empty for an ongoing project. A single-day project may use the same date twice.") }}</p>
+            {{ field_error('end_date') }}
+          </div>
+
+          <div class="cs-field">
+            {#
+              An unchecked box submits NOTHING, which the server cannot tell
+              apart from "the form did not carry this field". The marker says
+              the control was rendered, so an absent box means an explicit No.
+            #}
+            <input type="hidden" name="open_participation_present" value="1">
+            <label class="cs-checkbox-label" for="cs-f-open_participation">
+              <input type="checkbox" id="cs-f-open_participation"
+                     name="open_participation" value="1"
+                     {% if data.open_participation %}checked{% endif %}
+                     {{- described_by('open_participation', true) }}>
+              {{ _("Open to anyone who wants to take part") }}
+            </label>
+            <p id="cs-f-open_participation-hint" class="cs-hint">{{ _("Leave unticked if volunteers need training, an invitation or a selection step first.") }}</p>
+            {{ field_error('open_participation') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-target_group">{{ _("Who it is for") }}</label>
+            <textarea id="cs-f-target_group" name="target_group" rows="3"
+                      maxlength="4000"
+                      {% if errors.target_group %}aria-invalid="true"{% endif %}
+                      {{- described_by('target_group', true) }}>{{ data.target_group or '' }}</textarea>
+            <p id="cs-f-target_group-hint" class="cs-hint">{{ _("Optional. The communities, age groups or professions this project is aimed at.") }}</p>
+            {{ field_error('target_group') }}
+          </div>
+
+          <div class="cs-wizard-nav" hidden>
+            <button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _("Back") }}</button>
+            <button type="button" class="cs-btn cs-btn-primary cs-wizard-next">{{ _("Next") }}</button>
+          </div>
+        </section>
+
+        {# ================= 5. Contact and materials ======================= #}
+        {% set step = steps[4] %}
+        <section class="cs-step{% if open_step == 5 %} is-active{% endif %}"
+                 data-step="5" role="group" aria-labelledby="cs-step-5-title">
+          <h3 class="cs-step-title" id="cs-step-5-title" tabindex="-1">
+            {{ _("Step 5 of 5") }} — {{ _(step.title) }}
+          </h3>
+          <p class="cs-hint">{{ _(step.hint) }}</p>
+
+          <div class="cs-field">
+            <label for="cs-f-contact_person">{{ _("Contact person") }}</label>
+            <input type="text" id="cs-f-contact_person" name="contact_person"
+                   value="{{ data.contact_person or '' }}" maxlength="200"
+                   {% if errors.contact_person %}aria-invalid="true"{% endif %}
+                   {{- described_by('contact_person', true) }}>
+            <p id="cs-f-contact_person-hint" class="cs-hint">{{ _("Optional. Who a would-be volunteer should ask about this project.") }}</p>
+            {{ field_error('contact_person') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-contact_email">{{ _("Contact email") }}</label>
+            <input type="email" id="cs-f-contact_email" name="contact_email"
+                   value="{{ data.contact_email or '' }}" maxlength="254"
+                   {% if errors.contact_email %}aria-invalid="true"{% endif %}
+                   {{- described_by('contact_email', true) }}>
+            <p id="cs-f-contact_email-hint" class="cs-hint">{{ _("Optional. Shown publicly on the project page, so prefer a shared team address to a personal one.") }}</p>
+            {{ field_error('contact_email') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-project_document_url">{{ _("Project document URL") }}</label>
+            <input type="url" id="cs-f-project_document_url" name="project_document_url"
+                   value="{{ data.project_document_url or '' }}"
+                   {% if errors.project_document_url %}aria-invalid="true"{% endif %}
+                   {{- described_by('project_document_url', true) }}>
+            <p id="cs-f-project_document_url-hint" class="cs-hint">{{ _("Optional. Link (http/https) to a proposal or reference document.") }}</p>
+            {{ field_error('project_document_url') }}
+          </div>
+
+          {#
+            The shared URL-or-upload picker the page editor already uses, so
+            the accepted formats, the size cap and the "uploads are not
+            configured" fallback are one implementation, not two.
+          #}
+          <div class="cs-field">
+            <span class="cs-field-legend">{{ _("Cover image") }}</span>
+            {% snippet "csunesco/blocks/edit/_image_picker.html",
+                       input_id="cs-f-image",
+                       url_name="image_url",
+                       upload_name="image_upload",
+                       clear_name="image_clear",
+                       value=data.image_url,
+                       label=_("Cover image address"),
+                       clear_label=_("Remove the current cover image"),
+                       url_field="image_url",
+                       upload_field="image_upload" %}
+            <p class="cs-hint">{{ _("Optional. Shown as the project's banner and card cover.") }}</p>
+            {{ field_error('image_url') }}
+          </div>
+
+          <div class="cs-wizard-nav" hidden>
+            <button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _("Back") }}</button>
+          </div>
+
+          <div class="cs-form-actions">
+            <button type="submit" id="cs-req-submit" class="cs-btn cs-btn-primary">
+              <span class="cs-btn-label" data-sending="{{ _('Sending…') }}">{{ _("Submit for review") if is_new else _("Save changes") }}</span>
+              <span class="cs-btn-spinner" aria-hidden="true" hidden></span>
+            </button>
+            {% if not is_new %}
+              <a class="cs-btn cs-btn-secondary"
+                 href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
+                {{ _("Cancel") }}
+              </a>
+            {% endif %}
+          </div>
+        </section>
       </form>
     </section>
-
-    <script>
-      // Progressive enhancement only: the server re-validates everything.
-      (function () {
-        var form = document.getElementById('cs-project-form');
-        var submit = document.getElementById('cs-req-submit');
-        var filter = document.getElementById('cs-countries-filter');
-        var select = document.getElementById('cs-countries');
-
-        // Client-side filter over the <select multiple> options.
-        if (filter && select) {
-          var options = Array.prototype.slice.call(select.options);
-          filter.addEventListener('input', function () {
-            var term = filter.value.toLowerCase();
-            options.forEach(function (opt) {
-              opt.hidden = opt.text.toLowerCase().indexOf(term) === -1;
-            });
-          });
-        }
-
-        // Show "Sending…" + spinner and disable to prevent double submission.
-        if (form && submit) {
-          form.addEventListener('submit', function () {
-            submit.disabled = true;
-            submit.classList.add('is-loading');
-            var label = submit.querySelector('.cs-btn-label');
-            var spinner = submit.querySelector('.cs-btn-spinner');
-            if (label) { label.textContent = {{ _('Sending…') | tojson }}; }
-            if (spinner) { spinner.hidden = false; }
-          });
-        }
-      })();
-    </script>
   {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  {% if not success %}{% asset 'csunesco/cs-project-form-js' %}{% endif %}
 {% endblock %}

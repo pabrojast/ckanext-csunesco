@@ -649,10 +649,18 @@
   font-size: 0.9rem;
 }
 
-/* ---- Form controls shared by the request form -------------------------- */
+/* ---- Form controls shared by the request form --------------------------
+ * date/datetime-local/number/tel were covered by NEITHER this rule nor the
+ * text/email/password one above, so they rendered as bare browser defaults
+ * next to styled siblings. Adding them here also fixes the datetime-local
+ * inputs in the content form. */
 .cs-field select,
 .cs-field textarea,
 .cs-field input[type="url"],
+.cs-field input[type="date"],
+.cs-field input[type="datetime-local"],
+.cs-field input[type="number"],
+.cs-field input[type="tel"],
 .cs-field input[type="search"] {
   width: 100%;
   box-sizing: border-box;
@@ -2955,4 +2963,348 @@
 .cs-admin-subtitle {
   margin: 1.4rem 0 0.6rem;
   font-size: 1.05rem;
+}
+
+/* ===========================================================================
+ * Staged project form (/project/new and /project/<slug>/edit)
+ * ======================================================================== */
+
+/* A five-stage wizard needs more room than the 520px single-column forms.
+ * A MODIFIER, not an edit to .cs-form-card: that class is shared by the
+ * citizen registration, content, data-connect and resend-verification forms,
+ * and widening it would reflow all four for this page's benefit. */
+.cs-form-card--wide {
+  max-width: 760px;
+}
+
+/* --- Stages -------------------------------------------------------------
+ * No-JS FIRST: with no `.is-enhanced` on the form every stage is visible and
+ * the page is one long form, separated by rules. Only the script's class
+ * turns them into stages. */
+.cs-step {
+  border-top: 1px solid var(--unesco-blue-pale);
+  margin-top: calc(var(--space-unit) * 1.5);
+  padding-top: var(--space-unit);
+}
+
+.cs-step:first-of-type {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.cs-form.is-enhanced .cs-step {
+  display: none;
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.cs-form.is-enhanced .cs-step.is-active {
+  display: block;
+}
+
+.cs-step-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+  color: var(--unesco-blue-dark);
+}
+
+/* The heading is focused programmatically on every stage change, so it needs
+ * a visible ring when that focus came from the keyboard. */
+.cs-step-title:focus-visible {
+  outline: 2px solid var(--unesco-blue);
+  outline-offset: 3px;
+}
+
+/* --- Progress + stage rail ---------------------------------------------- */
+.cs-wizard-progress {
+  margin-bottom: calc(var(--space-unit) * 1.25);
+}
+
+.cs-wizard-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--unesco-blue-pale);
+  overflow: hidden;
+}
+
+.cs-wizard-bar-fill {
+  height: 100%;
+  width: 20%;
+  border-radius: 999px;
+  background: var(--unesco-blue);
+  transition: width 0.25s ease;
+}
+
+.cs-wizard-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  color: #5a6b7d;
+}
+
+.cs-wizard-steps li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cs-wizard-step-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 1px solid #cfd8e3;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.cs-wizard-steps li[data-state="done"] .cs-wizard-step-no {
+  background: var(--unesco-blue-pale);
+  border-color: var(--unesco-blue);
+  color: var(--unesco-blue-dark);
+}
+
+.cs-wizard-steps li[aria-current="step"] {
+  color: var(--unesco-blue-dark);
+  font-weight: 600;
+}
+
+.cs-wizard-steps li[aria-current="step"] .cs-wizard-step-no {
+  background: var(--unesco-blue);
+  border-color: var(--unesco-blue);
+  color: #fff;
+}
+
+/* Below the rail's comfortable width the labels are noise -- the numbered
+ * circles and the bar still say where you are. */
+@media (max-width: 640px) {
+  .cs-wizard-step-label {
+    display: none;
+  }
+}
+
+.cs-wizard-nav {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: calc(var(--space-unit) * 1.25);
+}
+
+.cs-wizard-next {
+  margin-left: auto;
+}
+
+/* --- Error summary ------------------------------------------------------ */
+.cs-error-summary ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.cs-error-summary-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.cs-error-summary a {
+  color: inherit;
+}
+
+.cs-error-summary:focus-visible {
+  outline: 2px solid #c0392b;
+  outline-offset: 3px;
+}
+
+/* --- Value chips (the country picker's current selection) ---------------
+ * A new component: .cs-wb-chip is a workbench status badge, .cs-pb-tag a
+ * page-builder tag and .cs-chat-chip a suggestion button. None is a
+ * removable form value. */
+.cs-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #bcdcf5;
+  border-radius: 999px;
+  background: var(--unesco-blue-pale);
+  color: var(--unesco-blue-dark);
+  font-size: 0.9rem;
+}
+
+/* The remove button pulls back into the chip's own padding, so a read-only
+ * chip (the landing band, the review panel) needs no separate rule -- and we
+ * avoid depending on :has(), which is still uneven across browsers. */
+.cs-chip-remove {
+  margin-right: -0.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cs-chip-remove:hover,
+.cs-chip-remove:focus-visible {
+  background: #bcdcf5;
+}
+
+.cs-chips-empty {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: #5a6b7d;
+}
+
+/* --- Combobox + listbox -------------------------------------------------- */
+.cs-combobox {
+  position: relative;
+  margin-top: 0.5rem;
+}
+
+.cs-combobox-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #cfd8e3;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.cs-listbox {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #cfd8e3;
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.cs-option {
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.cs-option[aria-selected="true"]::before {
+  content: "\2713\00a0";
+  color: var(--unesco-blue);
+  font-weight: 700;
+}
+
+.cs-option.is-active {
+  background: var(--unesco-blue-pale);
+}
+
+/* A background-only active state disappears in forced colours, taking the
+ * keyboard cursor with it. */
+@media (forced-colors: active) {
+  .cs-option.is-active {
+    outline: 2px solid;
+    outline-offset: -2px;
+  }
+}
+
+.cs-field-legend {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+/* --- Project facts band (landing + review panel) ------------------------- */
+.cs-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0;
+}
+
+@media (max-width: 600px) {
+  .cs-facts {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .cs-facts dd {
+    margin-bottom: 0.6rem;
+  }
+}
+
+.cs-facts dt {
+  font-weight: 600;
+  color: var(--unesco-blue-dark);
+}
+
+.cs-facts dd {
+  margin: 0;
+}
+
+/* Authored line breaks survive; the value is autoescaped, never `| safe`. */
+.cs-facts-text {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.cs-review-details summary {
+  cursor: pointer;
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--unesco-blue-dark);
+}
+
+.cs-review-details .cs-facts {
+  margin-top: 0.6rem;
+  font-size: 0.9rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-wizard-bar-fill {
+    transition: none;
+  }
+}
+
+/* --- Rejected project: the reason, and the way back ---------------------- */
+.cs-wb-card-reason {
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-left: 3px solid #c0392b;
+  border-radius: var(--radius);
+  background: #fdecea;
+  color: #7b241c;
+  font-size: 0.88rem;
+}
+
+/* The resubmit control is a POST form, so it needs to sit on the actions row
+   next to the plain links rather than break onto a line of its own. */
+.cs-inline-form {
+  display: inline;
 }

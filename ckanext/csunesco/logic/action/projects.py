@@ -7,6 +7,7 @@ approval the project's creator becomes its ``project_admin`` and the counter row
 is created -- all in one transaction that commits exactly once.
 """
 import datetime
+import json
 import re
 
 import ckan.plugins.toolkit as tk
@@ -30,6 +31,42 @@ _ALLOWED_ATTRS = {'a': ['href', 'title', 'rel']}
 
 def _utcnow():
     return datetime.datetime.utcnow()
+
+
+def _project_extras(data, current=None):
+    """Merge the validated non-column project fields into an ``extras`` dict.
+
+    Only keys PRESENT in ``data`` are touched. That is what lets the CS Toolbox
+    (ofform) outbox -- which posts none of them -- leave them alone, and what
+    lets a partial API update mention one field without blanking the rest.
+
+    An explicitly empty value REMOVES the key, so "cleared the field" and
+    "never set it" read back the same (absent). ``False`` is a VALUE, not
+    empty: an unchecked ``open_participation`` must persist as False, hence the
+    spelled-out emptiness test rather than a bare falsiness check.
+
+    ``csunesco_valid_iso_date`` returns a ``datetime`` and this column is JSON,
+    so dates are stored as ISO strings -- without this, the first save with a
+    date raises "Object of type datetime is not JSON serializable".
+    """
+    # dict() and not the parsed object itself: _load_json hands back the very
+    # dict it was given when the caller already parsed it, and mutating the
+    # caller's copy in place is a surprise waiting to happen.
+    extras = db._load_json(current, {})
+    extras = dict(extras) if isinstance(extras, dict) else {}
+    for key in cs_schema.PROJECT_EXTRA_FIELDS:
+        if key not in data:
+            continue
+        value = data[key]
+        if key in cs_schema.PROJECT_EXTRA_HTML_FIELDS:
+            value = _sanitize_html(value)
+        if isinstance(value, datetime.datetime):
+            value = value.date().isoformat()
+        if value is None or value == '' or value == []:
+            extras.pop(key, None)
+        else:
+            extras[key] = value
+    return extras
 
 
 def _sanitize_html(value):
@@ -128,11 +165,134 @@ def csunesco_project_request_create(context, data_dict):
     project.short_description = _sanitize_html(data.get('short_description'))
     project.project_document_url = data.get('project_document_url')
     project.image_url = data.get('image_url')
+    # The staged form's extra detail fields. No migration: they ride in the
+    # existing JSON column and project_dictize merges them back on read.
+    project.extras = json.dumps(_project_extras(data))
     project.status = 'pending'
     project.created_by = current_user_id(context)
     project.created = now
     project.modified = now
     model.Session.add(project)
+    model.Session.commit()
+    return db.project_dictize(project)
+
+
+# Form field -> ``cs_project`` column for the fields an edit may change.
+# Deliberately EXCLUDES slug (URL stability), status, trusted, created_by,
+# organization_id and the whole moderation audit trail.
+PROJECT_EDITABLE_COLUMNS = (
+    ('title', 'title'),
+    ('initiative', 'initiative_group'),
+    ('countries', 'countries'),
+    ('biosphere_reserve', 'biosphere_reserve'),
+    ('region_geojson', 'region_geojson'),
+    ('project_document_url', 'project_document_url'),
+    ('image_url', 'image_url'),
+)
+
+
+def csunesco_project_update(context, data_dict):
+    """Edit an existing project's details (sysadmin / PM / initiative admin).
+
+    Editing NEVER changes moderation state: an approved project stays approved,
+    a pending request stays pending, a rejected one stays rejected.
+
+    That DIVERGES from ``csunesco_content_update``, which re-queues a
+    non-sysadmin edit, and the divergence is deliberate. A content item is a
+    publication whose text a reviewer approved; a project record is the
+    identity of something already live on the portal. Sending an approved
+    project back to ``pending`` would unpublish its landing page, orphan its
+    data sources and stall its news queue because someone fixed a typo in a
+    contact address. Prose moderation belongs to the project PAGE, which has
+    its own queue (``csunesco_project_page_submit``).
+
+    KNOWN GAP, deliberately not solved here: a *rejected* project is a dead end
+    -- its manager can edit it but has no way to ask for another review. The
+    fix is a separate ``csunesco_project_resubmit`` (rejected -> pending,
+    clearing ``rejection_reason``), not a side effect smuggled into this one.
+    """
+    data_dict = data_dict or {}
+    # Resolve FIRST, then authorize against the RESOLVED project -- the order
+    # csunesco_content_update uses, so a caller cannot slip a project they do
+    # control past a check meant for one they do not.
+    project = db.get_project(data_dict.get('id') or data_dict.get('slug'))
+    if project is None:
+        raise tk.ObjectNotFound(tk._('Project not found'))
+    tk.check_access('csunesco_project_update', context,
+                    dict(data_dict, id=project.id, project_id=project.id))
+    # Defence in depth: the auth function is a cheap pre-check that lets an
+    # authenticated caller through, so the real decision is made HERE against
+    # the resolved row -- which is also the only place that knows whether the
+    # caller is the author of a request that has not been approved yet.
+    if not auth.can_edit_project_details(context, project):
+        raise tk.NotAuthorized(tk._(
+            'Only the project admin or the initiative admin can edit this '
+            'project'))
+
+    incoming = {k: data_dict[k] for k in cs_schema.project_update_schema()
+                if k in data_dict}
+    data, errors = tk.navl_validate(
+        incoming, cs_schema.project_update_schema(incoming.keys()), context)
+    if errors:
+        raise tk.ValidationError(errors)
+
+    for field, column in PROJECT_EDITABLE_COLUMNS:
+        if field in data:
+            setattr(project, column, data[field])
+    if 'short_description' in data:
+        # SANITIZE before storing -- the same rule as the create path.
+        project.short_description = _sanitize_html(data['short_description'])
+    project.extras = json.dumps(_project_extras(data, project.extras))
+    project.modified = _utcnow()
+    model.Session.commit()
+    return db.project_dictize(project)
+
+
+def csunesco_project_resubmit(context, data_dict):
+    """Put a REJECTED project back in the review queue (rejected -> pending).
+
+    Without this a rejection is terminal. The reviewer's whole vocabulary is
+    approve/reject plus an optional reason, so "reject" is used for
+    everything from "this will never fly" to "wrong initiative, fix it and
+    send it back" -- and the second one had no send-it-back. The author's only
+    recourse was to file the request again under a fresh slug, leaving a dead
+    row behind and losing every edit they had made to it.
+
+    Deliberately NOT a review decision: this only returns the request to the
+    queue. Approving it still takes a sysadmin or the initiative's admin, so
+    an author cannot talk their way past moderation by resubmitting -- the
+    worst they can do is ask again.
+
+    The stale review stamp is cleared along with the reason. Leaving
+    ``reviewed_by`` / ``reviewed_at`` behind would show the pending queue a
+    row that claims it was already reviewed, by someone who has not yet seen
+    this version of it.
+    """
+    data_dict = data_dict or {}
+    project = db.get_project(data_dict.get('id') or data_dict.get('slug'))
+    if project is None:
+        raise tk.ObjectNotFound(tk._('Project not found'))
+    tk.check_access('csunesco_project_resubmit', context,
+                    dict(data_dict, id=project.id, project_id=project.id))
+    if not auth.can_edit_project_details(context, project):
+        raise tk.NotAuthorized(tk._(
+            'Only the project admin or the initiative admin can resubmit '
+            'this project'))
+    # GUARD: only a rejected project can be resubmitted. Mirrors the
+    # "only pending projects can be approved" guard -- re-queueing an already
+    # pending request would be a no-op that reorders the queue, and
+    # re-queueing an APPROVED one would unpublish a live landing page.
+    if project.status != 'rejected':
+        raise tk.ValidationError({'status': [tk._(
+            'Only rejected projects can be resubmitted (current status: %s)'
+        ) % project.status]})
+
+    now = _utcnow()
+    project.status = 'pending'
+    project.rejection_reason = None
+    project.reviewed_by = None
+    project.reviewed_at = None
+    project.modified = now
     model.Session.commit()
     return db.project_dictize(project)
 
@@ -352,6 +512,20 @@ def csunesco_aggregate_stats(context, data_dict):
 
 
 @tk.side_effect_free
+def csunesco_member_state_list(context, data_dict):
+    """The member states a project may declare: ``{'member_states': [...]}``.
+
+    Each entry is ``{'name': <group slug>, 'title': <human label>}``, sorted by
+    title. ``member_states: []`` means the portal has no ``member-states`` group
+    seeded -- a real, reportable state, NOT an error, so callers can say so
+    instead of rendering an empty picker.
+    """
+    tk.check_access('csunesco_member_state_list', context, data_dict)
+    db.ensure_mappers()
+    return {'member_states': db.member_state_choices()}
+
+
+@tk.side_effect_free
 def csunesco_my_projects(context, data_dict):
     """The projects the acting user administers (PM role).
 
@@ -373,6 +547,8 @@ def get_actions():
     return {
         'csunesco_my_projects': csunesco_my_projects,
         'csunesco_project_request_create': csunesco_project_request_create,
+        'csunesco_project_update': csunesco_project_update,
+        'csunesco_project_resubmit': csunesco_project_resubmit,
         'csunesco_project_approve': csunesco_project_approve,
         'csunesco_project_reject': csunesco_project_reject,
         'csunesco_project_trusted_set': csunesco_project_trusted_set,
@@ -380,4 +556,5 @@ def get_actions():
         'csunesco_project_show': csunesco_project_show,
         'csunesco_project_stats_show': csunesco_project_stats_show,
         'csunesco_aggregate_stats': csunesco_aggregate_stats,
+        'csunesco_member_state_list': csunesco_member_state_list,
     }

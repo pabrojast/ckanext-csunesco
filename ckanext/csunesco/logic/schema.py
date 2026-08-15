@@ -11,16 +11,46 @@ import ckan.plugins.toolkit as tk
 from ckanext.csunesco.logic import validators as v
 
 
+# Fields that are NOT columns on ``cs_project`` and are stored in its ``extras``
+# JSON blob instead. Kept here, next to the schema that defines them, so the
+# action has one authoritative list to iterate rather than a second hand-written
+# copy that drifts. ``project_dictize`` merges extras back in on read.
+PROJECT_EXTRA_FIELDS = (
+    'how_to_participate',
+    'start_date',
+    'end_date',
+    'open_participation',
+    'target_group',
+    'contact_person',
+    'contact_email',
+)
+
+# The subset of the above that is free text typed by a user, and therefore has
+# to be sanitized before storage (same treatment as ``short_description``).
+PROJECT_EXTRA_HTML_FIELDS = ('how_to_participate', 'target_group')
+
+# The subset that ``csunesco_valid_iso_date`` turns into ``datetime`` objects.
+# They live in a JSON column, so the action must isoformat() them -- json.dumps
+# cannot serialize a datetime.
+PROJECT_EXTRA_DATE_FIELDS = ('start_date', 'end_date')
+
+
 def project_request_schema():
-    """Schema for ``csunesco_project_request_create``.
+    """Schema for ``csunesco_project_request_create`` / ``_update``.
 
     ``title`` and ``initiative`` are required; everything else is optional. Note
     ``countries`` deliberately omits ``unicode_safe`` so a raw list survives to
     ``csunesco_valid_country_list`` (which accepts a list or a JSON string).
+
+    Every field added for the staged form is optional ON PURPOSE: the CS Toolbox
+    app (ofform) posts to this same action through its outbox with a fixed
+    payload, and a new required field would break every project it creates.
     """
     not_empty = tk.get_validator('not_empty')
     ignore_missing = tk.get_validator('ignore_missing')
     unicode_safe = tk.get_validator('unicode_safe')
+    boolean_validator = tk.get_validator('boolean_validator')
+    email_validator = tk.get_validator('email_validator')
     return {
         'title': [not_empty, unicode_safe],
         'initiative': [not_empty, unicode_safe, v.csunesco_valid_initiative],
@@ -34,7 +64,40 @@ def project_request_schema():
             ignore_missing, unicode_safe, v.csunesco_valid_document_url],
         'image_url': [
             ignore_missing, unicode_safe, v.csunesco_valid_image_url],
+
+        # --- stored in ``extras`` ------------------------------------------
+        'how_to_participate': [ignore_missing, unicode_safe],
+        'start_date': [ignore_missing, v.csunesco_valid_iso_date],
+        # allow_equal: a project that runs for a single day is legitimate.
+        'end_date': [
+            ignore_missing, v.csunesco_valid_iso_date,
+            v.csunesco_end_after('start_date', allow_equal=True)],
+        'open_participation': [ignore_missing, boolean_validator],
+        'target_group': [ignore_missing, unicode_safe],
+        'contact_person': [ignore_missing, unicode_safe],
+        'contact_email': [ignore_missing, unicode_safe, email_validator],
     }
+
+
+def project_update_schema(present_keys=None):
+    """``project_request_schema`` for an EDIT.
+
+    Two differences. ``slug`` is dropped: the project's URL is permanent, and
+    letting an edit move it would break every link, QR code and ofform mirror
+    already pointing at it.
+
+    And when ``present_keys`` is given the schema is narrowed to the keys
+    actually being written, so a PARTIAL API update is not rejected for failing
+    to resend ``title``. A key that IS sent still faces its whole rule list --
+    ``title=''`` still trips ``not_empty`` -- so this loosens which fields are
+    required, never how they are checked.
+    """
+    schema = project_request_schema()
+    schema.pop('slug', None)
+    if present_keys is None:
+        return schema
+    present = set(present_keys)
+    return {key: rules for key, rules in schema.items() if key in present}
 
 
 def content_schema(content_type):

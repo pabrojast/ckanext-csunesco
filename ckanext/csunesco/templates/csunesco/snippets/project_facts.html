@@ -1,0 +1,116 @@
+{#
+  A project's own details, as entered on the project form.
+
+  Used by BOTH the public landing page and the moderation panel, so a field can
+  never be surfaced in one place and forgotten in the other -- which is exactly
+  how `countries` ended up being collected on every request since the form
+  existed and displayed nowhere at all.
+
+  Deliberately NOT a page-builder block, even though the landing body is
+  otherwise block-driven. `views._published_blocks` returns a project's stored
+  block list verbatim and `blocks.ensure_builtins` only runs inside the editor,
+  so a new built-in stays invisible on every page whose manager already
+  published one -- i.e. precisely the projects that would have data to show.
+  It sits outside the block loop for the same reason the hero and the trusted
+  toggle do: this is the project's identity, not composed page content.
+
+  Renders NOTHING at all when every field is empty, so an old project that
+  predates these fields grows no blank section.
+
+  All values are autoescaped -- no `| safe` anywhere. `contact_email` is safe
+  in a mailto: because csunesco_valid_email's pattern forbids commas,
+  semicolons, angle brackets, quotes and whitespace, so it cannot smuggle a
+  second recipient.
+
+  Vars:
+    project -- a dictized project (db.project_dictize already merges extras).
+    compact -- drop the heading and tighten the type (the review panel).
+#}
+{% set countries = project.countries or [] %}
+{% set has_dates = project.start_date or project.end_date %}
+{% set has_any = countries or has_dates or project.biosphere_reserve
+                 or project.target_group or project.how_to_participate
+                 or project.contact_person or project.contact_email
+                 or project.project_document_url
+                 or project.open_participation %}
+
+{% if has_any %}
+  <section class="cs-section cs-project-facts"
+           aria-labelledby="cs-facts-title-{{ project.id }}">
+    {% if not compact %}
+      <h2 id="cs-facts-title-{{ project.id }}">{{ _("About this project") }}</h2>
+    {% else %}
+      <h3 id="cs-facts-title-{{ project.id }}" class="cs-visually-hidden">
+        {{ _("Project details") }}
+      </h3>
+    {% endif %}
+
+    <dl class="cs-facts">
+      {% if countries %}
+        <dt>{{ _("Countries") }}</dt>
+        <dd>
+          <ul class="cs-chips cs-facts-countries">
+            {# One query for every country, not one per country. #}
+            {% for state in h.csunesco_member_state_titles(countries) %}
+              <li class="cs-chip">{{ state.title }}</li>
+            {% endfor %}
+          </ul>
+        </dd>
+      {% endif %}
+
+      {% if project.biosphere_reserve %}
+        <dt>{{ _("Biosphere reserve") }}</dt>
+        <dd>{{ project.biosphere_reserve }}</dd>
+      {% endif %}
+
+      {% if has_dates %}
+        <dt>{{ _("Runs") }}</dt>
+        <dd>
+          {%- if project.start_date and project.end_date -%}
+            {{ project.start_date[:10] }} – {{ project.end_date[:10] }}
+          {%- elif project.start_date -%}
+            {{ _("From %(date)s", date=project.start_date[:10]) }}
+          {%- else -%}
+            {{ _("Until %(date)s", date=project.end_date[:10]) }}
+          {%- endif -%}
+        </dd>
+      {% endif %}
+
+      {% if project.open_participation %}
+        <dt>{{ _("Taking part") }}</dt>
+        <dd>{{ _("Open to anyone who wants to take part.") }}</dd>
+      {% endif %}
+
+      {% if project.target_group %}
+        <dt>{{ _("Who it is for") }}</dt>
+        <dd><p class="cs-facts-text">{{ project.target_group }}</p></dd>
+      {% endif %}
+
+      {% if project.how_to_participate %}
+        <dt>{{ _("How to take part") }}</dt>
+        <dd><p class="cs-facts-text">{{ project.how_to_participate }}</p></dd>
+      {% endif %}
+
+      {% if project.contact_person or project.contact_email %}
+        <dt>{{ _("Contact") }}</dt>
+        <dd>
+          {%- if project.contact_person %}{{ project.contact_person }}{% endif -%}
+          {%- if project.contact_person and project.contact_email %} — {% endif -%}
+          {%- if project.contact_email -%}
+            <a href="mailto:{{ project.contact_email }}">{{ project.contact_email }}</a>
+          {%- endif -%}
+        </dd>
+      {% endif %}
+
+      {% if project.project_document_url %}
+        <dt>{{ _("Project document") }}</dt>
+        <dd>
+          <a href="{{ project.project_document_url }}"
+             rel="nofollow noopener" target="_blank">
+            {{ _("Open the document") }}
+          </a>
+        </dd>
+      {% endif %}
+    </dl>
+  </section>
+{% endif %}

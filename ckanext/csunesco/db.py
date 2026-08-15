@@ -18,6 +18,7 @@ import datetime
 import json
 import logging
 import re
+import unicodedata
 import uuid
 
 from sqlalchemy import (
@@ -33,6 +34,8 @@ import sqlalchemy as sa
 
 from ckan.model.meta import metadata, mapper, Session  # noqa: F401
 from ckan.model.domain_object import DomainObject
+
+from ckanext.csunesco import constants
 
 log = logging.getLogger(__name__)
 
@@ -631,6 +634,52 @@ def merge_legacy_fields(project, seed, force=False):
     return changed
 
 
+def _sort_key(title):
+    """Accent-folded lowercase sort key.
+
+    Plain ``.lower()`` sorts by code point, which puts "Åland Islands" AFTER
+    "Zimbabwe" (U+00C5 > 'z') -- and Åland is the first member state on the
+    live portal, so the bug lands at the bottom of the list where nobody looks
+    for it.
+    """
+    folded = (unicodedata.normalize('NFKD', title or '')
+              .encode('ascii', 'ignore').decode('ascii'))
+    return (folded or title or '').lower()
+
+
+def member_state_choices():
+    """Active member states as ``[{'name': slug, 'title': label}, ...]``.
+
+    ONE query for the child groups of the ``member-states`` parent, selecting
+    their titles alongside their names.
+
+    Deliberately NOT ``group_show(id='member-states', include_groups=True)``,
+    which is what the project form used to call: CKAN's child-group dictization
+    returns ``title: None``, so every option fell back to its raw slug and the
+    picker listed ``afghanistan`` / ``-land-islands`` instead of ``Afghanistan``
+    / ``Åland Islands``. That call also runs a SOLR package-count facet per
+    child -- ~210 of them on a seeded portal, on every render.
+
+    Sorted by title. Returns ``[]`` when the parent group is missing; the caller
+    must say "not configured" rather than render an empty picker.
+    """
+    import ckan.model as model
+    parent = model.Group.get(constants.MEMBER_STATES_GROUP)
+    if parent is None:
+        return []
+    rows = (
+        model.Session.query(model.Group.name, model.Group.title)
+        .join(model.Member, model.Member.table_id == model.Group.id)
+        .filter(model.Member.group_id == parent.id)
+        .filter(model.Member.table_name == 'group')
+        .filter(model.Member.state == 'active')
+        .filter(model.Group.state == 'active')
+        .all()
+    )
+    choices = [{'name': name, 'title': title or name} for name, title in rows]
+    return sorted(choices, key=lambda choice: _sort_key(choice['title']))
+
+
 def get_project(id_or_slug):
     """Fetch a ``CsProject`` by primary key OR slug (None if not found)."""
     _ensure_mappers()
@@ -1206,24 +1255,38 @@ def projects_administered(user_id, limit=100):
     Includes pending and rejected projects on purpose -- a manager whose
     request is still queued needs to see that it exists, which is exactly the
     moment they have no other way to reach it.
+
+    Which is why the match is "admin member OR creator", not membership alone:
+    the admin row is inserted by ``csunesco_project_approve``, so until a
+    request is approved its own author matches nothing and the paragraph above
+    was a promise this query did not keep. A rejected request in particular
+    became unreachable for the one person who could fix it.
+
+    An OUTER join rather than a UNION: the join condition is already scoped to
+    this user, so it contributes at most one row per project and the ``OR``
+    cannot duplicate anything.
     """
     _ensure_mappers()
     if not user_id:
         return []
     rows = (
         Session.query(CsProject.id, CsProject.slug, CsProject.title,
-                      CsProject.status, CsProject.initiative_group)
-        .join(CsProjectMember, CsProjectMember.project_id == CsProject.id)
-        .filter(CsProjectMember.user_id == user_id)
-        .filter(CsProjectMember.role == 'admin')
-        .filter(CsProjectMember.status == 'active')
+                      CsProject.status, CsProject.initiative_group,
+                      CsProject.rejection_reason)
+        .outerjoin(CsProjectMember, sa.and_(
+            CsProjectMember.project_id == CsProject.id,
+            CsProjectMember.user_id == user_id,
+            CsProjectMember.role == 'admin',
+            CsProjectMember.status == 'active'))
+        .filter(sa.or_(CsProjectMember.id.isnot(None),
+                       CsProject.created_by == user_id))
         .order_by(CsProject.title)
         .limit(limit)
         .all()
     )
     return [{'id': id_, 'slug': slug, 'title': title, 'status': status,
-             'initiative_group': group}
-            for id_, slug, title, status, group in rows]
+             'initiative_group': group, 'rejection_reason': reason}
+            for id_, slug, title, status, group, reason in rows]
 
 
 def project_admin_user_ids(project_id):

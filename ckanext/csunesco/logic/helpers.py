@@ -21,9 +21,8 @@ from ckanext.csunesco import constants
 
 log = logging.getLogger(__name__)
 
-# The parent group whose active children are the valid member states. Kept in
-# sync with ``logic/validators.MEMBER_STATES_GROUP`` (water-family pattern).
-MEMBER_STATES_GROUP = 'member-states'
+# The parent group whose active children are the valid member states.
+MEMBER_STATES_GROUP = constants.MEMBER_STATES_GROUP
 
 # Neutral zeros returned whenever the aggregate stats cannot be computed, so the
 # "At a Glance" band always renders (shows 0 gracefully).
@@ -125,6 +124,29 @@ def csunesco_pending_count():
     except Exception:
         log.warning('csunesco: pending count could not be computed')
         return 0
+
+
+def csunesco_can_edit_project(project):
+    """True when the acting user may edit ``project``'s own details.
+
+    Takes the dictized project, not an id: the rule includes "the author of a
+    request that has not been approved yet", and both facts that needs live on
+    the row. Distinct from ``csunesco_can_manage_project``, which answers the
+    narrower "may add content here" and is False for the author of a pending
+    request -- their admin membership row does not exist until approval.
+
+    Any failure degrades to False.
+    """
+    if not project or not tk.g.user:
+        return False
+    try:
+        import ckan.model as model
+        from ckanext.csunesco.logic import auth
+        context = {'model': model, 'user': tk.g.user}
+        return auth.can_edit_project_details(context, project)
+    except Exception:
+        log.warning('csunesco: project edit permission could not be resolved')
+        return False
 
 
 def csunesco_can_manage_project(project_id):
@@ -362,3 +384,26 @@ def csunesco_member_state_title(name):
     except Exception:
         log.warning('csunesco: member-state title lookup failed')
     return name
+
+
+def csunesco_member_state_titles(names):
+    """``[{'name', 'title'}, ...]`` for ``names``, in order, in ONE query.
+
+    The landing band and the review panel both list a project's countries.
+    Calling ``csunesco_member_state_title`` per name is one ``Group.get()``
+    each, so a project declaring twenty countries would issue twenty queries
+    to render one line.
+
+    Unknown names fall back to themselves, so a country that was later
+    unpublished still renders as its slug rather than vanishing.
+    """
+    if not names:
+        return []
+    try:
+        result = tk.get_action('csunesco_member_state_list')({}, {})
+        titles = {row['name']: row['title']
+                  for row in (result.get('member_states') or [])}
+    except Exception:
+        log.warning('csunesco: member-state titles unavailable')
+        titles = {}
+    return [{'name': name, 'title': titles.get(name, name)} for name in names]

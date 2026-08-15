@@ -78,14 +78,45 @@
                   <span class="cs-wb-chip cs-wb-chip-quiet">{{ _("Page not published yet") }}</span>
                 {% endif %}
               </p>
-              {% if project.status == 'approved' %}
-                <p class="cs-wb-card-actions">
+              {#
+                A rejection used to be a silent dead end: the card said
+                "Rejected" and stopped there, so the one person who could act
+                on it saw neither WHY nor any way forward.
+              #}
+              {% if project.status == 'rejected' %}
+                <p class="cs-wb-card-reason">
+                  {% if project.rejection_reason %}
+                    <strong>{{ _("Reason:") }}</strong> {{ project.rejection_reason }}
+                  {% else %}
+                    {{ _("No reason was given. Check the details and send it back for review.") }}
+                  {% endif %}
+                </p>
+              {% endif %}
+              <p class="cs-wb-card-actions">
+                {% if project.status == 'approved' %}
                   <a class="cs-btn cs-btn-secondary cs-btn-sm"
                      href="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
                     {{ _("Edit page") }}
                   </a>
-                </p>
-              {% endif %}
+                {% endif %}
+                {% if project.status == 'rejected' %}
+                  <form method="post" class="cs-inline-form"
+                        action="{{ h.url_for('csunesco.project_resubmit', slug=project.slug) }}"
+                        data-confirm="{{ _('Send this project back for review?') }}">
+                    {{ h.csrf_input() }}
+                    <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">
+                      {{ _("Send back for review") }}
+                    </button>
+                  </form>
+                {% endif %}
+                {# NOT gated on approval, unlike the page editor: correcting a
+                   typo in a request that is still awaiting review is exactly
+                   when you most want to. #}
+                <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                   href="{{ h.url_for('csunesco.project_edit', slug=project.slug) }}">
+                  {{ _("Edit details") }}
+                </a>
+              </p>
             </li>
           {% endfor %}
         </ul>
@@ -174,8 +205,25 @@
                   <td data-label="{{ _('Project') }}">
                     <strong>{{ p.title }}</strong>
                     {% if p.slug %}<br><span class="cs-muted">{{ p.slug }}</span>{% endif %}
+                    {#
+                      Everything the requester actually filled in. It used to
+                      be title + slug + initiative only, so approving was a
+                      decision made without the countries, the description,
+                      the dates or the contact. Folded into a <details> rather
+                      than new columns: the &lt;=640px rule turns this table
+                      into data-label cards, which seven more columns would
+                      wreck.
+                    #}
+                    <details class="cs-review-details">
+                      <summary>{{ _("Review the submission") }}</summary>
+                      {% if p.short_description %}
+                        <p class="cs-facts-text">{{ p.short_description | striptags }}</p>
+                      {% endif %}
+                      {% snippet "csunesco/snippets/project_facts.html",
+                                 project=p, compact=true %}
+                    </details>
                   </td>
-                  <td data-label="{{ _('Initiative') }}">{{ p.initiative_group or '—' }}</td>
+                  <td data-label="{{ _('Initiative') }}">{{ p.initiative_title or p.initiative_group or '—' }}</td>
                   <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
                     <form method="post"
                           action="{{ h.url_for('csunesco.project_approve', id=p.id) }}"
