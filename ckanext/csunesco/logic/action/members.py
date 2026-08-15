@@ -6,6 +6,7 @@ rejected). The ``citizen_scientists`` counter reflects the number of ACTIVE
 members, updated atomically on each state transition.
 """
 import datetime
+import re
 
 import ckan.plugins.toolkit as tk
 import ckan.model as model
@@ -14,8 +15,28 @@ from ckanext.csunesco import db
 from ckanext.csunesco.logic.action import current_user_id
 
 
+# Hard cap on the join note. Long enough for a real paragraph of motivation,
+# short enough that a review table stays a review table.
+MAX_NOTE_LENGTH = 1000
+
+
 def _utcnow():
     return datetime.datetime.utcnow()
+
+
+def _clean_note(value):
+    """Plain text, tags stripped, length capped -- or ``None`` when empty.
+
+    Stripped rather than allowlisted: the note is rendered autoescaped with
+    ``white-space: pre-line``, so no markup is wanted and none is stored.
+    Truncates instead of raising, matching how the project form treats its own
+    optional free text -- losing a join request over an over-long paragraph
+    would be a worse outcome than trimming it.
+    """
+    if not value:
+        return None
+    text = re.sub(r'<[^>]*>', '', str(value)).strip()
+    return text[:MAX_NOTE_LENGTH] or None
 
 
 def csunesco_join_request_create(context, data_dict):
@@ -48,6 +69,10 @@ def csunesco_join_request_create(context, data_dict):
     member.role = 'scientist'
     member.status = 'pending'
     member.source = data_dict.get('source', 'ckan')
+    # The applicant's own words. Until this column existed a reviewer had a
+    # username and nothing else to decide on -- and the CS Toolbox app was
+    # already sending ``note`` on every join, only for it to be dropped here.
+    member.note = _clean_note(data_dict.get('note'))
     member.created = _utcnow()
     model.Session.add(member)
     model.Session.commit()

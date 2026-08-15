@@ -13,6 +13,20 @@
       {% if g.user %}
         <form method="post" action="{{ h.csunesco_join_url(ctx.project.slug) }}" class="cs-join-form">
           {{ h.csrf_input() }}
+          {#
+            The request used to be a bare button, so it reached the project
+            admin as a username and nothing else. One optional line in the
+            applicant's own words is what makes that decision possible.
+          #}
+          <div class="cs-field">
+            <label for="cs-join-note">{{ _("Why would you like to take part?") }}</label>
+            <textarea id="cs-join-note" name="note" rows="3" maxlength="1000"
+                      aria-describedby="cs-join-note-hint"
+                      placeholder="{{ _('For example: what you do, where you are, and what you would like to help measure.') }}"></textarea>
+            <p id="cs-join-note-hint" class="cs-hint">
+              {{ _("Optional, but it helps the project admin decide.") }}
+            </p>
+          </div>
           <button type="submit" class="cs-btn cs-btn-primary">{{ _("Request to join") }}</button>
         </form>
         <p class="cs-hint">{{ _("Your request will be reviewed by the project admin.") }}</p>

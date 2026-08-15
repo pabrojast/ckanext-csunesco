@@ -3308,3 +3308,15 @@
 .cs-inline-form {
   display: inline;
 }
+
+/* The applicant's own words on a join request. Authored line breaks survive;
+   the value is autoescaped and stored tag-stripped, never `| safe`. */
+.cs-join-note {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-left: 3px solid var(--unesco-blue-pale);
+  background: #f7fafd;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  white-space: pre-line;
+}

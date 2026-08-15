@@ -587,7 +587,8 @@ def join_project(slug):
 
     try:
         result = tk.get_action('csunesco_join_request_create')(
-            context, {'project_id': project['id']})
+            context, {'project_id': project['id'],
+                      'note': (request.form.get('note') or '').strip()})
     except tk.NotAuthorized:
         return _not_authorized_response()
     except tk.ValidationError:

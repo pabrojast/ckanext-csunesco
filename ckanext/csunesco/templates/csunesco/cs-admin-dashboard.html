@@ -267,7 +267,38 @@
           <tbody>
             {% for j in join_requests %}
               <tr>
-                <td data-label="{{ _('User') }}">{{ j.user_name or j.user_id }}</td>
+                {#
+                  Everything known about the applicant, so the decision can be
+                  made here. This cell used to hold a bare username: whoever
+                  approved was told nothing about who they were letting in.
+
+                  The email is PERSONAL DATA and appears only here -- every
+                  caller of this panel is a moderator of the row. It is
+                  deliberately absent from csunesco_project_show, which
+                  publishes usernames and nothing more.
+                #}
+                <td data-label="{{ _('User') }}">
+                  <strong>{{ j.user_name or j.user_id }}</strong>
+                  {% if j.user_login and j.user_login != j.user_name %}
+                    <span class="cs-muted">({{ j.user_login }})</span>
+                  {% endif %}
+                  <br>
+                  <span class="cs-muted">
+                    {%- if j.user_email %}{{ j.user_email }}{% endif -%}
+                    {%- if j.user_email and j.user_country %} · {% endif -%}
+                    {%- if j.user_country %}{{ h.csunesco_member_state_title(j.user_country) }}{% endif -%}
+                  </span>
+                  {% if not j.email_verified %}
+                    <br>
+                    <span class="cs-wb-chip cs-wb-chip-work">{{ _("Email not verified") }}</span>
+                  {% endif %}
+                  {% if j.note %}
+                    <p class="cs-join-note">{{ j.note }}</p>
+                  {% endif %}
+                  {% if j.source == 'app' %}
+                    <span class="cs-muted">{{ _("via the CS Toolbox app") }}</span>
+                  {% endif %}
+                </td>
                 <td data-label="{{ _('Project') }}">{{ j.project_title or j.project_id }}</td>
                 <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
                   <form method="post"

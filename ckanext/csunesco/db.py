@@ -89,6 +89,12 @@ cs_project_member_table = Table(
     Column('role', types.UnicodeText, default=u'scientist'),
     Column('status', types.UnicodeText, index=True, default=u'pending'),
     Column('source', types.UnicodeText, default=u'ckan'),
+    # Why the person wants to take part, in their own words. Optional, and the
+    # ONLY thing a join request has ever been able to say for itself: without
+    # it a reviewer decides on a username alone. The CS Toolbox app has been
+    # sending this as ``note`` since its join endpoint existed; there was
+    # nowhere to put it, so it was silently discarded on arrival.
+    Column('note', types.UnicodeText),
     # Who decided the join (approve/reject) and when — audit trail.
     Column('reviewed_by', types.UnicodeText),
     Column('reviewed_at', types.DateTime),
@@ -347,6 +353,7 @@ _AUTO_HEAL_COLUMNS = [
     ('cs_project', 'trusted', 'BOOLEAN DEFAULT FALSE'),
     ('cs_project_member', 'reviewed_by', 'TEXT'),
     ('cs_project_member', 'reviewed_at', 'TIMESTAMP'),
+    ('cs_project_member', 'note', 'TEXT'),
     ('cs_content', 'featured', 'BOOLEAN DEFAULT FALSE'),
     ('cs_content', 'extras', "TEXT DEFAULT '{}'"),
     ('cs_content', 'slug', 'TEXT'),
@@ -942,6 +949,7 @@ def member_dictize(member):
         'role': member.role,
         'status': member.status,
         'source': member.source,
+        'note': getattr(member, 'note', None),
         'reviewed_by': getattr(member, 'reviewed_by', None),
         'reviewed_at': _iso(getattr(member, 'reviewed_at', None)),
         'created': member.created.isoformat() if member.created else None,
@@ -1420,20 +1428,45 @@ def pending_joins(project_ids=None, limit=20, offset=0):
         .all()
     )
 
-    # Resolve display names for every requester in ONE query.
+    # Resolve the requesters in ONE query, then their CS profiles in ONE more.
+    # A reviewer used to get a bare username and nothing else to judge, so the
+    # rows now carry the identity we already hold. Two queries for the whole
+    # page, not two per row.
     user_ids = [member.user_id for (member, _t, _s) in rows]
-    names = {}
+    people = {}
+    profiles = {}
     if user_ids:
-        for user in (Session.query(model.User)
-                     .filter(model.User.id.in_(user_ids)).all()):
-            names[user.id] = user.display_name or user.name
+        # Fail-soft on the CKAN side only: a reviewer must still get their
+        # queue -- with ids where names would be -- rather than a 500, if a
+        # requester's account has since been purged or is unreadable.
+        try:
+            for user in (Session.query(model.User)
+                         .filter(model.User.id.in_(user_ids)).all()):
+                people[user.id] = user
+        except Exception:
+            log.warning('csunesco: join requesters could not be resolved')
+        for profile in (Session.query(CsCitizenScientist)
+                        .filter(CsCitizenScientist.user_id.in_(user_ids))
+                        .all()):
+            profiles[profile.user_id] = profile
 
     results = []
     for member, title, slug in rows:
         item = member_dictize(member)
         item['project_title'] = title
         item['project_slug'] = slug
-        item['user_name'] = names.get(member.user_id, member.user_id)
+        user = people.get(member.user_id)
+        profile = profiles.get(member.user_id)
+        item['user_name'] = ((user.display_name or user.name) if user
+                             else member.user_id)
+        item['user_login'] = user.name if user else None
+        # PERSONAL DATA. Only ever rendered inside the approval panel, whose
+        # every caller is a moderator of the row. Deliberately NOT added to
+        # csunesco_project_show, which exposes usernames only, on purpose.
+        item['user_email'] = getattr(user, 'email', None) if user else None
+        item['user_country'] = getattr(profile, 'country', None)
+        item['email_verified'] = bool(
+            getattr(profile, 'email_verified', False))
         results.append(item)
     return total, results
 

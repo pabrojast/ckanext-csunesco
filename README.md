@@ -16,7 +16,13 @@ workflow — see [`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
 - **Initiatives & projects** — the four initiatives (Be Resilient, Island Watch,
   River Watch, C4Water) are CKAN groups; CS projects are first-class rows with a
   request → approve/reject lifecycle (`csunesco_project_*`). Join requests use
-  the same moderation pattern (`csunesco_join_*`).
+  the same moderation pattern (`csunesco_join_*`) and **arrive ready to decide
+  on**: the applicant may add a short motivation (`note`, tag-stripped, capped
+  at 1000 chars — the same field the CS Toolbox app had always been sending and
+  that CKAN used to discard), and the review row shows their name, email,
+  declared country and whether they verified their address. The email is
+  personal data and appears **only** in the approval panel, never in
+  `csunesco_project_show`, which still publishes usernames alone.
 - **Staged project form** — `/citizen-science/project/new` asks for a project in
   **five stages** (the essentials → where it happens → what it is about →
   taking part → contact and materials) with a progress bar, per-stage checks and
