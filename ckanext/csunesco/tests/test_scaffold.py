@@ -140,3 +140,18 @@ def test_form_stages_match_the_step_map():
             assert 'name="%s"' % field in source, \
                 'step %s names %r but the template has no such input' % (
                     step['step'], field)
+
+
+def test_qrcode_is_a_declared_dependency():
+    """The join block's QR must not silently vanish again.
+
+    csunesco_qr_data_uri returns None when `qrcode` is missing and the
+    template then renders no <img> at all -- a soft failure by design. Because
+    the package was never declared, that soft failure was the ONLY behaviour
+    any deployment ever had, portal included: the QR existed in the template
+    and nowhere on screen.
+    """
+    setup_py = os.path.join(REPO_ROOT, 'setup.py')
+    with open(setup_py, 'r') as fh:
+        source = fh.read()
+    assert 'qrcode' in source, 'qrcode missing from install_requires'

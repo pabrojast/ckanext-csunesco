@@ -37,10 +37,32 @@
       {% endif %}
     </div>
 
+    {#
+      The right-hand column is the phone route to the SAME place as the
+      buttons on the left: the QR encodes this project's own page, so whoever
+      scans it lands where they can log in, register or join, exactly
+      according to who they are. It deliberately does not point straight at
+      /register-citizen -- that form takes no return target, so it would strand
+      someone on a generic signup with no way back to the project they were
+      standing in front of.
+
+      No QR is a supported state, not a broken one: csunesco_qr_data_uri
+      returns None when the optional `qrcode` package is unavailable, and the
+      shareable link below carries the same destination on its own. That link
+      is also the accessible equivalent -- a QR is unusable to a screen reader.
+    #}
     <div class="cs-join-share">
       {% if qr %}
         <img class="cs-join-qr" src="{{ qr }}"
-             alt="{{ _('QR code to access this project') }}" width="160" height="160">
+             alt="{{ _('QR code linking to this project page') }}"
+             width="160" height="160">
+        <p class="cs-join-qr-label">
+          {%- if g.user -%}
+            {{ _("Scan to open this project on your phone.") }}
+          {%- else -%}
+            {{ _("Scan to open this project on your phone, where you can log in or register.") }}
+          {%- endif -%}
+        </p>
       {% endif %}
       <p class="cs-join-link">
         <span class="cs-join-link-label">{{ _("Share this project:") }}</span>

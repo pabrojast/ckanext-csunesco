@@ -603,6 +603,12 @@
   background: #fff;
 }
 
+.cs-join-qr-label {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: #5a6b7d;
+}
+
 .cs-join-link {
   margin: 0;
   word-break: break-all;

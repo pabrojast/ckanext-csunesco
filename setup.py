@@ -31,6 +31,12 @@ setup(
         # reasons (see ckanext/csunesco/logic/sanitize.py). The code degrades
         # gracefully (strips all tags) if it is somehow absent.
         'bleach',
+        # The join block's QR code (logic/helpers.csunesco_qr_data_uri). That
+        # helper has always degraded to "no QR" when the package is missing --
+        # and because this was never declared, the QR silently rendered on no
+        # deployment at all, including the portal. The [pil] extra pulls the
+        # Pillow backend the helper imports.
+        'qrcode[pil]',
     ],
     entry_points="""
         [ckan.plugins]
