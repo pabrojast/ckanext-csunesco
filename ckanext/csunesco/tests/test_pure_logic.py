@@ -486,12 +486,18 @@ def test_content_schema_news_dates_optional():
     assert not_empty not in s['publish_date']
 
 
-def test_content_schema_event_requires_end_after_start():
+def test_content_schema_event_requires_a_start_but_not_an_end():
+    """An event needs a start date; the end is optional.
+
+    Both used to be required, which rejected every open-ended event the CS
+    Toolbox app creates -- it posts `end_date: null`.
+    """
     s = schema.content_schema('cs-event')
     not_empty = tk.get_validator('not_empty')
+    ignore_missing = tk.get_validator('ignore_missing')
     assert not_empty in s['publish_date']
-    assert not_empty in s['end_date']
-    assert v.csunesco_end_after_start in s['end_date']
+    assert not_empty not in s['end_date']
+    assert s['end_date'][0] is ignore_missing
 
 
 def test_content_schema_publication_requires_documents():
@@ -1099,11 +1105,18 @@ def test_project_request_schema_new_fields_are_all_optional():
             '%r must start with ignore_missing' % field
 
 
-def test_project_request_schema_still_requires_title_and_initiative():
+def test_project_request_schema_still_requires_a_title():
+    """`title` is the only required field left.
+
+    `initiative` was required until the app's programme-less projects showed
+    that it must not be: it now normalizes an empty value instead of bouncing.
+    """
     s = schema.project_request_schema()
     not_empty = tk.get_validator('not_empty')
+    ignore_missing = tk.get_validator('ignore_missing')
     assert not_empty in s['title']
-    assert not_empty in s['initiative']
+    assert not_empty not in s['initiative']
+    assert s['initiative'][0] is ignore_missing
 
 
 def test_project_update_schema_drops_slug():
@@ -1169,18 +1182,41 @@ def test_end_after_rejects_end_before_start():
     assert 'end_date' in errors
 
 
-def test_event_end_after_start_still_strict():
-    """Widening the project rule must not have softened the EVENT rule.
+def test_a_single_day_event_is_accepted():
+    """Was strict end > start, and rejected the commonest kind of event.
 
-    An event that ends the instant it starts is a data-entry mistake, even
-    though a one-day project is not.
+    The CS Toolbox app sends date-only ISO strings, so a one-day event arrives
+    with end == start. That is not a data-entry mistake, it is Tuesday.
     """
     s = schema.content_schema('cs-event')
-    same = '2026-07-16T09:30'
+    same = '2026-07-16'
     data, errors = _navl(
         {'title': 'E', 'content_type': 'cs-event',
          'publish_date': same, 'end_date': same}, s)
+    assert not errors, errors
+
+
+def test_an_open_ended_event_is_accepted():
+    s = schema.content_schema('cs-event')
+    data, errors = _navl(
+        {'title': 'E', 'content_type': 'cs-event',
+         'publish_date': '2026-07-16'}, s)
+    assert not errors, errors
+
+
+def test_an_event_ending_before_it_starts_is_still_rejected():
+    s = schema.content_schema('cs-event')
+    data, errors = _navl(
+        {'title': 'E', 'content_type': 'cs-event',
+         'publish_date': '2026-07-16', 'end_date': '2026-07-15'}, s)
     assert 'end_date' in errors
+
+
+def test_initiative_is_optional_for_a_programme_less_project():
+    """The app offers "Choose a programme (optional)" and posts null."""
+    s = schema.project_request_schema()
+    data, errors = _navl({'title': 'No programme', 'initiative': None}, s)
+    assert not errors, errors
 
 
 def test_contact_email_rejects_a_second_recipient():

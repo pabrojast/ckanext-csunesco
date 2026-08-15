@@ -110,12 +110,17 @@
                   </form>
                 {% endif %}
                 {# NOT gated on approval, unlike the page editor: correcting a
-                   typo in a request that is still awaiting review is exactly
-                   when you most want to. #}
-                <a class="cs-btn cs-btn-secondary cs-btn-sm"
-                   href="{{ h.url_for('csunesco.project_edit', slug=project.slug) }}">
-                  {{ _("Edit details") }}
-                </a>
+                   typo in a request still awaiting review is exactly when you
+                   most want to. Gated on the SAME predicate the route enforces
+                   though -- this list now includes projects you merely
+                   authored, and authorship grants nothing once a project is
+                   approved, so an unguarded button led straight to a 403. #}
+                {% if h.csunesco_can_edit_project(project) %}
+                  <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                     href="{{ h.url_for('csunesco.project_edit', slug=project.slug) }}">
+                    {{ _("Edit details") }}
+                  </a>
+                {% endif %}
               </p>
             </li>
           {% endfor %}

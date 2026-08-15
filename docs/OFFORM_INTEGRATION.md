@@ -59,11 +59,11 @@ ofform `/cs/*` endpoints and the `csunesco_*` actions they drive:
 | Register a Citizen Scientist | `POST /cs/register` (`cs_auth.py`, public, no Bearer) | — (synchronous) | `csunesco_register_citizen_scientist` |
 | Request a new CS project | `POST /cs/projects/request` (`cs_projects.py`) | `project_request` | `csunesco_project_request_create` |
 | List CS projects | `GET /cs/projects` | — | local Programme mirror (no CKAN call) |
-| CS project detail | `GET /cs/projects/{id}` | — (read) | `csunesco_content_list` (best-effort counters) |
-| Join a project | `POST /cs/projects/{id}/join` | `join_request` | `csunesco_join_request_create` |
-| Approve a join | `POST /cs/projects/{id}/join/{user_id}/approve` | `join_approve` | `csunesco_join_approve` |
+| CS project detail | `GET /cs/projects/{id}` | — (read) | `csunesco_content_list` filtered by **`project_slug`** (news/event counters). The portal-wide totals live on `csunesco_project_show['stats']`, not here |
+| Join a project | `POST /cs/projects/{id}/join` | `join_request` | `csunesco_join_request_create` (`project_slug` + `username`; the membership is filed for that **named user**, not for the token) |
+| Approve a join | `POST /cs/projects/{id}/join/{user_id}/approve` | `join_approve` | `csunesco_join_approve` (`project_slug` + `username`; `approved_by` is ofform-local and ignored — the reviewer of record is the caller) |
 | Retry failed sync | `POST /cs/projects/{id}/retry-sync` | re-queues `failed` rows | (whatever the requeued rows target) |
-| Publish news/event/publication/map | `POST /cs/content` (`cs_content.py`) | `content` | `csunesco_content_create` (payload carries `source: 'app'` + `author`, so it **always** lands `pending` on CKAN despite the sysadmin token) |
+| Publish news/event/publication/map | `POST /cs/content` (`cs_content.py`) | `content` | `csunesco_content_create` (payload carries `source: 'app'` + `author`, so it lands `pending` despite the sysadmin token — **except** news/events on a *trusted* project, which auto-publish) |
 | List project content | `GET /cs/content` | — (read) | `csunesco_content_list` |
 | Publish a form's data | `POST /cs/forms/{form_id}/publish-data` (`cs_projects.py`) | `dataset_publish` | `csunesco_data_source_create` (lands `pending`; on sysadmin approval CKAN creates a dataset whose CSV/GeoJSON resources proxy `GET /public/forms/{id}/export.csv` and `/dashboard-data`; the endpoint flips the form to `visibility=public` first) |
 
@@ -84,7 +84,8 @@ ofform):
   `csunesco_project_reject`, `csunesco_project_list`, `csunesco_project_show`,
   `csunesco_project_stats_show`.
 - **Members / join:** `csunesco_join_request_create`, `csunesco_join_approve`,
-  `csunesco_join_reject`.
+  `csunesco_join_reject`. A join carries an optional `note` (the applicant's
+  own words) which the approval panel shows to the reviewer.
 - **Content (news/events/publications/maps):** `csunesco_content_create`,
   `csunesco_content_update`, `csunesco_content_approve`,
   `csunesco_content_reject`, `csunesco_content_list`, `csunesco_content_show`.
@@ -92,6 +93,34 @@ ofform):
   `csunesco_data_source_approve`, `csunesco_data_source_reject`,
   `csunesco_data_source_list`, `csunesco_data_source_show`.
 - **Admin panel:** `csunesco_admin_pending_list`, `csunesco_aggregate_stats`.
+- **Project editing:** `csunesco_project_update` (never re-opens moderation),
+  `csunesco_project_resubmit` (`rejected → pending`),
+  `csunesco_project_trusted_set`, `csunesco_my_projects`.
+- **Reference data:** `csunesco_member_state_list` (the `name` values are what
+  a project's `countries` must contain).
+- **Content, also:** `csunesco_content_withdraw`, `csunesco_content_delete`.
+- **Data sources, also:** `csunesco_data_source_fields`,
+  `csunesco_data_source_series`, `csunesco_data_chat`.
+- **Project pages:** the `csunesco_project_page_*` and `csunesco_site_page_*`
+  families (show / update / submit / approve / reject / publish).
+
+### What the actions read from an app payload
+
+Only the keys listed here are read; everything else is dropped silently, with
+no "unexpected field" error. In particular `programme_id` and `requested_by`
+are ofform's own bookkeeping and never reach the portal.
+
+| Action | Names the project by | Names the person by |
+| --- | --- | --- |
+| `csunesco_project_request_create` | — (creates it; `slug` is a hint, CKAN de-duplicates and returns the real one) | — (`created_by` is the token) |
+| `csunesco_join_request_create` | `project_id` \| `id` \| `project` \| `project_slug` | `username`, **honoured only for a sysadmin caller** |
+| `csunesco_join_approve` / `_reject` | same set | `user_id` \| `username` |
+| `csunesco_content_create` | `project_id` \| `project` \| `project_slug`, or `owner_org` | `author` (a display string, only when `source='app'`) |
+| `csunesco_data_source_create` | same set | — |
+
+`initiative` is OPTIONAL: the app offers "Choose a programme (optional)" and
+posts `null`. A `cs-event` needs a start date; its end is optional and may
+equal the start (single-day events).
 
 ## 5. Identity model (registration dual-write)
 

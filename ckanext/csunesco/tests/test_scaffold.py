@@ -155,3 +155,34 @@ def test_qrcode_is_a_declared_dependency():
     with open(setup_py, 'r') as fh:
         source = fh.read()
     assert 'qrcode' in source, 'qrcode missing from install_requires'
+
+
+def test_country_picker_round_trips_values_outside_the_current_list():
+    """A project's stored countries must survive an edit even when the
+    member-state list is empty, degraded, or has dropped one of them.
+
+    The select is the ONLY place `countries` round-trips through, and it used
+    to be populated exclusively from `member_states`. With that list empty the
+    control rendered zero options, the POST carried an empty selection, and the
+    update read that as "the user cleared every country" -- so opening the edit
+    form during a member-state outage and pressing Save silently wiped them.
+    """
+    source = _project_form_source()
+    # Stored-but-unknown countries are emitted as their own selected options.
+    assert 'for name in (data.countries or []) if name not in known' in source
+    # And the control announces that it rendered, so an empty selection can be
+    # told apart from a control that never drew.
+    assert 'name="countries_present"' in source
+
+
+def test_the_view_only_trusts_an_empty_country_selection_when_marked():
+    """The server half of the same guard."""
+    views_py = os.path.join(PKG_DIR, 'logic', 'views.py')
+    with open(views_py, 'r') as handle:
+        source = handle.read()
+    assert "if form.get('countries_present'):" in source
+    # countries must NOT be set unconditionally in the dict literal any more.
+    literal = source.split('def _read_project_form')[1].split('return data')[0]
+    unconditional = "'countries': [c for c in form.getlist('countries')" in \
+        literal.split("if form.get('countries_present')")[0]
+    assert not unconditional, 'countries is still sent unconditionally'

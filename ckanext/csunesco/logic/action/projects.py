@@ -231,6 +231,13 @@ def csunesco_project_update(context, data_dict):
 
     incoming = {k: data_dict[k] for k in cs_schema.project_update_schema()
                 if k in data_dict}
+    # Countries this project already declared are grandfathered through the
+    # member-state check: re-saving one is keeping it, not adding it. Without
+    # this the edit form is unsavable whenever the member-state list is
+    # unreachable or a state has been de-published since.
+    context = dict(context)
+    context['csunesco_existing_countries'] = db._load_json(
+        project.countries, [])
     data, errors = tk.navl_validate(
         incoming, cs_schema.project_update_schema(incoming.keys()), context)
     if errors:

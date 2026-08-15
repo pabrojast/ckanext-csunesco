@@ -1280,7 +1280,7 @@ def projects_administered(user_id, limit=100):
     rows = (
         Session.query(CsProject.id, CsProject.slug, CsProject.title,
                       CsProject.status, CsProject.initiative_group,
-                      CsProject.rejection_reason)
+                      CsProject.rejection_reason, CsProject.created_by)
         .outerjoin(CsProjectMember, sa.and_(
             CsProjectMember.project_id == CsProject.id,
             CsProjectMember.user_id == user_id,
@@ -1292,9 +1292,41 @@ def projects_administered(user_id, limit=100):
         .limit(limit)
         .all()
     )
+    # created_by rides along because the row now feeds
+    # auth.can_edit_project_details, which needs to know whether YOU authored
+    # this one -- without it the template could not tell an "Edit details"
+    # button that works from one that 403s.
     return [{'id': id_, 'slug': slug, 'title': title, 'status': status,
-             'initiative_group': group, 'rejection_reason': reason}
-            for id_, slug, title, status, group, reason in rows]
+             'initiative_group': group, 'rejection_reason': reason,
+             'created_by': created_by}
+            for id_, slug, title, status, group, reason, created_by in rows]
+
+
+def user_has_any_project(user_id):
+    """True when ``user_id`` administers OR authored at least one project.
+
+    A dedicated EXISTS rather than ``projects_administered(..., limit=1)``:
+    this runs on EVERY page render for every authenticated user (the header
+    gates on it), and that helper carries an ``ORDER BY cs_project.title`` over
+    an unindexed column, so the database sorted the whole matched set before
+    the LIMIT could discard it.
+    """
+    _ensure_mappers()
+    if not user_id:
+        return False
+    member_exists = (
+        Session.query(CsProjectMember.id)
+        .filter(CsProjectMember.project_id == CsProject.id)
+        .filter(CsProjectMember.user_id == user_id)
+        .filter(CsProjectMember.role == 'admin')
+        .filter(CsProjectMember.status == 'active')
+        .exists()
+    )
+    return Session.query(
+        Session.query(CsProject.id)
+        .filter(sa.or_(member_exists, CsProject.created_by == user_id))
+        .exists()
+    ).scalar() is True
 
 
 def project_admin_user_ids(project_id):
@@ -1436,19 +1468,29 @@ def pending_joins(project_ids=None, limit=20, offset=0):
     people = {}
     profiles = {}
     if user_ids:
-        # Fail-soft on the CKAN side only: a reviewer must still get their
-        # queue -- with ids where names would be -- rather than a 500, if a
-        # requester's account has since been purged or is unreadable.
-        try:
-            for user in (Session.query(model.User)
-                         .filter(model.User.id.in_(user_ids)).all()):
-                people[user.id] = user
-        except Exception:
-            log.warning('csunesco: join requesters could not be resolved')
+        # OUR table first, and unguarded: it is part of this plugin's own
+        # schema, so if it is missing the panel has bigger problems than a
+        # degraded row.
         for profile in (Session.query(CsCitizenScientist)
                         .filter(CsCitizenScientist.user_id.in_(user_ids))
                         .all()):
             profiles[profile.user_id] = profile
+        # CKAN's user table last, and guarded. Ordering matters: these share
+        # one session and therefore one transaction, so a database error here
+        # would poison everything issued afterwards ("current transaction is
+        # aborted"). Running it last means the guard can actually deliver what
+        # it promises -- a queue with ids where names would be, rather than the
+        # 500 it exists to prevent.
+        #
+        # A purged account needs no guard at all: it simply does not come back
+        # and .get() yields None. This is for the unreadable cases.
+        try:
+            for user in (Session.query(model.User)
+                         .filter(model.User.id.in_(user_ids))
+                         .filter(model.User.state == 'active').all()):
+                people[user.id] = user
+        except Exception:
+            log.warning('csunesco: join requesters could not be resolved')
 
     results = []
     for member, title, slug in rows:

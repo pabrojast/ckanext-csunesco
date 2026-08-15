@@ -50,8 +50,9 @@ workflow — see [`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
   admins, HTML sanitised with `bleach`, exposed through public
   `side_effect_free` `csunesco_content_list` / `_show`, with public indexes at
   `/citizen-science/news`, `/events`, `/publications` and `/maps`. Content
-  pushed from the CS Toolbox app carries `source: 'app'` and **always** lands
-  `pending` (sysadmin review), even though the app pushes with a sysadmin token.
+  pushed from the CS Toolbox app carries `source: 'app'` and lands `pending`
+  (sysadmin review) even though the app pushes with a sysadmin token — the one
+  exception being news and events on a **trusted** project, which auto-publish.
 - **Project page builder** — a project admin composes the whole landing body
   from ordered **blocks** (`cs_project_page`): the standard sections become
   built-in blocks they can reorder or hide, and on top of those they add rich
@@ -157,11 +158,12 @@ enumerate accounts.
 | `csunesco_project_list`, `csunesco_project_show`, `csunesco_project_stats_show`, `csunesco_aggregate_stats` | public (read; approved only for non-sysadmins) |
 | `csunesco_member_state_list` | public (read; the countries a project may declare — name + human title, accent-folded sort) |
 | `csunesco_project_update` | sysadmin, initiative admin, project admin **or** the author of a not-yet-approved request (never changes moderation status; `slug` is ignored) |
+| `csunesco_join_request_create` | authenticated. Names the project by `project_id`/`id`/`project`/`project_slug`; a **sysadmin** caller may also pass `username` to file the request for that person (the trusted-proxy the CS Toolbox app uses) |
+| `csunesco_join_approve`, `csunesco_join_reject` | sysadmin, initiative admin **or** project admin. Accept `project_slug` and `username` as well as the raw ids |
 | `csunesco_project_resubmit` | same set — sends a **rejected** project back to the queue (`rejected → pending`, clearing the reason and the stale review stamp). Only valid from `rejected`; approving it still needs a sysadmin/ADM |
 | `csunesco_content_list`, `csunesco_content_show` | public (read; approved only — **except** a manager reading their own project, who also sees its pending/rejected rows) |
 | — `csunesco_content_list` filters (all optional, additive) | `content_type` · `project_id`/`project`/`project_slug` · `project_ids` (list or CSV of ids/slugs, ≤50 — the "news from my projects" feed) · `organization` (id/name) · `initiative` · `status` (privileged callers only: sysadmin, the scope's managers, or an **initiative admin filtering their own initiative**) · `featured` · `q` (title+body, wildcards escaped) · `date_from`/`date_to` (over `COALESCE(publish_date, created)`) · `upcoming` (events only) · `created_by` · `source` (`app`/`ckan`, NULL-safe) · `sort` (`publish_date`\|`created`\|`title` × `asc`\|`desc`) · `include_project` (batch-decorates owner title/slug) · `include_body` · `limit`/`offset` |
 | `csunesco_project_request_create` | authenticated |
-| `csunesco_join_request_create` | authenticated |
 | `csunesco_my_projects` | authenticated (the projects **you** administer, whatever your role) |
 | `csunesco_data_chat` | authenticated — one plain-language question about an **approved** data source; per-user daily quota |
 | `csunesco_content_create`, `csunesco_content_update` | sysadmin, initiative admin **or** project admin (an explicit `source: 'app'` forces `pending` even for sysadmins) |

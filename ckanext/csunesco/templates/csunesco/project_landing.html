@@ -91,11 +91,17 @@
       </a>
       {# The page editor composes the BODY; this one fixes the project's own
          details (title, countries, contact...), which used to be unchangeable
-         once the request had been submitted. #}
-      <a class="cs-btn cs-btn-secondary cs-btn-sm"
-         href="{{ h.url_for('csunesco.project_edit', slug=project.slug) }}">
-        {{ _("Edit details") }}
-      </a>
+         once the request had been submitted.
+
+         Its own predicate, not ctx.can_manage: that one is membership-based,
+         so the author of a request still awaiting review could edit it from
+         the approval panel but not from the project's own page. #}
+      {% if h.csunesco_can_edit_project(project) %}
+        <a class="cs-btn cs-btn-secondary cs-btn-sm"
+           href="{{ h.url_for('csunesco.project_edit', slug=project.slug) }}">
+          {{ _("Edit details") }}
+        </a>
+      {% endif %}
     </p>
   {% endif %}
 

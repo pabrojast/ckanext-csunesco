@@ -39,6 +39,50 @@ def _clean_note(value):
     return text[:MAX_NOTE_LENGTH] or None
 
 
+def _resolve_project(data_dict):
+    """Resolve the project from an id OR a slug, under any of its key names.
+
+    Same idiom as ``action/content._resolve_project`` and
+    ``action/data._resolve_project``. Joining was the odd one out: it read only
+    ``project_id``/``id``, while the CS Toolbox app posts ``project_slug`` --
+    so ``db.get_project(None)`` returned None and EVERY app-mediated join was
+    rejected as "project not found", retried five times and left `failed` in
+    the outbox with nothing surfaced to the person who clicked Join.
+    """
+    key = (data_dict.get('project_id') or data_dict.get('id')
+           or data_dict.get('project') or data_dict.get('project_slug'))
+    return db.get_project(key)
+
+
+def _resolve_actor(context, data_dict):
+    """Who the membership is FOR: the caller, or a named user a sysadmin acts for.
+
+    ``current_user_id`` resolves the API token's own account, which is right
+    for a person clicking Join on the portal and wrong for the CS Toolbox
+    app: it posts through one sysadmin service token on behalf of whichever
+    citizen scientist tapped the button, so every app join would otherwise be
+    filed under the service account.
+
+    Impersonation is therefore allowed ONLY for a sysadmin caller -- the same
+    trusted-proxy shape content already uses for ``source='app'`` + ``author``.
+    A non-sysadmin sending ``username`` is simply ignored, never honoured and
+    never rejected, so an ordinary caller cannot probe for account existence.
+
+    Returns ``(user_id, on_behalf)``. An unknown username is a hard error: the
+    alternative is silently filing the request under the service account,
+    which is exactly the confusion this exists to prevent.
+    """
+    from ckanext.csunesco.logic import auth as cs_auth
+    username = (data_dict.get('username') or '').strip()
+    if username and cs_auth._is_sysadmin(context):
+        user = model.User.get(username)
+        if user is None:
+            raise tk.ValidationError({'username': [tk._(
+                'Unknown user: %s') % username]})
+        return user.id, True
+    return current_user_id(context), False
+
+
 def csunesco_join_request_create(context, data_dict):
     """Request to join an APPROVED project (idempotent for the acting user)."""
     if not context.get('user'):
@@ -47,20 +91,42 @@ def csunesco_join_request_create(context, data_dict):
     tk.check_access('csunesco_join_request_create', context, data_dict)
 
     data_dict = data_dict or {}
-    project_id = data_dict.get('project_id') or data_dict.get('id')
-    project = db.get_project(project_id)
+    project = _resolve_project(data_dict)
     if project is None or project.status != 'approved':
         raise tk.ValidationError({'project_id': [tk._(
             'Project not found or not open for join requests')]})
 
-    user_id = current_user_id(context)
+    user_id, on_behalf = _resolve_actor(context, data_dict)
+    note = _clean_note(data_dict.get('note'))
+    # Provenance is DERIVED, never taken from the payload. It is rendered to a
+    # reviewer as "via the CS Toolbox app", so letting a caller assert it would
+    # let anyone dress their own request up as an app-mediated one -- and the
+    # app does not send a `source` key at all, so trusting the payload also
+    # meant the badge never appeared for the real thing.
+    source = 'app' if on_behalf else 'ckan'
 
-    # Idempotent upsert: if the user already has a membership row (in ANY state)
-    # do NOT error -- return it flagged so the UI can show a soft notice.
+    # Idempotent upsert: an existing row is never an error. But it must not be
+    # a black hole either -- the note used to be dropped here, so a rejected
+    # applicant could write a fresh case for themselves, get a friendly
+    # "already requested" notice and never learn their words went nowhere.
     existing = db.project_member(project.id, user_id)
     if existing is not None:
+        reopened = False
+        if existing.status == 'rejected':
+            # Let them ask again, the way a rejected PROJECT can be resubmitted.
+            # Approving is still the reviewer's call; this only re-queues.
+            existing.status = 'pending'
+            existing.reviewed_by = None
+            existing.reviewed_at = None
+            reopened = True
+        if note and existing.status == 'pending':
+            existing.note = note
+        if reopened or note:
+            existing.source = source
+            model.Session.commit()
         result = db.member_dictize(existing)
-        result['already_requested'] = True
+        result['already_requested'] = not reopened
+        result['reopened'] = reopened
         return result
 
     member = db.CsProjectMember()
@@ -68,29 +134,53 @@ def csunesco_join_request_create(context, data_dict):
     member.user_id = user_id
     member.role = 'scientist'
     member.status = 'pending'
-    member.source = data_dict.get('source', 'ckan')
+    member.source = source
     # The applicant's own words. Until this column existed a reviewer had a
     # username and nothing else to decide on -- and the CS Toolbox app was
     # already sending ``note`` on every join, only for it to be dropped here.
-    member.note = _clean_note(data_dict.get('note'))
+    member.note = note
     member.created = _utcnow()
     model.Session.add(member)
     model.Session.commit()
 
     result = db.member_dictize(member)
     result['already_requested'] = False
+    result['reopened'] = False
     return result
 
 
-def csunesco_join_approve(context, data_dict):
-    """Approve a pending join-request; bump ``citizen_scientists`` once."""
-    tk.check_access('csunesco_join_approve', context, data_dict)
-    data_dict = data_dict or {}
-    project_id = data_dict.get('project_id')
+def _resolve_membership_keys(data_dict):
+    """``(project_uuid, user_id)`` from ids, a slug and/or a username.
+
+    ``db.project_member`` filters the raw columns, so it needs the project's
+    UUID and the CKAN user id -- a slug or a username silently matches nothing
+    and surfaces as a misleading "Membership not found". The CS Toolbox app
+    posts exactly those unusable forms (``project_slug`` + ``username``), which
+    is why every app-mediated approval failed before this resolved them.
+    """
+    project = _resolve_project(data_dict)
     user_id = data_dict.get('user_id')
-    if not project_id or not user_id:
+    if not user_id:
+        username = (data_dict.get('username') or '').strip()
+        if username:
+            user = model.User.get(username)
+            user_id = user.id if user is not None else None
+    if project is None or not user_id:
         raise tk.ValidationError({'project_id': [tk._('Missing value')],
                                   'user_id': [tk._('Missing value')]})
+    return project.id, user_id
+
+
+def csunesco_join_approve(context, data_dict):
+    """Approve a pending join-request; bump ``citizen_scientists`` once.
+
+    ``approved_by`` is accepted and IGNORED: the CS Toolbox app sends its own
+    local integer user id there, which means nothing on the portal. The
+    reviewer of record is always the authenticated caller.
+    """
+    tk.check_access('csunesco_join_approve', context, data_dict)
+    data_dict = data_dict or {}
+    project_id, user_id = _resolve_membership_keys(data_dict)
 
     member = db.project_member(project_id, user_id)
     if member is None:
@@ -123,11 +213,7 @@ def csunesco_join_reject(context, data_dict):
     """
     tk.check_access('csunesco_join_reject', context, data_dict)
     data_dict = data_dict or {}
-    project_id = data_dict.get('project_id')
-    user_id = data_dict.get('user_id')
-    if not project_id or not user_id:
-        raise tk.ValidationError({'project_id': [tk._('Missing value')],
-                                  'user_id': [tk._('Missing value')]})
+    project_id, user_id = _resolve_membership_keys(data_dict)
 
     member = db.project_member(project_id, user_id)
     if member is None:

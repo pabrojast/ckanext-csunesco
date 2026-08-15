@@ -152,14 +152,18 @@ def test_a_join_with_no_note_at_all_still_works(actions, session, project):
     assert out['note'] is None
 
 
-def test_re_requesting_is_idempotent_and_keeps_the_first_note(
+def test_re_requesting_is_idempotent_but_the_note_can_be_improved(
         actions, session, project):
+    """Still one membership row -- but a PENDING applicant may rewrite their
+    case. Discarding the second note was the old behaviour and it was silent:
+    the reply is a friendly "already requested", so nothing told them their
+    words had gone nowhere."""
     actions.csunesco_join_request_create(
         _ctx(), {'project_id': project.id, 'note': 'First words.'})
     again = actions.csunesco_join_request_create(
         _ctx(), {'project_id': project.id, 'note': 'Second thoughts.'})
     assert again['already_requested'] is True
-    assert again['note'] == 'First words.'
+    assert again['note'] == 'Second thoughts.'
 
 
 def test_the_review_row_carries_the_note_and_the_profile(

@@ -111,6 +111,11 @@
     // stage holding the first error, so there is no flash of stage 1 and no
     // second source of truth to drift.
     var current = 1;
+    // The field validateAll() stopped on, so the submit handler can focus it
+    // AFTER revealing its stage -- focusing it before the stage is painted is
+    // a no-op, which left the user on a freshly revealed stage with focus
+    // stranded on the disabled submit button.
+    var lastBadField = null;
     steps.forEach(function (el) {
       if (el.classList.contains("is-active")) { current = stepNumber(el); }
     });
@@ -149,8 +154,14 @@
           heading.focus({ preventScroll: true });
           if (live) { live.textContent = heading.textContent; }
         }
-        window.scrollTo(prefersReducedMotion()
-          ? 0 : { top: 0, behavior: "smooth" }, 0);
+        // ONE argument. Passing two selects the scrollTo(x, y) overload, which
+        // coerces the options object with Number({...}) -> NaN -> 0, so the
+        // smooth branch silently did nothing and both paths jumped.
+        if (prefersReducedMotion()) {
+          window.scrollTo(0, 0);
+        } else {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
       }
     }
 
@@ -189,11 +200,19 @@
           setFieldError(field, ok ? null : field.validationMessage);
           if (!ok && !firstBad) { firstBad = field; }
         });
-      if (firstBad) { firstBad.focus(); }
+      // Only focus when the stage is actually on screen. Calling focus() on a
+      // field inside a display:none stage is a silent no-op, which is how a
+      // failed submit used to reveal a stage and leave focus behind on the
+      // disabled submit button, announcing nothing.
+      if (firstBad) {
+        lastBadField = firstBad;
+        if (stepEl.classList.contains("is-active")) { firstBad.focus(); }
+      }
       return !firstBad;
     }
 
     function validateAll() {
+      lastBadField = null;
       for (var i = 0; i < steps.length; i++) {
         if (!validateStep(steps[i])) { return i + 1; }
       }
@@ -232,6 +251,7 @@
       if (badStep) {
         event.preventDefault();
         showStep(badStep, { focus: false });
+        if (lastBadField) { lastBadField.focus(); }
         return;
       }
       if (submit) {
@@ -480,11 +500,15 @@
         }
         break;
       case "Enter":
-        // Never let Enter reach the form while the list is open: it would
-        // advance the stage (or submit) instead of picking a country.
-        if (!listbox.hidden && active >= 0) {
+        // Swallow Enter whenever the list is open, EVEN WITH NO MATCHES.
+        // Guarding on `active >= 0` let a misspelled search fall through to
+        // the form-level handler, which advanced the stage -- so a typo
+        // navigated you off the page you were filling in.
+        if (!listbox.hidden) {
           event.preventDefault();
-          setSelected(visible[active], !visible[active].option.selected);
+          if (active >= 0) {
+            setSelected(visible[active], !visible[active].option.selected);
+          }
         }
         break;
       case "Escape":

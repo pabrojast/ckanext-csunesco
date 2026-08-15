@@ -53,7 +53,13 @@ def project_request_schema():
     email_validator = tk.get_validator('email_validator')
     return {
         'title': [not_empty, unicode_safe],
-        'initiative': [not_empty, unicode_safe, v.csunesco_valid_initiative],
+        # OPTIONAL, not required. The CS Toolbox app offers "Choose a
+        # programme (optional)" and posts `initiative: null` when the author
+        # skips it -- and because the key is present-but-null, `not_empty`
+        # fired and every programme-less project the app created was rejected.
+        # The web form still marks the field `required` in its own markup.
+        'initiative': [ignore_missing, unicode_safe,
+                       v.csunesco_valid_initiative],
         'countries': [ignore_missing, v.csunesco_valid_country_list],
         'slug': [ignore_missing, unicode_safe, v.csunesco_valid_slug],
         'biosphere_reserve': [ignore_missing, unicode_safe],
@@ -133,10 +139,16 @@ def content_schema(content_type):
         'authors': [ignore_missing, unicode_safe],
     }
     if content_type == 'cs-event':
-        # Events need a start + an end, with end strictly after start.
+        # An event needs a start. The END is optional and MAY equal the start:
+        # both rules used to be strict, and both rejected ordinary events the
+        # CS Toolbox app creates -- an open-ended one (it posts `end_date:
+        # null`) and a single-day one (it posts the same date twice, since it
+        # sends date-only ISO strings). `allow_equal` reuses the factory added
+        # for exactly this on projects.
         schema['publish_date'] = [not_empty, v.csunesco_valid_iso_date]
         schema['end_date'] = [
-            not_empty, v.csunesco_valid_iso_date, v.csunesco_end_after_start]
+            ignore_missing, v.csunesco_valid_iso_date,
+            v.csunesco_end_after('publish_date', allow_equal=True)]
     elif content_type == 'cs-publication':
         # Publications must link at least one document (the '[]' JSON string is
         # truthy, hence the extra nonempty check after list validation).

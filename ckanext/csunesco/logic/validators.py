@@ -145,14 +145,24 @@ def csunesco_valid_country_list(value, context):
     Accepts either a JSON-array string or a list. Fetches the valid member-state
     names in a single query and checks membership in memory. Returns a JSON
     string ready to store in the ``cs_project.countries`` text column.
+
+    A value the project ALREADY holds is always accepted, via
+    ``context['csunesco_existing_countries']`` (set by
+    ``csunesco_project_update``). Keeping a country you declared earlier is not
+    the same act as adding a new one, and treating it as one made the edit form
+    unsavable whenever the member-state list was unreachable or a state had
+    since been de-published: the picker re-offered the stored value, the
+    validator then rejected it, and you could not even fix a typo in the title
+    until someone repaired the group. New values are still checked.
     """
     countries = _coerce_country_list(value)
     if not countries:
         return json.dumps([])
     model = context.get('model')
     valid = _member_state_names(model) if model is not None else set()
+    already = set(context.get('csunesco_existing_countries') or ())
     for country in countries:
-        if country not in valid:
+        if country not in valid and country not in already:
             raise tk.Invalid(tk._('Unknown member state: %s') % country)
     return json.dumps(countries)
 

@@ -63,6 +63,26 @@ def _is_project_admin(context, project_id):
                 and member.status == 'active')
 
 
+def is_reviewer(context):
+    """True when the user actually has something to moderate.
+
+    Membership-based on purpose, and distinct from ``_has_own_projects``: the
+    approval panel is open to anyone with a project of their own (so the author
+    of a rejected request can reach the resubmit button), but *reviewing* is
+    still sysadmin, initiative admin, or an admin MEMBER of some project.
+
+    Without the distinction the header offered a "Review" tab to every citizen
+    scientist who had ever filed a request, pointing at five empty queues.
+    """
+    if _is_sysadmin(context) or _is_any_initiative_admin(context):
+        return True
+    user_obj = _user_obj(context)
+    if user_obj is None:
+        return False
+    from ckanext.csunesco import db
+    return bool(db.admin_project_ids(user_obj.id))
+
+
 def _has_own_projects(context):
     """True when the acting user administers OR authored at least one project.
 
@@ -72,15 +92,17 @@ def _has_own_projects(context):
     was rejected administers nothing, so the membership-only test used to shut
     them out of the one page that shows the rejection reason and the way back.
 
-    Reuses ``projects_administered`` (member OR creator, limit 1) rather than
-    a second predicate, so "may open the panel" and "has a row in the panel's
-    'Your projects' band" can never disagree.
+    Matches ``projects_administered``'s "member OR creator" rule exactly, so
+    "may open the panel" and "has a row in the panel's 'Your projects' band"
+    can never disagree -- but as an EXISTS, because this runs on every page
+    render for every authenticated user and that helper sorts by an unindexed
+    title before it can apply a LIMIT.
     """
     user_obj = _user_obj(context)
     if user_obj is None:
         return False
     from ckanext.csunesco import db
-    return bool(db.projects_administered(user_obj.id, limit=1))
+    return db.user_has_any_project(user_obj.id)
 
 
 # --- Organization roles (org-scoped content) ---------------------------------
@@ -256,8 +278,27 @@ def csunesco_project_reject(context, data_dict):
                         'projects')}
 
 
+def _join_scope_id(data_dict):
+    """The project's UUID from whichever key the caller used.
+
+    Resolved rather than passed through, because ``_is_project_admin`` filters
+    the raw ``cs_project_member`` columns: handed a slug it matches nothing and
+    would deny the project's own admin. The actions accept ``project_slug``
+    (the CS Toolbox app sends only that), so the auth has to speak the same
+    key set or it becomes the thing that rejects a legitimate reviewer.
+    """
+    data_dict = data_dict or {}
+    key = (data_dict.get('project_id') or data_dict.get('id')
+           or data_dict.get('project') or data_dict.get('project_slug'))
+    if not key:
+        return None
+    from ckanext.csunesco import db
+    project = db.get_project(key)
+    return project.id if project is not None else None
+
+
 def csunesco_join_approve(context, data_dict):
-    project_id = (data_dict or {}).get('project_id') or (data_dict or {}).get('id')
+    project_id = _join_scope_id(data_dict)
     if (_is_sysadmin(context)
             or _is_project_admin(context, project_id)
             or _is_project_initiative_admin(context, project_id)):
@@ -268,7 +309,7 @@ def csunesco_join_approve(context, data_dict):
 
 
 def csunesco_join_reject(context, data_dict):
-    project_id = (data_dict or {}).get('project_id') or (data_dict or {}).get('id')
+    project_id = _join_scope_id(data_dict)
     if (_is_sysadmin(context)
             or _is_project_admin(context, project_id)
             or _is_project_initiative_admin(context, project_id)):

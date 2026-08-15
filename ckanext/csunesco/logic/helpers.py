@@ -126,6 +126,24 @@ def csunesco_pending_count():
         return 0
 
 
+def csunesco_is_reviewer():
+    """True when the acting user has queues to moderate (not merely a project).
+
+    The header needs this to tell "Review" apart from "these are my projects":
+    the panel opens for anyone with a project of their own, but only a reviewer
+    should be offered a tab labelled Review. Fails soft to False.
+    """
+    if not tk.g.user:
+        return False
+    try:
+        import ckan.model as model
+        from ckanext.csunesco.logic import auth
+        return auth.is_reviewer({'model': model, 'user': tk.g.user})
+    except Exception:
+        log.warning('csunesco: reviewer status could not be resolved')
+        return False
+
+
 def csunesco_can_edit_project(project):
     """True when the acting user may edit ``project``'s own details.
 

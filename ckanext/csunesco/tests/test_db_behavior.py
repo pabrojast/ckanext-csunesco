@@ -978,8 +978,12 @@ def test_projects_administered_lists_only_active_admin_memberships(session):
     assert got[0]['initiative_group'] == 'riverwatch'
     # rejection_reason rides along so the "Your projects" card can say WHY a
     # request was turned down, next to the button that sends it back.
+    # created_by rides along so the template can gate "Edit details" on the
+    # same predicate the route enforces (authorship grants nothing once a
+    # project is approved, so an unguarded button 403s).
     assert set(got[0]) == {'id', 'slug', 'title', 'status',
-                           'initiative_group', 'rejection_reason'}
+                           'initiative_group', 'rejection_reason',
+                           'created_by'}
 
 
 def test_projects_administered_includes_projects_you_merely_authored(session):

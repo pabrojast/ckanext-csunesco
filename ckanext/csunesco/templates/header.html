@@ -7,17 +7,21 @@
   only -- a link to the approval dashboard, carrying a count badge when there is
   anything pending. We super() the core block so nothing is removed.
 
-  The link is gated on the dashboard's OWN auth (csunesco_admin_pending_list:
-  sysadmin, any initiative admin, any project admin) rather than on "is the
-  count above zero". Gating on the count meant the entire panel vanished from
-  the UI the moment a reviewer cleared their queue -- and /citizen-science/admin
-  is linked from nowhere else, so it became a URL you had to remember. Its five
-  tabs all render proper empty states precisely because it is meant to be
-  visited when there is nothing pending.
+  Not gated on "is the count above zero": that made the whole panel vanish the
+  moment a reviewer cleared their queue, and /citizen-science/admin is linked
+  from nowhere else, so it became a URL you had to remember. Its five tabs all
+  render proper empty states precisely because it is meant to be visited when
+  there is nothing pending.
 
-  This is also cheaper than before: a non-reviewer no longer pays for
-  h.csunesco_pending_count() (which counted five queues to always return 0 for
-  them), because the check short-circuits first.
+  But the panel's own auth is no longer the right gate for the LABEL either.
+  It now admits anyone with a project of their own -- deliberately, so the
+  author of a rejected request can reach the resubmit button -- and that was
+  handing a tab called "Review" to every citizen scientist who had ever filed
+  one, pointing at five queues that are empty by construction for them.
+
+  So the tab is offered to both, and named for what it holds: "Review" with a
+  count for an actual reviewer, "My projects" for someone who only has their
+  own. h.csunesco_pending_count() is still paid for by reviewers only.
 #}
 {% block header_site_navigation_tabs %}
   {{ super() }}
@@ -31,7 +35,7 @@
     </a>
   </li>
 
-  {% if h.check_access('csunesco_admin_pending_list') %}
+  {% if h.csunesco_is_reviewer() %}
     {% set cs_pending = h.csunesco_pending_count() %}
     <li class="nav-item">
       <a class="nav-link"
@@ -44,6 +48,12 @@
           {# bg-warning + text-dark keeps AA-level contrast for the count badge. #}
           <span class="badge bg-warning text-dark">{{ cs_pending }}</span>
         {% endif %}
+      </a>
+    </li>
+  {% elif h.check_access('csunesco_admin_pending_list') %}
+    <li class="nav-item">
+      <a class="nav-link" href="{{ h.url_for('csunesco.admin_dashboard') }}">
+        {{ _('My projects') }}
       </a>
     </li>
   {% endif %}

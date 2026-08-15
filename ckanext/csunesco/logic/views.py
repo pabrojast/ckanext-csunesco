@@ -365,7 +365,6 @@ def _read_project_form():
     data = {
         'title': (form.get('title') or '').strip(),
         'initiative': (form.get('initiative') or '').strip(),
-        'countries': [c for c in form.getlist('countries') if c],
         'biosphere_reserve': (form.get('biosphere_reserve') or '').strip(),
         'region_geojson': (form.get('region_geojson') or '').strip(),
         'short_description': (form.get('short_description') or '').strip(),
@@ -386,6 +385,13 @@ def _read_project_form():
     # explicit False rather than "leave it alone".
     if form.get('open_participation_present'):
         data['open_participation'] = bool(form.get('open_participation'))
+    # Same reasoning, and it was a DATA-LOSS bug rather than a cosmetic one: an
+    # empty multi-select submits nothing, so a picker that could not render its
+    # options looked exactly like "the user deselected every country" and the
+    # update wiped them. Only trust an empty selection when the control
+    # actually rendered.
+    if form.get('countries_present'):
+        data['countries'] = [c for c in form.getlist('countries') if c]
     return data
 
 

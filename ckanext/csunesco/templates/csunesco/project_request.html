@@ -217,12 +217,32 @@
               </p>
             {% endif %}
 
+            {#
+              The marker proves the control rendered. Without it, a picker that
+              failed to render at all is indistinguishable from "the user
+              deselected everything", and the edit view would read an empty
+              getlist() and CLEAR the project's countries. Same reasoning as
+              open_participation below.
+            #}
+            <input type="hidden" name="countries_present" value="1">
             <select id="cs-f-countries" name="countries" multiple size="8"
                     {% if errors.countries %}aria-invalid="true"{% endif %}
                     {{- described_by('countries', true) }}>
               {% for state in member_states %}
                 <option value="{{ state.name }}"
                         {% if state.name in (data.countries or []) %}selected{% endif %}>{{ state.title }}</option>
+              {% endfor %}
+              {#
+                Countries this project already declared that are NOT in the
+                current list -- because the list could not be loaded, because
+                the portal is unseeded, or because that member state was
+                de-published since. They MUST still be emitted, or editing
+                anything else on the form would silently drop them: the select
+                is the only place the stored value round-trips through.
+              #}
+              {% set known = member_states | map(attribute='name') | list %}
+              {% for name in (data.countries or []) if name not in known %}
+                <option value="{{ name }}" selected>{{ h.csunesco_member_state_title(name) }}</option>
               {% endfor %}
             </select>
             <p id="cs-f-countries-hint" class="cs-hint"

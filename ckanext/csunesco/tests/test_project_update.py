@@ -407,3 +407,81 @@ def test_your_projects_lists_a_request_with_no_membership_row(actions,
 def test_your_projects_does_not_leak_other_peoples_requests(actions, session):
     _create(actions)
     assert db.projects_administered('someone-else') == []
+
+
+# --------------------------------------------------------------------------- #
+# Country clearing semantics: OMITTED preserves, [] clears.                    #
+#                                                                              #
+# The web form now proves it rendered its picker (`countries_present`) before  #
+# the view sends the key at all, because an empty multi-select and a picker    #
+# that failed to draw are the same nothing on the wire -- and the update reads #
+# an empty list as "clear every country".                                      #
+# --------------------------------------------------------------------------- #
+
+def _country_ctx(slug='chile'):
+    """A context carrying `model`: csunesco_valid_country_list reads it and
+    falls back to an EMPTY valid-set when it is absent, which would reject
+    every country before the patch below is ever consulted."""
+    import ckan.model as model
+    ctx = _ctx()
+    ctx['model'] = model
+    return ctx
+
+
+def _with_country(actions, session, monkeypatch, slug='chile'):
+    monkeypatch.setattr(
+        'ckanext.csunesco.logic.validators._member_state_names',
+        lambda model: {slug})
+    created = actions.csunesco_project_request_create(
+        _country_ctx(), {'title': 'Has countries', 'initiative': 'riverwatch',
+                         'countries': [slug]})
+    assert db.project_dictize(_row(created['id']))['countries'] == [slug]
+    return created
+
+
+def test_update_without_countries_preserves_them(actions, session, monkeypatch):
+    created = _with_country(actions, session, monkeypatch)
+    actions.csunesco_project_update(
+        _country_ctx(), {'id': created['id'], 'title': 'Renamed only'})
+    assert db.project_dictize(_row(created['id']))['countries'] == ['chile']
+
+
+def test_update_with_an_empty_list_clears_them(actions, session, monkeypatch):
+    """The deliberate half: an empty selection from a picker that DID render
+    means the user removed everything."""
+    created = _with_country(actions, session, monkeypatch)
+    actions.csunesco_project_update(
+        _country_ctx(), {'id': created['id'], 'countries': []})
+    assert db.project_dictize(_row(created['id']))['countries'] == []
+
+
+def test_a_country_already_stored_survives_a_member_state_outage(
+        actions, session, monkeypatch):
+    """Keeping a country you already declared is not the same act as adding
+    one, and must not need the member-state list to be reachable.
+
+    Otherwise the edit form is unsavable during an outage: the picker re-offers
+    the stored value (so it is not silently wiped) and the validator then
+    rejects it, blocking even a title change until someone repairs the group.
+    """
+    created = _with_country(actions, session, monkeypatch)
+    # The whole member-state list is now unavailable.
+    monkeypatch.setattr(
+        'ckanext.csunesco.logic.validators._member_state_names',
+        lambda model: set())
+    actions.csunesco_project_update(
+        _country_ctx(), {'id': created['id'], 'title': 'Renamed mid-outage',
+                         'countries': ['chile']})
+    out = db.project_dictize(_row(created['id']))
+    assert out['title'] == 'Renamed mid-outage'
+    assert out['countries'] == ['chile']
+
+
+def test_an_unknown_new_country_is_still_rejected(actions, session,
+                                                  monkeypatch):
+    """Grandfathering covers what the project already had, nothing else."""
+    created = _with_country(actions, session, monkeypatch)
+    with pytest.raises(tk.ValidationError):
+        actions.csunesco_project_update(
+            _country_ctx(), {'id': created['id'],
+                             'countries': ['chile', 'atlantis']})
