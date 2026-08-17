@@ -1368,6 +1368,35 @@ def admin_project_ids(user_id):
     return [pid for (pid,) in rows]
 
 
+def repair_image_urls():
+    """One-shot: strip the legacy ``/uploads/csunesco/https://...`` doubling.
+
+    Before ``_stored_url`` existed, the upload batch prefixed
+    ``PUBLIC_PREFIX`` unconditionally -- and with the Azure asset-storage
+    uploader, whose ``update_data_dict`` hands back an ABSOLUTE blob URL, that
+    produced ``/uploads/csunesco/https://...`` rows that render as broken
+    images. New writes are guarded; this heals what the old code stored.
+    Column names are hard-coded (no injection surface); the caller commits.
+    Returns the number of repaired values.
+    """
+    _ensure_mappers()
+    prefix = u'/uploads/csunesco/'
+    repaired = 0
+    for column in ('image_url', 'logo_url', 'heading_image_url'):
+        result = Session.execute(
+            sa.text(
+                'UPDATE cs_project SET {col} = substr({col}, :cut) '
+                'WHERE {col} LIKE :bad'.format(col=column)),
+            {'cut': len(prefix) + 1, 'bad': prefix + u'http%'},
+        )
+        repaired += result.rowcount or 0
+    if repaired:
+        # The raw UPDATEs bypass the ORM: expire identity-mapped instances so
+        # the next read reloads fresh values (same rationale as stats_set).
+        Session.expire_all()
+    return repaired
+
+
 def projects_joined(user_id, limit=100):
     """APPROVED projects where ``user_id`` is an ACTIVE member of ANY role.
 

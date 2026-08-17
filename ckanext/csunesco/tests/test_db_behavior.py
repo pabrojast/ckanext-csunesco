@@ -1169,3 +1169,73 @@ def test_list_content_unfiltered_returns_every_status(session):
     total, rows = db.list_content(project_id='p1', status='approved')
     assert total == 1
     assert rows[0].slug == 'a'
+
+
+def test_a_pending_projects_page_is_editable(session, monkeypatch):
+    """Regression: the old approved-only gate ("Only approved projects have a
+    page") locked SYSADMINS out of repairing a pending project's cover. The
+    draft is invisible to the public until approval + publication, so editing
+    it earlier leaks nothing."""
+    project = db.CsProject()
+    project.slug = 'pending-cover'
+    project.title = 'Pending cover'
+    project.status = 'pending'
+    session.add(project)
+    session.commit()
+
+    monkeypatch.setattr(page_action.tk, 'check_access',
+                        lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(page_action.auth, 'can_manage_project',
+                        lambda _context, _project_id: True)
+    monkeypatch.setattr(page_action, 'current_user_id',
+                        lambda _context: 'admin')
+
+    updated = page_action.csunesco_project_page_update(
+        {}, {'project_id': project.id,
+             'blocks': page_action.blocks_module.default_blocks(),
+             'project_image_url': 'https://cdn.example.org/cover.png'})
+    assert updated['status'] == 'draft'
+    assert updated['draft_project_image_url'] == \
+        'https://cdn.example.org/cover.png'
+
+
+def test_repair_image_urls_strips_the_legacy_doubling(session):
+    """The pre-``_stored_url`` batch prefixed unconditionally, so Azure
+    asset-storage uploads landed as ``/uploads/csunesco/https://...``. The
+    repair strips exactly that shape and leaves every healthy value alone."""
+    doubled = db.CsProject()
+    doubled.slug = 'doubled'
+    doubled.title = 'Doubled'
+    doubled.image_url = ('/uploads/csunesco/https://ihpwinsdata.blob.core.'
+                         'windows.net/data/static/csunesco/x.png')
+    session.add(doubled)
+
+    healthy = db.CsProject()
+    healthy.slug = 'healthy'
+    healthy.title = 'Healthy'
+    healthy.image_url = 'https://cdn.example.org/fine.png'
+    healthy.logo_url = '/csunesco/images/logo.png'
+    session.add(healthy)
+
+    local = db.CsProject()
+    local.slug = 'local-upload'
+    local.title = 'Local upload'
+    local.image_url = '/uploads/csunesco/2026-01-01-cover.png'
+    session.add(local)
+    session.commit()
+
+    assert db.repair_image_urls() == 1
+    session.commit()
+
+    assert db.get_project(doubled.id).image_url == (
+        'https://ihpwinsdata.blob.core.windows.net/data/static/csunesco/'
+        'x.png')
+    assert db.get_project(healthy.id).image_url == \
+        'https://cdn.example.org/fine.png'
+    assert db.get_project(healthy.id).logo_url == '/csunesco/images/logo.png'
+    # A genuine local upload keeps its prefix -- that IS its address.
+    assert db.get_project(local.id).image_url == \
+        '/uploads/csunesco/2026-01-01-cover.png'
+
+    # Idempotent: nothing left to heal.
+    assert db.repair_image_urls() == 0

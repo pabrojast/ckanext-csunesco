@@ -81,6 +81,23 @@ def backfill_stats():
     click.echo('backfilled %d project(s).' % len(projects))
 
 
+@csunesco.command('repair-image-urls')
+def repair_image_urls():
+    """One-shot: fix image URLs double-prefixed before the _stored_url guard.
+
+    Old deployments stored ``/uploads/csunesco/https://...`` for Azure
+    asset-storage uploads (the batch prefixed unconditionally). Idempotent --
+    safe to run on any portal, does nothing when there is nothing to heal.
+    """
+    from ckanext.csunesco import db
+    import ckan.model as model
+
+    db.ensure_mappers()
+    count = db.repair_image_urls()
+    model.Session.commit()
+    click.echo('repaired %d image url(s).' % count)
+
+
 def _site_context():
     """A sysadmin-equivalent action context for CLI operation."""
     import ckan.plugins.toolkit as tk

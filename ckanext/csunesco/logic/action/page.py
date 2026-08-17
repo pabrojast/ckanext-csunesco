@@ -197,9 +197,13 @@ def csunesco_project_page_update(context, data_dict):
     # the caller put in the auth payload.
     if not auth.can_manage_project(context, project.id):
         raise tk.NotAuthorized(tk._('Not authorized to edit this page'))
-    if project.status != 'approved':
-        raise tk.ValidationError({'project_id': [tk._(
-            'Only approved projects have a page')]})
+    # DELIBERATELY no approved-only gate here (it used to say "Only approved
+    # projects have a page"): the draft is invisible to the public until the
+    # project is approved AND the page published, so preparing -- or fixing --
+    # it earlier leaks nothing. The gate's real effect was locking SYSADMINS
+    # out of repairing a pending project's cover. Pre-approval the auth above
+    # already narrows editors to sysadmins/initiative admins, because the
+    # author's admin membership only exists after approval.
 
     raw_blocks = data_dict.get('blocks')
     if raw_blocks is None:
