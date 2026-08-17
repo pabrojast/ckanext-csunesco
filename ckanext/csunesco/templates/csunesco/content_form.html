@@ -190,7 +190,8 @@
       <div class="cs-field">
         <label for="cs-content-visibility">{{ _("Visibility") }}</label>
         <select id="cs-content-visibility" name="visibility">
-          <option value="public" {% if (data.visibility or 'public') != 'private' %}selected{% endif %}>{{ _("Public — visible to everyone") }}</option>
+          <option value="public" {% if (data.visibility or 'public') not in ('private', 'logged-in') %}selected{% endif %}>{{ _("Public — visible to everyone") }}</option>
+          <option value="logged-in" {% if data.visibility == 'logged-in' %}selected{% endif %}>{{ _("Logged-in users — hidden from anonymous visitors") }}</option>
           <option value="private" {% if data.visibility == 'private' %}selected{% endif %}>{{ _("Private — only members of this project/organization") }}</option>
         </select>
       </div>

@@ -333,3 +333,105 @@ def test_a_single_day_app_event_validates():
 def test_a_backwards_app_event_is_still_rejected():
     _data, errors = _navl_event(end_date='2026-07-15')
     assert 'end_date' in errors
+
+
+# --------------------------------------------------------------------------- #
+# csunesco_register_citizen_scientist                                          #
+# ofform/backend/app/services/cs_registration.py:136-144                       #
+# --------------------------------------------------------------------------- #
+
+def test_registration_accepts_the_literal_payload(service, session,
+                                                  monkeypatch):
+    """The app's CKAN-first registration payload, verbatim.
+
+    Fase 1 made the WEB form stricter (fullname/DOB/gender required, username
+    optional+generated). None of that may leak into this action: the payload
+    below carries a username and no demographics, and must keep working
+    byte-for-byte.
+    """
+    import ckan.model as model
+    from ckanext.csunesco.logic import registration as reg_module
+    from ckanext.csunesco.logic.action import registration as reg_action
+
+    monkeypatch.setattr(model.User, 'get', staticmethod(lambda key: None))
+    monkeypatch.setattr(reg_module, 'check_access', lambda *a, **k: True)
+
+    def get_action(name):
+        assert name == 'user_create'
+        return lambda context, data: {'id': 'user-77', 'name': data['name']}
+
+    monkeypatch.setattr(tk, 'get_action', get_action)
+
+    out = reg_action.csunesco_register_citizen_scientist(_service_ctx(), {
+        'username': 'koen',
+        'email': 'koen@example.org',
+        'password': 'water-quality-2026',
+        'fullname': 'Koen Verbruggen',
+        'country': 'Belgium',
+    })
+
+    assert out['status'] == 'success'
+    # The app-chosen username is honoured verbatim -- never regenerated.
+    assert out['username'] == 'koen'
+    profile = (session.query(db.CsCitizenScientist)
+               .filter(db.CsCitizenScientist.user_id == 'user-77').one())
+    assert profile.country == 'Belgium'
+    # Trusted server-to-server path: already verified, no token.
+    assert bool(profile.email_verified) is True
+    assert profile.profile_type in (None, 'citizen')
+
+
+# --------------------------------------------------------------------------- #
+# csunesco_project_structure_upsert                                            #
+# ofform/backend/app/routers/cs_structure.py:build_structure_payload           #
+# --------------------------------------------------------------------------- #
+
+def test_project_structure_accepts_the_literal_payload(service, session,
+                                                       project):
+    """The app's phase-2 snapshot push, verbatim (Fase 4 lockstep contract).
+
+    Shape produced by ``build_structure_payload``: empty fields OMITTED,
+    dates as ISO strings, workplan steps carrying position and optional
+    dates. The portal must accept it byte-for-byte -- its ``test_cs_sync``
+    twin on the app side asserts this same shape is what gets enqueued.
+    """
+    from ckanext.csunesco.logic.action import structure as structure_action
+
+    payload = {
+        'programme_id': 7,
+        'project_slug': 'douro-basin',
+        'structure': {
+            'aim': 'Push me to the portal.',
+            'focus_areas': ['Community Engagement and Awareness'],
+            'engagement_level': 'Participatory',
+            'engagement_activities': ['Jointly generating knowledge'],
+            'training_level': 'Brief training needed',
+            'target_groups': ['Youth', 'Students'],
+            'water_parameters': {
+                'Physical water quality': ['pH', 'Temperature'],
+            },
+            'how_to_participate': 'Join a sampling day.',
+            'incentives': ['Recognition (e.g. certificate)'],
+            'local_govt_engagement': True,
+            'indigenous_knowledge': True,
+            'indigenous_knowledge_notes': 'Elders guide site selection.',
+            'timeframe_start': '2026-09-01',
+            'timeframe_end': '2027-03-01',
+            'duration_of_involvement': 'Monthly',
+        },
+        'workplan': [
+            {'title': '1. Understand the Context and Challenges',
+             'kind': 'milestone', 'status': 'upcoming', 'position': 0,
+             'description': "Define the water problem, who's affected, and "
+                            "what's already been tried."},
+            {'title': 'Sampling season', 'kind': 'step',
+             'status': 'in_progress', 'position': 1,
+             'starts_on': '2026-09-01', 'ends_on': '2026-11-30'},
+        ],
+    }
+    out = structure_action.csunesco_project_structure_upsert(
+        _service_ctx(), payload)
+    assert out['slug'] == 'douro-basin'
+    assert out['structure']['duration_of_involvement'] == 'Monthly'
+    assert len(out['workplan']) == 2
+    assert out['workplan'][1]['starts_on'] == '2026-09-01'

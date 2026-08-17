@@ -281,3 +281,50 @@ def data_connect(slug):
             'appear on the project page once a UNESCO administrator '
             'approves it.'))
     return tk.redirect_to('csunesco.project_landing', slug=project['slug'])
+
+
+def data_viewer():
+    """Portal-wide data viewer (spec section 4): every APPROVED data source.
+
+    A public index over the per-project data connections: each row links to
+    its project's landing page (where the charts and the map live) and to the
+    raw CSV/GeoJSON proxies. The action pins anonymous callers to approved
+    sources, so nothing unreviewed can appear here.
+    """
+    from ckanext.csunesco.logic.views import (
+        _decorate_projects, _positive_int as _pos)
+
+    page = _pos(request.args.get('page'), 1)
+    per_page = 20
+    try:
+        listing = tk.get_action('csunesco_data_source_list')(_context(), {
+            'limit': per_page,
+            'offset': (page - 1) * per_page,
+        })
+    except Exception:
+        log.warning('csunesco: data viewer listing unavailable')
+        listing = {'count': 0, 'results': []}
+
+    sources = listing.get('results') or []
+    # ONE bounded project sweep for titles/slugs instead of a show() per row.
+    projects = {}
+    try:
+        project_listing = tk.get_action('csunesco_project_list')(
+            _context(), {'limit': 100})
+        for project in project_listing.get('results') or []:
+            projects[project['id']] = project
+    except Exception:
+        log.warning('csunesco: data viewer projects unavailable')
+    for source in sources:
+        project = projects.get(source.get('project_id')) or {}
+        source['project_title'] = project.get('title')
+        source['project_slug'] = project.get('slug')
+
+    count = listing.get('count', 0)
+    total_pages = max(1, (count + per_page - 1) // per_page)
+    return tk.render('csunesco/data_viewer.html', extra_vars={
+        'sources': sources,
+        'count': count,
+        'page': page,
+        'total_pages': total_pages,
+    })

@@ -1256,13 +1256,16 @@ def test_project_form_steps_cover_the_schema_exactly():
     placed = set()
     for step in constants.PROJECT_FORM_STEPS:
         placed.update(step['fields'])
-    expected = set(schema.project_request_schema()) - {'slug'}
+    # ``open_participation`` is the one schema field with no input of its own:
+    # the form posts the spec's ``participation_mode`` choice and the action
+    # derives the boolean from it (see ``_sync_participation``).
+    expected = set(schema.project_request_schema()) - {'open_participation'}
     assert placed == expected, (
         'only in steps: %s / only in schema: %s'
         % (sorted(placed - expected), sorted(expected - placed)))
 
 
-def test_project_form_steps_are_numbered_one_to_five():
+def test_project_form_steps_are_numbered_one_to_six():
     from ckanext.csunesco import constants
     numbers = [step['step'] for step in constants.PROJECT_FORM_STEPS]
-    assert numbers == [1, 2, 3, 4, 5]
+    assert numbers == [1, 2, 3, 4, 5, 6]

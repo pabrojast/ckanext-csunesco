@@ -112,6 +112,9 @@ class CsunescoPlugin(p.SingletonPlugin):
             'csunesco_can_manage_project':
                 helpers.csunesco_can_manage_project,
             'csunesco_can_edit_project': helpers.csunesco_can_edit_project,
+            'csunesco_field_audience_ok': helpers.csunesco_field_audience_ok,
+            'csunesco_has_joined_projects':
+                helpers.csunesco_has_joined_projects,
             'csunesco_is_reviewer': helpers.csunesco_is_reviewer,
             # Content management: allowlisted Terria embed for cs-map pages.
             'csunesco_terria_embed_url': helpers.csunesco_terria_embed_url,

@@ -1,0 +1,129 @@
+{#
+  The project's phase-2 structure (spec section 7), mirrored from the CS
+  Toolbox app via csunesco_project_structure_upsert. Read-only here: the app
+  is the single writer.
+
+  Audience rules (spec section 5) are enforced IN THIS SNIPPET through
+  h.csunesco_field_audience_ok: sections A-C are Public + Participants except
+  the two C flags; section D (timeline + workplan) is participants-only.
+  Every value is autoescaped; the upsert action also strips tags on write.
+
+  Vars: project (dictized, extras merged: `structure` dict, `workplan` list).
+#}
+{% set structure = project.get('structure') or {} %}
+{% set workplan = project.get('workplan') or [] %}
+{% set can_see_timeline = h.csunesco_field_audience_ok('timeframe_start', project) %}
+{% set can_see_flags = h.csunesco_field_audience_ok('local_govt_engagement', project) %}
+
+{% macro chips(values) %}
+  <span class="cs-structure-chips">
+    {%- for value in values -%}
+      <span class="cs-chip">{{ value }}</span>
+    {%- endfor -%}
+  </span>
+{% endmacro %}
+
+{% if structure or (workplan and can_see_timeline) %}
+<section class="cs-section cs-structure" aria-labelledby="cs-structure-title">
+  <h2 id="cs-structure-title" class="cs-section-title">{{ _("Project structure") }}</h2>
+
+  {% if structure %}
+    <dl class="cs-facts">
+      {% if structure.aim %}
+        <dt>{{ _("Aim / objective") }}</dt>
+        <dd><p class="cs-facts-text">{{ structure.aim }}</p></dd>
+      {% endif %}
+      {% if structure.focus_areas %}
+        <dt>{{ _("Focus areas") }}</dt>
+        <dd>{{ chips(structure.focus_areas) }}</dd>
+      {% endif %}
+      {% if structure.engagement_level %}
+        <dt>{{ _("Level of engagement") }}</dt>
+        <dd>{{ structure.engagement_level }}</dd>
+      {% endif %}
+      {% if structure.engagement_activities %}
+        <dt>{{ _("Engagement activities") }}</dt>
+        <dd>{{ chips(structure.engagement_activities) }}</dd>
+      {% endif %}
+      {% if structure.training_level %}
+        <dt>{{ _("Training level") }}</dt>
+        <dd>{{ structure.training_level }}</dd>
+      {% endif %}
+      {% if structure.target_groups %}
+        <dt>{{ _("Target group") }}</dt>
+        <dd>{{ chips(structure.target_groups) }}</dd>
+      {% endif %}
+      {% if structure.water_parameters %}
+        <dt>{{ _("Specific water parameters") }}</dt>
+        <dd>
+          {% for group, params in structure.water_parameters.items() %}
+            <p class="cs-structure-param-group">
+              <strong>{{ group }}:</strong> {{ params | join(', ') }}
+            </p>
+          {% endfor %}
+        </dd>
+      {% endif %}
+      {% if structure.how_to_participate %}
+        <dt>{{ _("How to participate") }}</dt>
+        <dd><p class="cs-facts-text">{{ structure.how_to_participate }}</p></dd>
+      {% endif %}
+      {% if structure.incentives %}
+        <dt>{{ _("Incentives") }}</dt>
+        <dd>{{ chips(structure.incentives) }}</dd>
+      {% endif %}
+
+      {% if can_see_flags %}
+        {% if structure.local_govt_engagement is boolean %}
+          <dt>{{ _("Local government engagement") }}</dt>
+          <dd>{{ _("Yes") if structure.local_govt_engagement else _("No") }}</dd>
+        {% endif %}
+        {% if structure.indigenous_knowledge is boolean %}
+          <dt>{{ _("Indigenous knowledge integration") }}</dt>
+          <dd>
+            {{ _("Yes") if structure.indigenous_knowledge else _("No") }}
+            {%- if structure.indigenous_knowledge_notes %} —
+              {{ structure.indigenous_knowledge_notes }}
+            {%- endif %}
+          </dd>
+        {% endif %}
+      {% endif %}
+
+      {% if can_see_timeline %}
+        {% if structure.timeframe_start or structure.timeframe_end %}
+          <dt>{{ _("Project timeframe") }}</dt>
+          <dd>
+            {{ (structure.timeframe_start or '')[:7] }}
+            {%- if structure.timeframe_end %} → {{ structure.timeframe_end[:7] }}{% endif %}
+          </dd>
+        {% endif %}
+        {% if structure.duration_of_involvement %}
+          <dt>{{ _("Duration of involvement") }}</dt>
+          <dd>{{ structure.duration_of_involvement }}</dd>
+        {% endif %}
+      {% endif %}
+    </dl>
+  {% endif %}
+
+  {% if workplan and can_see_timeline %}
+    <h3 class="cs-structure-workplan-title">{{ _("Workplan") }}</h3>
+    <ol class="cs-structure-workplan">
+      {% for step in workplan %}
+        <li class="cs-structure-step is-{{ step.status }}">
+          <span class="cs-structure-step-title">{{ step.title }}</span>
+          <span class="cs-structure-step-meta">
+            {%- if step.starts_on -%}
+              {{ step.starts_on }}{% if step.ends_on %} → {{ step.ends_on }}{% endif %}
+            {%- else -%}
+              {{ _("Not scheduled yet") }}
+            {%- endif -%}
+            · {{ step.status | replace('_', ' ') }}
+          </span>
+          {% if step.description %}
+            <p class="cs-hint">{{ step.description }}</p>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+  {% endif %}
+</section>
+{% endif %}

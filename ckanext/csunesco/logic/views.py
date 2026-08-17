@@ -24,6 +24,7 @@ import ckan.model as model
 
 from ckanext.csunesco import constants
 from ckanext.csunesco.logic import page_render
+from ckanext.csunesco.logic import schema as cs_schema
 
 log = logging.getLogger(__name__)
 
@@ -64,9 +65,16 @@ def _positive_int(value, default):
     return result if result >= 1 else default
 
 
-def _not_authorized_response():
-    """Redirect anonymous users to log in; deny logged-in users with 403."""
+def _not_authorized_response(came_from=None):
+    """Redirect anonymous users to log in; deny logged-in users with 403.
+
+    ``came_from`` is forwarded to CKAN's login view so the person returns to
+    where they were headed instead of the site root -- without it, a join or
+    proposal attempt dead-ends on the dashboard after signing in.
+    """
     if not tk.g.user:
+        if came_from:
+            return tk.redirect_to('user.login', came_from=came_from)
         return tk.redirect_to('user.login')
     return tk.abort(403, tk._('You are not authorized to view this page'))
 
@@ -197,11 +205,26 @@ def initiative_index(name):
     })
 
 
+# Explorer facet -> (query param, option list). The country options come from
+# the member-state action instead (they are data, not constants).
+_EXPLORER_FACETS = (
+    ('water_type', 'water_types'),
+    ('water_data_type', 'water_data_types'),
+    ('activity_status', 'activity_statuses'),
+    ('geographic_extent', 'geographic_extents'),
+)
+
+
 def project_list():
-    """Public project listing with initiative + q filters and paging."""
+    """Public project explorer: search + the spec's facet set, with paging."""
     page = _positive_int(request.args.get('page'), 1)
     initiative = (request.args.get('initiative') or '').strip()
+    country = (request.args.get('country') or '').strip()
     q = (request.args.get('q') or '').strip()
+    facets = {
+        facet: (request.args.get(facet) or '').strip()
+        for facet, _options in _EXPLORER_FACETS
+    }
 
     data_dict = {
         'limit': PROJECTS_PER_PAGE,
@@ -209,8 +232,13 @@ def project_list():
     }
     if initiative:
         data_dict['initiative'] = initiative
+    if country:
+        data_dict['country'] = country
     if q:
         data_dict['q'] = q
+    for facet, value in facets.items():
+        if value:
+            data_dict[facet] = value
 
     try:
         listing = tk.get_action('csunesco_project_list')(_context(), data_dict)
@@ -223,6 +251,7 @@ def project_list():
     count = listing.get('count', 0)
     total_pages = max(1, (count + PROJECTS_PER_PAGE - 1) // PROJECTS_PER_PAGE)
 
+    member_states, _available = _member_state_choices()
     return tk.render('csunesco/project_list.html', extra_vars={
         'projects': _decorate_projects(listing.get('results', [])),
         'count': count,
@@ -230,7 +259,16 @@ def project_list():
         'total_pages': total_pages,
         'initiatives': constants.CS_INITIATIVES,
         'selected_initiative': initiative,
+        'member_states': member_states,
+        'selected_country': country,
         'q': q,
+        'facet_options': {
+            'water_type': constants.WATER_TYPES,
+            'water_data_type': constants.WATER_DATA_TYPES,
+            'activity_status': constants.ACTIVITY_STATUSES,
+            'geographic_extent': constants.GEOGRAPHIC_EXTENTS,
+        },
+        'selected_facets': facets,
     })
 
 
@@ -242,7 +280,11 @@ def project_landing(slug):
     except tk.ObjectNotFound:
         return tk.abort(404, tk._('Project not found'))
     except tk.NotAuthorized:
-        return _not_authorized_response()
+        # SAME response as a nonexistent slug. A login redirect here is an
+        # existence oracle: it tells an anonymous visitor that a pending or
+        # rejected project lives at this slug. Whoever may actually see it
+        # (creator, member, reviewer) is already authorized above.
+        return tk.abort(404, tk._('Project not found'))
     except Exception:
         log.warning('csunesco: project landing could not be loaded')
         return tk.abort(404, tk._('Project not found'))
@@ -308,7 +350,8 @@ def project_geojson(slug):
     except tk.ObjectNotFound:
         return tk.abort(404, tk._('Project not found'))
     except tk.NotAuthorized:
-        return _not_authorized_response()
+        # 404, not a login redirect -- same anti-oracle rule as the landing.
+        return tk.abort(404, tk._('Project not found'))
     except Exception:
         log.warning('csunesco: project geojson could not be loaded')
         return tk.abort(404, tk._('Project not found'))
@@ -340,6 +383,16 @@ def _first_error_step(errors):
     return 1
 
 
+def _organization_choices():
+    """Existing CKAN organizations for the lead-organisation datalist."""
+    try:
+        from ckanext.csunesco.logic import registration
+        return registration._organization_options()
+    except Exception:
+        log.warning('csunesco: organization list unavailable for the form')
+        return []
+
+
 def _render_project_form(data, errors, success=False, mode='new',
                          project=None, return_to=None):
     """Render the staged project form, for BOTH create and edit.
@@ -360,7 +413,35 @@ def _render_project_form(data, errors, success=False, mode='new',
         'steps': constants.PROJECT_FORM_STEPS,
         'open_step': _first_error_step(errors),
         'return_to': return_to if return_to == 'review' else None,
+        # Spec phase-1 option lists (all from constants; single source).
+        'water_types': constants.WATER_TYPES,
+        'water_data_types': constants.WATER_DATA_TYPES,
+        'geographic_extents': constants.GEOGRAPHIC_EXTENTS,
+        'stakeholder_groups': constants.STAKEHOLDER_GROUPS,
+        'activity_statuses': constants.ACTIVITY_STATUSES,
+        'lead_partner_types': constants.LEAD_PARTNER_TYPES,
+        'funding_bodies': constants.FUNDING_BODIES,
+        'intl_frameworks': constants.INTL_FRAMEWORKS,
+        'organizations': _organization_choices(),
+        'is_draft': bool(project and project.get('status') == 'draft'),
     })
+
+
+def _lines_or_commas(raw):
+    """A textarea accepting one-per-line entries -> comma-joined string the
+    list validator understands."""
+    return ', '.join(part.strip() for part in (raw or '').replace(
+        '\r', '').split('\n') if part.strip())
+
+
+def _multi_with_other(form, name):
+    """A checkbox group plus its free-text "other" input -> one list."""
+    values = [item for item in form.getlist(name) if item]
+    other = (form.get(name + '_other') or '').strip()
+    if other:
+        values.extend(part.strip() for part in other.split(',')
+                      if part.strip())
+    return values
 
 
 def _read_project_form():
@@ -368,6 +449,7 @@ def _read_project_form():
     form = request.form
     data = {
         'title': (form.get('title') or '').strip(),
+        'slug': (form.get('slug') or '').strip(),
         'initiative': (form.get('initiative') or '').strip(),
         'biosphere_reserve': (form.get('biosphere_reserve') or '').strip(),
         'region_geojson': (form.get('region_geojson') or '').strip(),
@@ -375,52 +457,94 @@ def _read_project_form():
         'project_document_url':
             (form.get('project_document_url') or '').strip(),
         'image_url': (form.get('image_url') or '').strip(),
+        'logo_url': (form.get('logo_url') or '').strip(),
+        'heading_image_url': (form.get('heading_image_url') or '').strip(),
         'how_to_participate': (form.get('how_to_participate') or '').strip(),
         'start_date': (form.get('start_date') or '').strip(),
         'end_date': (form.get('end_date') or '').strip(),
         'target_group': (form.get('target_group') or '').strip(),
         'contact_person': (form.get('contact_person') or '').strip(),
         'contact_email': (form.get('contact_email') or '').strip(),
+        # --- spec phase-1 fields ------------------------------------------
+        # These controls always render, so the key is always sent and an
+        # empty selection genuinely means "cleared" (unlike countries below,
+        # whose options come from a fallible external list).
+        'keywords': (form.get('keywords') or '').strip(),
+        'geographic_extent': (form.get('geographic_extent') or '').strip(),
+        'locality': (form.get('locality') or '').strip(),
+        'point_lat': (form.get('point_lat') or '').strip(),
+        'point_lng': (form.get('point_lng') or '').strip(),
+        'point_radius_km': (form.get('point_radius_km') or '').strip(),
+        'water_type': _multi_with_other(form, 'water_type'),
+        'water_data_type': _multi_with_other(form, 'water_data_type'),
+        'stakeholders': _multi_with_other(form, 'stakeholders'),
+        'activity_status': [item for item in form.getlist('activity_status')
+                            if item],
+        'languages': (form.get('languages') or '').strip(),
+        'allowed_participants': _lines_or_commas(
+            form.get('allowed_participants')),
+        'lead_partner_type': (form.get('lead_partner_type') or '').strip(),
+        'lead_organisation': (form.get('lead_organisation') or '').strip(),
+        'other_organisations': _lines_or_commas(
+            form.get('other_organisations')),
+        'editors': (form.get('editors') or '').strip(),
+        'funding_body': _multi_with_other(form, 'funding_body'),
+        'funding_programme': (form.get('funding_programme') or '').strip(),
+        'international_frameworks': [
+            item for item in form.getlist('international_frameworks')
+            if item],
     }
-    # An UNCHECKED checkbox submits nothing at all, which is indistinguishable
-    # from "this form did not carry the field" -- the exact bug that once made
-    # every sysadmin content edit silently un-feature its row. The hidden
-    # marker proves the control was rendered, so an absent box means an
-    # explicit False rather than "leave it alone".
-    if form.get('open_participation_present'):
-        data['open_participation'] = bool(form.get('open_participation'))
-    # Same reasoning, and it was a DATA-LOSS bug rather than a cosmetic one: an
-    # empty multi-select submits nothing, so a picker that could not render its
-    # options looked exactly like "the user deselected every country" and the
-    # update wiped them. Only trust an empty selection when the control
+    # Radios submit nothing while unchosen; only trust a real choice.
+    if form.get('participation_mode'):
+        data['participation_mode'] = form.get('participation_mode')
+    # An empty multi-select submits nothing, so a picker that could not render
+    # its options looked exactly like "the user deselected every country" and
+    # the update wiped them. Only trust an empty selection when the control
     # actually rendered.
     if form.get('countries_present'):
         data['countries'] = [c for c in form.getlist('countries') if c]
     return data
 
 
+# The three project images and their form control names.
+_PROJECT_IMAGE_FIELDS = (
+    ('image_url', 'image_upload', 'image_clear'),
+    ('logo_url', 'logo_upload', 'logo_clear'),
+    ('heading_image_url', 'heading_upload', 'heading_clear'),
+)
+
+
 def _resolve_cover(form, files):
-    """Run the shared image picker for the project's cover image.
+    """Run the shared image picker for the project's three images.
 
-    ``process_page_images([], project_cover=...)`` is the page editor's upload
-    batch with no block jobs, so the MIME check, the size cap, the per-request
-    limit and the rollback are literally the same code rather than a second
-    implementation that drifts.
+    ``process_page_images([], project_images=...)`` is the page editor's
+    upload batch with no block jobs, so the MIME check, the size cap, the
+    server-side resize, the per-request limit and the rollback are literally
+    the same code rather than a second implementation that drifts.
 
-    Returns ``(batch, problems)``. The BATCH is returned, not just its URL:
+    Returns ``(batch, problems)``. The BATCH is returned, not just its URLs:
     every later failure path has to call ``batch.rollback()`` or a validation
     error leaves an orphaned file in the FileStore.
     """
     from ckanext.csunesco.logic import uploads
-    cover = {
-        'url': (form.get('image_url') or '').strip(),
-        'upload': files.get('image_upload'),
-        'clear': form.get('image_clear'),
-    }
+    images = {}
+    for url_field, upload_field, clear_field in _PROJECT_IMAGE_FIELDS:
+        images[url_field] = {
+            'url': (form.get(url_field) or '').strip(),
+            'upload': files.get(upload_field),
+            'clear': form.get(clear_field),
+        }
     try:
-        return uploads.process_page_images([], project_cover=cover), None
+        return uploads.process_page_images([], project_images=images), None
     except uploads.PageImageUploadError as error:
         return None, error.problems
+
+
+def _apply_image_urls(data_dict, batch):
+    """Copy the batch's stored URLs into the action payload."""
+    for url_field, url in (batch.project_image_urls or {}).items():
+        data_dict[url_field] = url
+    return data_dict
 
 
 def _project_to_form(project):
@@ -431,8 +555,17 @@ def _project_to_form(project):
     back as ISO strings, which is exactly what ``<input type="date">`` wants --
     sliced to 10 characters in case an older row stored a full datetime.
     """
+    def _list(name):
+        value = project.get(name)
+        return list(value) if isinstance(value, (list, tuple)) else []
+
+    participation_mode = project.get('participation_mode') or ''
+    if not participation_mode and 'open_participation' in project:
+        participation_mode = ('open' if project.get('open_participation')
+                              else 'limited')
     return {
         'title': project.get('title') or '',
+        'slug': project.get('slug') or '',
         'initiative': project.get('initiative_group') or '',
         'countries': project.get('countries') or [],
         'biosphere_reserve': project.get('biosphere_reserve') or '',
@@ -442,16 +575,51 @@ def _project_to_form(project):
         'start_date': (project.get('start_date') or '')[:10],
         'end_date': (project.get('end_date') or '')[:10],
         'open_participation': bool(project.get('open_participation')),
+        'participation_mode': participation_mode,
         'target_group': project.get('target_group') or '',
         'contact_person': project.get('contact_person') or '',
         'contact_email': project.get('contact_email') or '',
         'project_document_url': project.get('project_document_url') or '',
         'image_url': project.get('image_url') or '',
+        'logo_url': project.get('logo_url') or '',
+        'heading_image_url': project.get('heading_image_url') or '',
+        'keywords': ', '.join(_list('keywords')),
+        'geographic_extent': project.get('geographic_extent') or '',
+        'locality': project.get('locality') or '',
+        # A 0.0 latitude/longitude is the equator/prime meridian, not "unset";
+        # only None means the field was never filled.
+        'point_lat': ('' if project.get('point_lat') is None
+                      else project.get('point_lat')),
+        'point_lng': ('' if project.get('point_lng') is None
+                      else project.get('point_lng')),
+        'point_radius_km': ('' if project.get('point_radius_km') is None
+                            else project.get('point_radius_km')),
+        'water_type': _list('water_type'),
+        'water_data_type': _list('water_data_type'),
+        'stakeholders': _list('stakeholders'),
+        'activity_status': _list('activity_status'),
+        'languages': ', '.join(_list('languages')),
+        'allowed_participants': '\n'.join(_list('allowed_participants')),
+        'lead_partner_type': project.get('lead_partner_type') or '',
+        'lead_organisation': project.get('lead_organisation') or '',
+        'other_organisations': '\n'.join(_list('other_organisations')),
+        'editors': ', '.join(_list('editors')),
+        'funding_body': _list('funding_body'),
+        'funding_programme': project.get('funding_programme') or '',
+        'international_frameworks': _list('international_frameworks'),
     }
 
 
 def project_new():
     """GET the project-request form; POST creates a PENDING project request."""
+    # Login is required at ENTRY, not discovered on submit. An anonymous
+    # visitor could previously fill in the whole 5-step form and lose
+    # everything to the login redirect when posting it.
+    if not tk.g.user:
+        tk.h.flash_notice(tk._('Please log in to propose a project.'))
+        return _not_authorized_response(
+            came_from=tk.h.url_for('csunesco.project_new'))
+
     if request.method == 'GET':
         # The PRG target lands here with ?submitted=1 -> show the success state.
         if request.args.get('submitted'):
@@ -459,16 +627,34 @@ def project_new():
         return _render_project_form({}, {})
 
     # --- POST ---------------------------------------------------------------
-    if not tk.g.user:
-        return _not_authorized_response()
 
     data_dict = _read_project_form()
+    save_draft = bool(request.form.get('save_draft'))
     batch, problems = _resolve_cover(request.form, request.files)
     if problems:
         return _render_project_form(data_dict, {'image_url': [UPLOAD_ERROR]})
-    data_dict['image_url'] = batch.project_image_url
+    _apply_image_urls(data_dict, batch)
+
+    context = _context()
+    if save_draft:
+        # "Save for later": only the lenient rules apply (a draft needs no
+        # more than a title), and the row lands as status='draft'.
+        context['csunesco_draft'] = True
+    else:
+        # The per-caller strictness split: the SPEC's required fields are
+        # enforced HERE, in the web view, before the (deliberately lenient)
+        # action ever runs -- the CS Toolbox outbox posts to the same action
+        # and must keep working with its fixed payload.
+        _validated, form_errors = tk.navl_validate(
+            dict(data_dict), cs_schema.project_request_form_schema(),
+            _context())
+        if form_errors:
+            batch.rollback()
+            return _render_project_form(data_dict, form_errors)
+
     try:
-        tk.get_action('csunesco_project_request_create')(_context(), data_dict)
+        created = tk.get_action('csunesco_project_request_create')(
+            context, data_dict)
     except tk.NotAuthorized:
         batch.rollback()
         return _not_authorized_response()
@@ -479,6 +665,12 @@ def project_new():
         batch.rollback()
         log.warning('csunesco: project request could not be created')
         return _render_project_form(data_dict, {'message': GENERIC_ERROR})
+
+    if save_draft:
+        tk.h.flash_success(tk._(
+            'Draft saved. You can keep editing and submit it for review '
+            'when it is ready.'))
+        return tk.redirect_to('csunesco.project_edit', slug=created['slug'])
 
     # PRG: flash + redirect to the GET success state so a refresh cannot resend.
     tk.h.flash_success(tk._(
@@ -494,7 +686,8 @@ def project_edit(slug):
     action differs.
     """
     if not tk.g.user:
-        return _not_authorized_response()
+        return _not_authorized_response(
+            came_from=tk.h.url_for('csunesco.project_edit', slug=slug))
 
     context = _context()
     try:
@@ -528,15 +721,40 @@ def project_edit(slug):
 
     # --- POST ---------------------------------------------------------------
     data_dict = _read_project_form()
+    # A draft has one extra exit: "Submit for review" (strictly validated,
+    # then draft -> pending). Plain saves of pending/approved projects stay
+    # LENIENT on purpose -- legacy projects predate the spec's required
+    # fields, and locking their managers out of a title fix until they
+    # backfill six new fields would repeat the member-state-outage bug.
+    submit_review = (project.get('status') == 'draft'
+                     and bool(request.form.get('submit_review')))
     batch, problems = _resolve_cover(request.form, request.files)
     if problems:
         return _render_project_form(data_dict, {'image_url': [UPLOAD_ERROR]},
                                     mode='edit', project=project,
                                     return_to=return_to)
-    data_dict['image_url'] = batch.project_image_url
+    _apply_image_urls(data_dict, batch)
     data_dict['id'] = project['id']
+
+    if submit_review:
+        strict_context = _context()
+        strict_context['csunesco_existing_countries'] = (
+            project.get('countries') or [])
+        _validated, form_errors = tk.navl_validate(
+            dict(data_dict), cs_schema.project_request_form_schema(),
+            strict_context)
+        form_errors.pop('slug', None)  # the URL is fixed after creation
+        if form_errors:
+            batch.rollback()
+            return _render_project_form(data_dict, form_errors,
+                                        mode='edit', project=project,
+                                        return_to=return_to)
+
     try:
         tk.get_action('csunesco_project_update')(context, data_dict)
+        if submit_review:
+            tk.get_action('csunesco_project_resubmit')(
+                context, {'id': project['id']})
     except tk.NotAuthorized:
         batch.rollback()
         return _not_authorized_response()
@@ -552,10 +770,50 @@ def project_edit(slug):
                                     mode='edit', project=project,
                                     return_to=return_to)
 
+    if submit_review:
+        tk.h.flash_success(tk._(
+            'Your project request has been submitted and is awaiting '
+            'review.'))
+        return tk.redirect_to('csunesco.project_landing',
+                              slug=project['slug'])
     tk.h.flash_success(tk._('Your project details have been saved.'))
     if return_to == 'review':
         return tk.redirect_to('csunesco.project_review', id=project['id'])
     return tk.redirect_to('csunesco.project_landing', slug=project['slug'])
+
+
+def _ofform_app_url():
+    """Configured CS Toolbox base URL, or None when app links are off."""
+    try:
+        from ckanext.csunesco.logic import ofform
+        base = (tk.config.get(ofform.APP_URL_OPTION) or '').strip().rstrip('/')
+    except Exception:
+        return None
+    return base or None
+
+
+def my_projects():
+    """The PARTICIPANT'S project hub (spec section 4).
+
+    The admin dashboard already serves managers and authors; this page is for
+    the citizen scientist with an approved membership, who previously had no
+    list of their projects at all. Structure and workplan render on each
+    project's landing page (audience-aware); the forum lives in the CS
+    Toolbox app, which is linked rather than duplicated.
+    """
+    if not tk.g.user:
+        return _not_authorized_response(
+            came_from=tk.h.url_for('csunesco.my_projects'))
+    try:
+        result = tk.get_action('csunesco_my_joined_projects')(_context(), {})
+        projects = result.get('projects') or []
+    except Exception:
+        log.warning('csunesco: joined projects could not be listed')
+        projects = []
+    return tk.render('csunesco/my_projects.html', extra_vars={
+        'projects': _decorate_projects(projects),
+        'app_url': _ofform_app_url(),
+    })
 
 
 def project_resubmit(slug):
@@ -589,7 +847,10 @@ def join_project(slug):
     """POST: request to join a project, then PRG back to its landing page."""
     if not tk.g.user:
         tk.h.flash_notice(tk._('Please log in to join this project.'))
-        return tk.redirect_to('user.login')
+        # came_from returns the person to the project they tried to join.
+        return tk.redirect_to(
+            'user.login',
+            came_from=tk.h.url_for('csunesco.project_landing', slug=slug))
 
     context = _context()
     # Resolve the project first so a valid redirect target exists on every path.

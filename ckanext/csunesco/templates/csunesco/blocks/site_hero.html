@@ -19,5 +19,14 @@
     <p class="section-title-description">
       {{ block.tagline or _("Explore IHP-WINS Citizen Science initiatives and community-led water monitoring projects around the world.") }}
     </p>
+    {# Spec section 4 (Home: "search, links into Explorer"): the search box
+       submits straight into the Explorer's existing q filter. #}
+    <form class="cs-hero-search" method="get" role="search"
+          action="{{ h.url_for('csunesco.project_list') }}">
+      <label class="cs-visually-hidden" for="cs-hero-search-q">{{ _("Search projects") }}</label>
+      <input type="search" id="cs-hero-search-q" name="q"
+             placeholder="{{ _('Search projects…') }}">
+      <button type="submit" class="cs-btn cs-btn-primary">{{ _("Search") }}</button>
+    </form>
   </div>
 </section>

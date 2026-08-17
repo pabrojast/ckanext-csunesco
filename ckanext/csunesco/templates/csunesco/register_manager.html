@@ -1,14 +1,17 @@
 {% extends "csunesco/base.html" %}
 
 {#
-  Citizen Scientist self-registration, aligned with the CS Toolbox sign-up.
+  Project Manager self-registration (spec "Public Portal Structure + Project
+  Forms", section 3): the Citizen Scientist identity/demographics plus the
+  Organization block. The account is double-gated -- email verification first,
+  then a sysadmin decision (csunesco_manager_approve) that also creates/joins
+  the declared organization.
 
   Server errors stay deliberately generic (no account enumeration). Client
-  hints are progressive enhancement only; every rule is repeated server-side.
-  User values are autoescaped and passwords are never echoed back.
+  hints are progressive enhancement; every rule is repeated server-side.
 #}
 
-{% block subtitle %}{{ _("Become a Citizen Scientist") }}{% endblock %}
+{% block subtitle %}{{ _("Register as a Project Manager") }}{% endblock %}
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
@@ -36,26 +39,21 @@
             {{ h.csunesco_icon('check', 28) }}
           </span>
           <h1 id="cs-reg-title">{{ _("Almost there — check your email") }}</h1>
-          <p>{{ _("We've sent you a link to activate your account.") }}</p>
+          <p>{{ _("We've sent you a link to confirm your email address.") }}</p>
           {% if email %}
             <p class="cs-register-muted">{{ _("Sent to:") }} <strong>{{ email }}</strong></p>
           {% endif %}
-          {% if join_project %}
-            <p class="cs-register-join-success">
-              {{ _("Your request to join %(project)s has also been sent to the project manager.", project=join_project.title) }}
-            </p>
-          {% endif %}
           <p class="cs-register-muted">
-            {{ _("The link expires in 48 hours. If it doesn't arrive, check your spam folder or request a new one.") }}
+            {{ _("After you confirm your email, a platform administrator will review and approve your Project Manager account. You'll be notified by email.") }}
           </p>
           <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.resend_verification') }}">
             {{ _("Resend verification email") }}
           </a>
         </div>
       {% else %}
-        <h1 id="cs-reg-title" class="cs-register-title">{{ _("Become a Citizen Scientist") }}</h1>
+        <h1 id="cs-reg-title" class="cs-register-title">{{ _("Register as a Project Manager") }}</h1>
         <p class="cs-register-intro">
-          {{ _("Sign up below as an individual Citizen Scientist. To join a project as a group, such as a school class, ask the project's focal point to add you; contact details are on the Citizen Science Portal.") }}
+          {{ _("Project Managers propose and run citizen science projects on behalf of an organization. Your account will be reviewed by a platform administrator before it is activated.") }}
         </p>
 
         <p id="cs-reg-announcement" class="cs-visually-hidden" aria-live="polite"></p>
@@ -67,7 +65,7 @@
         {% endif %}
 
         <form method="post"
-              action="{{ h.url_for('csunesco.register_citizen') }}"
+              action="{{ h.url_for('csunesco.register_manager') }}"
               class="cs-register-form" id="cs-register-form" novalidate
               data-recaptcha-key="{{ recaptcha_publickey or '' }}"
               data-sending-label="{{ _('Sending…') }}"
@@ -86,9 +84,9 @@
                      required aria-required="true"
                      aria-describedby="cs-fullname-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
               <p id="cs-fullname-hint" class="cs-hint"
-                 data-default="{{ _('Not shown publicly; the project manager uses it to approve you.') }}"
+                 data-default="{{ _('Not shown publicly.') }}"
                  data-error="{{ _('Enter your full name.') }}">
-                {{ _("Not shown publicly; the project manager uses it to approve you.") }}
+                {{ _("Not shown publicly.") }}
               </p>
             </div>
 
@@ -112,9 +110,9 @@
                      autocapitalize="none" spellcheck="false"
                      aria-describedby="cs-username-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
               <p id="cs-username-hint" class="cs-hint"
-                 data-default="{{ _('The name shown in the toolbox. Leave blank to generate one from your name.') }}"
+                 data-default="{{ _('Leave blank to generate one from your name.') }}"
                  data-error="{{ _('Lowercase letters, numbers and dashes.') }}">
-                {{ _("The name shown in the toolbox. Leave blank to generate one from your name.") }}
+                {{ _("Leave blank to generate one from your name.") }}
               </p>
             </div>
 
@@ -152,38 +150,6 @@
               <p id="cs-confirm-password-hint" class="cs-hint cs-field-message"
                  data-default="" data-error="{{ _('Passwords do not match.') }}"></p>
             </div>
-
-            {% if projects %}
-              <div class="cs-register-join-box">
-                <label for="cs-project">{{ _("Join a project") }}</label>
-                <p class="cs-hint">
-                  {{ _("Pick a project from the list. Project invitation links select it automatically.") }}
-                </p>
-                {% if selected_project %}
-                  <span class="cs-register-join-badge">
-                    {{ _("Joining: %(project)s", project=selected_project.title) }}
-                  </span>
-                {% endif %}
-                <select id="cs-project" name="project">
-                  <option value="">{{ _("Choose a project…") }}</option>
-                  {% for project in projects %}
-                    {% set project_id = project.id|string %}
-                    <option value="{{ project.slug }}"
-                      {% if data.project == project.slug or data.project == project_id %}selected{% endif %}>
-                      {{ project.title }}
-                    </option>
-                  {% endfor %}
-                </select>
-              </div>
-            {% endif %}
-
-            <div class="cs-register-terms">
-              <input type="checkbox" id="cs-terms" name="terms" value="yes"
-                     aria-describedby="cs-terms-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-              <label for="cs-terms">{{ _("I accept the terms of participation.") }}</label>
-            </div>
-            <p id="cs-terms-hint" class="cs-hint cs-field-message"
-               data-default="" data-error="{{ _('Please accept the terms to continue.') }}"></p>
           </fieldset>
 
           <fieldset class="cs-register-fieldset">
@@ -236,6 +202,76 @@
             </div>
           </fieldset>
 
+          <fieldset class="cs-register-fieldset">
+            <legend>{{ _("Your organization") }}</legend>
+
+            <div class="cs-field">
+              <label for="cs-org-type">{{ _("Organization type") }}</label>
+              <select id="cs-org-type" name="org_type" required aria-required="true"
+                      aria-describedby="cs-org-type-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+                <option value="">{{ _("Select…") }}</option>
+                {% for org_type in org_types %}
+                  <option value="{{ org_type.name }}"
+                    {% if data.org_type == org_type.name %}selected{% endif %}>
+                    {{ _(org_type.title) }}
+                  </option>
+                {% endfor %}
+              </select>
+              <p id="cs-org-type-hint" class="cs-hint cs-field-message"
+                 data-default="" data-error="{{ _('Select your organization type.') }}"></p>
+            </div>
+
+            <div class="cs-field">
+              <label for="cs-org-name">{{ _("Organization name") }}</label>
+              <select id="cs-org-name" name="org_name" required aria-required="true"
+                      aria-describedby="cs-org-name-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+                <option value="">{{ _("Select…") }}</option>
+                {% for org in organizations %}
+                  <option value="{{ org.name }}"
+                    {% if data.org_name == org.name %}selected{% endif %}>
+                    {{ org.title }}
+                  </option>
+                {% endfor %}
+                <option value="__new__"{% if data.org_name == '__new__' %} selected{% endif %}>
+                  {{ _("My organization is not listed – create a new one") }}
+                </option>
+              </select>
+              <p id="cs-org-name-hint" class="cs-hint cs-field-message"
+                 data-default="" data-error="{{ _('Select your organization.') }}"></p>
+            </div>
+
+            <div class="cs-field" id="cs-new-org-field" hidden>
+              <label for="cs-new-org-name">{{ _("New organization name") }}</label>
+              <input type="text" id="cs-new-org-name" name="new_org_name"
+                     value="{{ data.new_org_name or '' }}" maxlength="200">
+            </div>
+
+            <div class="cs-field">
+              <label for="cs-org-title">{{ _("Title within represented organization") }}</label>
+              <input type="text" id="cs-org-title" name="org_title"
+                     value="{{ data.org_title or '' }}" maxlength="200"
+                     required aria-required="true"
+                     aria-describedby="cs-org-title-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+              <p id="cs-org-title-hint" class="cs-hint"
+                 data-default="{{ _('Your current position or role in the organization.') }}"
+                 data-error="{{ _('Enter your role in the organization.') }}">
+                {{ _("Your current position or role in the organization.") }}
+              </p>
+            </div>
+
+            <p id="cs-org-role-note" class="cs-hint"
+               data-role-admin="{{ _('You will be the Admin of the new organization.') }}"
+               data-role-editor="{{ _('You will join the organization as an Editor, able to upload datasets and create projects.') }}"></p>
+
+            <div class="cs-register-terms">
+              <input type="checkbox" id="cs-terms" name="responsibilities" value="yes"
+                     aria-describedby="cs-terms-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+              <label for="cs-terms">{{ _("I accept and acknowledge the responsibilities and guidelines that the authorized user must follow when uploading data on behalf of the organization.") }}</label>
+            </div>
+            <p id="cs-terms-hint" class="cs-hint cs-field-message"
+               data-default="" data-error="{{ _('Please accept the responsibilities to continue.') }}"></p>
+          </fieldset>
+
           {% if recaptcha_publickey %}
             <input type="hidden" name="recaptcha_response" id="cs-recaptcha-response">
             <p class="cs-hint cs-recaptcha-note">
@@ -248,22 +284,9 @@
           </button>
         </form>
 
-        {% if ofform_register_url %}
-          <div class="cs-register-divider" aria-hidden="true">{{ _("or") }}</div>
-          <div class="cs-register-ofform-card">
-            <span class="cs-register-ofform-icon" aria-hidden="true">
-              {{ h.csunesco_icon('globe', 18) }}
-            </span>
-            <p>{{ _("Register in the Citizen Science Toolbox") }}</p>
-            <a href="{{ ofform_register_url }}" target="_blank" rel="noopener noreferrer">
-              {{ _("Open") }} <span aria-hidden="true">&#8599;</span>
-            </a>
-          </div>
-        {% endif %}
-
         <p class="cs-register-footer">
-          {{ _("Managing a project on behalf of an organization?") }}
-          <a href="{{ h.url_for('csunesco.register_manager') }}">{{ _("Register as a Project Manager") }}</a>
+          {{ _("Joining as a volunteer instead?") }}
+          <a href="{{ h.url_for('csunesco.register_citizen') }}">{{ _("Register as a Citizen Scientist") }}</a>
         </p>
         <p class="cs-register-footer">
           {{ _("Already have an account?") }}

@@ -56,5 +56,14 @@
         {{ _('My projects') }}
       </a>
     </li>
+  {% elif h.csunesco_has_joined_projects() %}
+    {# The PARTICIPANT'S hub (spec section 4): a citizen scientist with an
+       approved membership gets their own "My projects", not the manager's
+       review dashboard. #}
+    <li class="nav-item">
+      <a class="nav-link" href="{{ h.url_for('csunesco.my_projects') }}">
+        {{ _('My projects') }}
+      </a>
+    </li>
   {% endif %}
 {% endblock %}

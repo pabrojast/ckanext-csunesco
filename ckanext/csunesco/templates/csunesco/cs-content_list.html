@@ -35,6 +35,22 @@
       {% endfor %}
     </nav>
 
+    {# Spec section 4: the Knowledge Hub is searchable. Keeps the active type
+       chip through the hidden field. #}
+    <form class="cs-filter-bar" method="get" role="search"
+          action="{{ h.url_for('csunesco.cs_content_index') }}">
+      {% if selected_type %}<input type="hidden" name="type" value="{{ selected_type }}">{% endif %}
+      {% if selected_initiative %}<input type="hidden" name="initiative" value="{{ selected_initiative }}">{% endif %}
+      <div class="cs-filter-field">
+        <label for="cs-content-q">{{ _("Search") }}</label>
+        <input type="search" id="cs-content-q" name="q" value="{{ q or '' }}"
+               placeholder="{{ _('Search resources…') }}">
+      </div>
+      <div class="cs-filter-actions">
+        <button type="submit" class="cs-btn cs-btn-primary">{{ _("Search") }}</button>
+      </div>
+    </form>
+
     <h2 id="cs-content-results-title" class="cs-section-title">
       {{ _("Latest") }} <span class="cs-results-count">({{ count }})</span>
     </h2>
@@ -46,10 +62,10 @@
       {% endfor %}
     </div>
 
-    {% if selected_type %}
-      {% snippet "csunesco/snippets/pagination.html", endpoint='csunesco.cs_content_index', page=page, total_pages=total_pages, params={'type': selected_type, 'initiative': selected_initiative} %}
-    {% else %}
-      {% snippet "csunesco/snippets/pagination.html", endpoint='csunesco.cs_content_index', page=page, total_pages=total_pages, params={'initiative': selected_initiative} if selected_initiative else {} %}
-    {% endif %}
+    {% set page_params = {} %}
+    {% if selected_type %}{% set _ = page_params.update({'type': selected_type}) %}{% endif %}
+    {% if selected_initiative %}{% set _ = page_params.update({'initiative': selected_initiative}) %}{% endif %}
+    {% if q %}{% set _ = page_params.update({'q': q}) %}{% endif %}
+    {% snippet "csunesco/snippets/pagination.html", endpoint='csunesco.cs_content_index', page=page, total_pages=total_pages, params=page_params %}
   </section>
 {% endblock %}

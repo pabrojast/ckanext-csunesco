@@ -9,7 +9,8 @@ thin aggregator: it merges every ``get_actions`` dict so the plugin's
 ``IActions`` hook has a single entry point (see .mix/plan.md).
 """
 from ckanext.csunesco.logic.action import (
-    projects, members, content, admin, registration, data, page, chat)
+    projects, members, content, admin, registration, data, page, chat,
+    structure)
 
 
 def get_actions():
@@ -22,4 +23,5 @@ def get_actions():
     actions.update(data.get_actions())
     actions.update(page.get_actions())
     actions.update(chat.get_actions())
+    actions.update(structure.get_actions())
     return actions

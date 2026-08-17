@@ -526,3 +526,64 @@ def test_an_unknown_new_country_is_still_rejected(actions, session,
         actions.csunesco_project_update(
             _country_ctx(), {'id': created['id'],
                              'countries': ['chile', 'atlantis']})
+
+
+# --------------------------------------------------------------------------- #
+# The derived member-states counter (fed on approve and on country edits)     #
+# --------------------------------------------------------------------------- #
+
+def test_approve_seeds_the_member_states_counter(actions, session,
+                                                 monkeypatch):
+    """The per-project counter is DERIVED from the declared countries.
+
+    Regression: it was never fed by anything, so every landing page's
+    At-a-Glance band showed Member States = 0 forever.
+    """
+    monkeypatch.setattr(
+        'ckanext.csunesco.logic.validators._member_state_names',
+        lambda model: {'chile', 'peru'})
+    created = actions.csunesco_project_request_create(
+        _country_ctx(), {'title': 'Two states', 'initiative': 'riverwatch',
+                         'countries': ['chile', 'peru']})
+    actions.csunesco_project_approve(_ctx('reviewer-1'),
+                                     {'id': created['id']})
+    stats = db.get_stats(created['id'])
+    assert stats.member_states == 2
+
+
+def test_editing_countries_recomputes_the_counter(actions, session,
+                                                  monkeypatch):
+    created = _with_country(actions, session, monkeypatch)
+    actions.csunesco_project_approve(_ctx('reviewer-1'), {'id': created['id']})
+    assert db.get_stats(created['id']).member_states == 1
+    actions.csunesco_project_update(
+        _country_ctx(), {'id': created['id'], 'countries': []})
+    assert db.get_stats(created['id']).member_states == 0
+
+
+def test_editing_countries_on_a_pending_project_creates_no_counter_row(
+        actions, session, monkeypatch):
+    """Pending requests get their counter seeded at approval, not before."""
+    created = _with_country(actions, session, monkeypatch)
+    actions.csunesco_project_update(
+        _country_ctx(), {'id': created['id'], 'countries': []})
+    assert db.get_stats(created['id']) is None
+
+
+# --------------------------------------------------------------------------- #
+# csunesco_aggregate_stats with an initiative filter                          #
+# --------------------------------------------------------------------------- #
+
+def test_aggregate_stats_accepts_an_initiative(actions, session):
+    """Regression: the action referenced ``constants.CS_INITIATIVES`` without
+    importing ``constants``, so EVERY initiative-scoped call raised NameError
+    -- swallowed by page_render, which is why initiative pages rendered zeros
+    forever instead of crashing."""
+    out = actions.csunesco_aggregate_stats(_ctx(), {'initiative': 'riverwatch'})
+    assert out == {'citizen_scientists': 0, 'observations': 0,
+                   'sites_monitored': 0, 'member_states': 0}
+
+
+def test_aggregate_stats_rejects_an_unknown_initiative(actions, session):
+    with pytest.raises(tk.ValidationError):
+        actions.csunesco_aggregate_stats(_ctx(), {'initiative': 'atlantis'})

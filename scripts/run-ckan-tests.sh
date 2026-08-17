@@ -78,7 +78,8 @@ for name in ("csunesco_project_update", "csunesco_member_state_list",
              "csunesco_project_resubmit", "csunesco_project_review_show",
              "csunesco_initiative_page_show",
              "csunesco_initiative_page_update",
-             "csunesco_initiative_page_publish"):
+             "csunesco_initiative_page_publish",
+             "csunesco_manager_approve", "csunesco_manager_reject"):
     assert name in auth, "action %r has no auth function" % name
 
 # IBlueprint: the module import happens inside get_blueprint(), so a NameError
@@ -114,7 +115,7 @@ fi
 # --------------------------------------------------------------------------- #
 echo "-- behavioral pytest (db_behavior + registration + pure_logic + initiative_admin + blocks + aggregate + chat + data_chat + admin_bulk + member_states + project_update + join_requests + ofform_contract)"
 if ! docker run --rm "${IMAGE}" bash -lc \
-  'cd /plugin && python -m pytest ckanext/csunesco/tests/test_db_behavior.py ckanext/csunesco/tests/test_registration.py ckanext/csunesco/tests/test_pure_logic.py ckanext/csunesco/tests/test_initiative_admin.py ckanext/csunesco/tests/test_initiative_pages.py ckanext/csunesco/tests/test_blocks.py ckanext/csunesco/tests/test_uploads.py ckanext/csunesco/tests/test_aggregate.py ckanext/csunesco/tests/test_chat.py ckanext/csunesco/tests/test_data_chat.py ckanext/csunesco/tests/test_admin_bulk.py ckanext/csunesco/tests/test_content_lifecycle.py ckanext/csunesco/tests/test_content_list_filters.py ckanext/csunesco/tests/test_member_states.py ckanext/csunesco/tests/test_project_update.py ckanext/csunesco/tests/test_join_requests.py ckanext/csunesco/tests/test_ofform_contract.py ckanext/csunesco/tests/test_scaffold.py -q -p no:ckan'
+  'cd /plugin && python -m pytest ckanext/csunesco/tests/test_db_behavior.py ckanext/csunesco/tests/test_registration.py ckanext/csunesco/tests/test_pure_logic.py ckanext/csunesco/tests/test_initiative_admin.py ckanext/csunesco/tests/test_initiative_pages.py ckanext/csunesco/tests/test_blocks.py ckanext/csunesco/tests/test_uploads.py ckanext/csunesco/tests/test_aggregate.py ckanext/csunesco/tests/test_chat.py ckanext/csunesco/tests/test_data_chat.py ckanext/csunesco/tests/test_admin_bulk.py ckanext/csunesco/tests/test_content_lifecycle.py ckanext/csunesco/tests/test_content_list_filters.py ckanext/csunesco/tests/test_member_states.py ckanext/csunesco/tests/test_project_update.py ckanext/csunesco/tests/test_join_requests.py ckanext/csunesco/tests/test_manager_approval.py ckanext/csunesco/tests/test_project_form_phase1.py ckanext/csunesco/tests/test_structure_mirror.py ckanext/csunesco/tests/test_ofform_contract.py ckanext/csunesco/tests/test_scaffold.py -q -p no:ckan'
 then
   echo "FAIL: behavioral pytest failed"
   exit 1

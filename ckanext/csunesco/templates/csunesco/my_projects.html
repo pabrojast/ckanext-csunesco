@@ -1,0 +1,65 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  The PARTICIPANT'S project hub (spec section 4): the projects the logged-in
+  citizen scientist belongs to. Structure and workplan render on each
+  project's landing page (audience-aware, so participants see everything
+  there); the forum lives in the CS Toolbox app and is linked, not
+  duplicated.
+
+  Vars: projects ([{id, slug, title, initiative_title, role}]), app_url.
+#}
+
+{% block subtitle %}{{ _("My projects") }}{% endblock %}
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  <section class="cs-hero" aria-labelledby="cs-myprojects-title">
+    <h1 id="cs-myprojects-title">{{ _("My projects") }}</h1>
+    <p>{{ _("The citizen science projects you take part in.") }}</p>
+  </section>
+
+  {% if not projects %}
+    <section class="cs-card" aria-label="{{ _('No projects yet') }}">
+      <p>{{ _("You have not joined a project yet. Find one that suits you in the project explorer.") }}</p>
+      <a class="cs-btn cs-btn-primary" href="{{ h.url_for('csunesco.project_list') }}">
+        {{ _("Browse projects") }}
+      </a>
+    </section>
+  {% else %}
+    <section class="cs-card" aria-label="{{ _('Your projects') }}">
+      <ul class="cs-myprojects-list">
+        {% for project in projects %}
+          <li class="cs-myprojects-item">
+            <div>
+              <a class="cs-myprojects-title"
+                 href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
+                {{ project.title }}
+              </a>
+              {% if project.initiative_title %}
+                <span class="cs-chip">{{ project.initiative_title }}</span>
+              {% endif %}
+              <span class="cs-chip">
+                {%- if project.role == 'admin' -%}{{ _("Project manager") }}
+                {%- elif project.role == 'editor' -%}{{ _("Editor") }}
+                {%- else -%}{{ _("Citizen scientist") }}{%- endif -%}
+              </span>
+            </div>
+            <p class="cs-hint">
+              {{ _("The project structure and workplan are on the project page; as a participant you see all of it.") }}
+            </p>
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% if app_url %}
+        <p class="cs-myprojects-forum">
+          {{ _("Project conversations, data forms and the scoreboard live in the Citizen Science Toolbox.") }}
+          <a href="{{ app_url }}" target="_blank" rel="noopener noreferrer">
+            {{ _("Open the Toolbox") }} <span aria-hidden="true">&#8599;</span>
+          </a>
+        </p>
+      {% endif %}
+    </section>
+  {% endif %}
+{% endblock %}

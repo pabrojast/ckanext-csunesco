@@ -16,13 +16,39 @@
   var toggle = form.querySelector(".cs-password-toggle");
   var meter = form.querySelectorAll(".cs-password-meter span");
 
+  function hintFor(id) { return document.getElementById(id + "-hint"); }
+
+  /* Shared by the citizen AND the manager form: a rule only applies when its
+   * element exists in the page. Username is deliberately absent -- it is
+   * optional (the server generates one from the name when blank). */
   var fields = [
-    { input: email, hint: document.getElementById("cs-email-hint") },
-    { input: username, hint: document.getElementById("cs-username-hint") },
-    { input: password, hint: document.getElementById("cs-password-hint") },
-    { input: confirm, hint: document.getElementById("cs-confirm-password-hint") },
-    { input: terms, hint: document.getElementById("cs-terms-hint") }
-  ];
+    { input: email, hint: hintFor("cs-email"),
+      valid: function (el) {
+        return /^[^@\s]+@[^@\s]+$/.test((el.value || "").trim());
+      } },
+    { input: document.getElementById("cs-fullname"),
+      hint: hintFor("cs-fullname"), valid: filled },
+    { input: document.getElementById("cs-date-of-birth"),
+      hint: hintFor("cs-date-of-birth"), valid: filled },
+    { input: document.getElementById("cs-gender"),
+      hint: hintFor("cs-gender"), valid: filled },
+    { input: document.getElementById("cs-org-type"),
+      hint: hintFor("cs-org-type"), valid: filled },
+    { input: document.getElementById("cs-org-name"),
+      hint: hintFor("cs-org-name"), valid: filled },
+    { input: document.getElementById("cs-org-title"),
+      hint: hintFor("cs-org-title"), valid: filled },
+    { input: password, hint: hintFor("cs-password"),
+      valid: function (el) { return (el.value || "").length >= 8; } },
+    { input: confirm, hint: hintFor("cs-confirm-password"),
+      valid: function (el) { return el.value === password.value; } },
+    { input: terms, hint: hintFor("cs-terms"),
+      valid: function (el) { return el.checked; } }
+  ].filter(function (item) { return item.input; });
+
+  function filled(el) {
+    return Boolean((el.value || "").trim());
+  }
 
   function setInvalid(item, invalid) {
     if (!item.input) { return; }
@@ -36,17 +62,10 @@
 
   function invalidFields() {
     var invalid = [];
-    var emailOk = /^[^@\s]+@[^@\s]+$/.test((email.value || "").trim());
-    var checks = [
-      emailOk,
-      Boolean((username.value || "").trim()),
-      (password.value || "").length >= 8,
-      confirm.value === password.value,
-      terms.checked
-    ];
-    fields.forEach(function (item, index) {
-      setInvalid(item, !checks[index]);
-      if (!checks[index]) { invalid.push(item.input); }
+    fields.forEach(function (item) {
+      var ok = item.valid(item.input);
+      setInvalid(item, !ok);
+      if (!ok) { invalid.push(item.input); }
     });
     return invalid;
   }
@@ -94,9 +113,31 @@
   }
 
   password.addEventListener("input", renderStrength);
-  username.addEventListener("blur", function () {
-    username.value = (username.value || "").trim().toLowerCase();
-  });
+  if (username) {
+    username.addEventListener("blur", function () {
+      username.value = (username.value || "").trim().toLowerCase();
+    });
+  }
+
+  /* Manager form only: choosing "create a new organization" reveals the name
+   * input and flips the derived role note (new org -> Admin, existing ->
+   * Editor). Server-side derivation is authoritative; this is presentation. */
+  var orgName = document.getElementById("cs-org-name");
+  var newOrgField = document.getElementById("cs-new-org-field");
+  var roleNote = document.getElementById("cs-org-role-note");
+  if (orgName && newOrgField) {
+    var syncOrgChoice = function () {
+      var creating = orgName.value === "__new__";
+      newOrgField.hidden = !creating;
+      if (roleNote) {
+        var label = roleNote.getAttribute(
+          creating ? "data-role-admin" : "data-role-editor");
+        roleNote.textContent = label || "";
+      }
+    };
+    orgName.addEventListener("change", syncOrgChoice);
+    syncOrgChoice();
+  }
 
   function lockSubmit() {
     submit.disabled = true;

@@ -220,7 +220,31 @@ def admin_dashboard():
     project_requests = views._decorate_projects(
         data.get('project_requests', []))
 
+    # Manager accounts awaiting the sysadmin decision (spec: "the IHP Admin
+    # approves or declines the user account"). Sysadmin-only queue -- the
+    # actions behind the buttons are too. Fail-soft like every other band.
+    pending_managers = []
+    if is_sysadmin:
+        try:
+            from ckanext.csunesco import db as cs_db
+            import ckan.model as model
+            for profile in cs_db.pending_managers():
+                user = model.User.get(profile.user_id)
+                pending_managers.append({
+                    'username': user.name if user else profile.user_id,
+                    'fullname': getattr(user, 'fullname', None),
+                    'email': getattr(user, 'email', None) if user else None,
+                    'org_name_requested': profile.org_name_requested,
+                    'org_id': profile.org_id,
+                    'org_type': profile.org_type,
+                    'org_title': profile.org_title,
+                    'org_role': profile.org_role,
+                })
+        except Exception:
+            log.warning('csunesco: pending manager list unavailable')
+
     return tk.render('csunesco/cs-admin-dashboard.html', extra_vars={
+        'pending_managers': pending_managers,
         'my_projects': my_projects,
         'admin_initiatives': admin_initiatives,
         'is_sysadmin': is_sysadmin,
@@ -332,6 +356,18 @@ def join_reject(project_id, user_id):
     return _decide('csunesco_join_reject',
                    {'project_id': project_id, 'user_id': user_id},
                    'joins', tk._('Join request rejected.'))
+
+
+def manager_approve(username):
+    return _decide('csunesco_manager_approve', {'username': username},
+                   'managers', tk._('Manager account approved.'))
+
+
+def manager_reject(username):
+    reason = (request.form.get('reason') or '').strip()
+    return _decide('csunesco_manager_reject',
+                   {'username': username, 'reason': reason or None},
+                   'managers', tk._('Manager account declined.'))
 
 
 def content_approve(id):

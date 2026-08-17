@@ -66,6 +66,10 @@ cs_project_table = Table(
     # Cover/banner image: an https URL or an internal /path (charset-restricted
     # by the validator so it is safe inside CSS url('...') and src attributes).
     Column('image_url', types.UnicodeText),
+    # Spec section 6.A: the project logo (600x400) and the wide profile
+    # heading image (1100x400). Same charset rules as image_url.
+    Column('logo_url', types.UnicodeText),
+    Column('heading_image_url', types.UnicodeText),
     Column('landing_content', types.Text),
     Column('organization_id', types.UnicodeText, index=True),
     Column('status', types.UnicodeText, index=True, default=u'pending'),
@@ -244,6 +248,22 @@ cs_citizen_scientist_table = Table(
     Column('email_verified', types.Boolean, default=False),
     Column('verification_token', types.UnicodeText, index=True),
     Column('token_created', types.DateTime),
+    # Project Manager registration (spec section 3). ``profile_type`` splits
+    # the one-profile-per-identity row into 'citizen' (default) and 'manager'.
+    # Managers additionally declare an organization: either an existing CKAN
+    # org (``org_id``, role editor) or a requested new one
+    # (``org_name_requested``, role admin) -- the org itself is only created
+    # when a sysadmin approves the account (``manager_decision``).
+    Column('profile_type', types.UnicodeText, default=u'citizen'),
+    Column('org_id', types.UnicodeText),
+    Column('org_name_requested', types.UnicodeText),
+    Column('org_type', types.UnicodeText),
+    Column('org_title', types.UnicodeText),
+    Column('org_role', types.UnicodeText),
+    Column('responsibilities_accepted_at', types.DateTime),
+    Column('manager_decision', types.UnicodeText),
+    Column('manager_reviewed_by', types.UnicodeText),
+    Column('manager_reviewed_at', types.DateTime),
     Column('created', types.DateTime, default=_utcnow),
 )
 
@@ -353,6 +373,8 @@ def ensure_mappers():
 _AUTO_HEAL_COLUMNS = [
     ('cs_project', 'biosphere_reserve', 'TEXT'),
     ('cs_project', 'image_url', 'TEXT'),
+    ('cs_project', 'logo_url', 'TEXT'),
+    ('cs_project', 'heading_image_url', 'TEXT'),
     ('cs_project', 'reviewed_by', 'TEXT'),
     ('cs_project', 'reviewed_at', 'TIMESTAMP'),
     ('cs_project', 'rejection_reason', 'TEXT'),
@@ -378,6 +400,16 @@ _AUTO_HEAL_COLUMNS = [
     ('cs_citizen_scientist', 'email_verified', 'BOOLEAN DEFAULT FALSE'),
     ('cs_citizen_scientist', 'verification_token', 'TEXT'),
     ('cs_citizen_scientist', 'token_created', 'TIMESTAMP'),
+    ('cs_citizen_scientist', 'profile_type', "TEXT DEFAULT 'citizen'"),
+    ('cs_citizen_scientist', 'org_id', 'TEXT'),
+    ('cs_citizen_scientist', 'org_name_requested', 'TEXT'),
+    ('cs_citizen_scientist', 'org_type', 'TEXT'),
+    ('cs_citizen_scientist', 'org_title', 'TEXT'),
+    ('cs_citizen_scientist', 'org_role', 'TEXT'),
+    ('cs_citizen_scientist', 'responsibilities_accepted_at', 'TIMESTAMP'),
+    ('cs_citizen_scientist', 'manager_decision', 'TEXT'),
+    ('cs_citizen_scientist', 'manager_reviewed_by', 'TEXT'),
+    ('cs_citizen_scientist', 'manager_reviewed_at', 'TIMESTAMP'),
 ]
 
 
@@ -488,7 +520,8 @@ def get_citizen_scientist_by_token(token):
 def get_or_create_citizen_scientist(user_id, country=None,
                                     verification_token=None,
                                     date_of_birth=None, nationality=None,
-                                    gender=None, terms_accepted=False):
+                                    gender=None, terms_accepted=False,
+                                    manager=None):
     """Idempotently mark a CKAN user as a Citizen Scientist.
 
     Inserts one ``cs_citizen_scientist`` row per ``user_id``; if a row already
@@ -520,6 +553,17 @@ def get_or_create_citizen_scientist(user_id, country=None,
     profile.gender = gender or None
     if terms_accepted:
         profile.terms_accepted_at = _utcnow()
+    if manager:
+        # Project Manager registration: the declared organization intent.
+        # The CKAN org itself is NOT touched here -- it is created/joined only
+        # when a sysadmin approves the account (csunesco_manager_approve).
+        profile.profile_type = 'manager'
+        profile.org_id = manager.get('org_id') or None
+        profile.org_name_requested = manager.get('org_name_requested') or None
+        profile.org_type = manager.get('org_type') or None
+        profile.org_title = manager.get('org_title') or None
+        profile.org_role = manager.get('org_role') or None
+        profile.responsibilities_accepted_at = _utcnow()
     if verification_token:
         profile.email_verified = False
         profile.verification_token = verification_token
@@ -558,6 +602,26 @@ def verify_citizen_scientist(profile):
     profile.token_created = None
     Session.commit()
     return profile
+
+
+def pending_managers(limit=100):
+    """Manager profiles awaiting an approve/decline decision, oldest first.
+
+    A manager is "pending" once their email is verified (they proved the
+    address) and no sysadmin decision has been recorded yet. Unverified
+    manager sign-ups are deliberately excluded -- they may still be typos or
+    abandonment, and surfacing them would fill the queue with ghosts.
+    """
+    _ensure_mappers()
+    return (
+        Session.query(CsCitizenScientist)
+        .filter(CsCitizenScientist.profile_type == 'manager')
+        .filter(CsCitizenScientist.email_verified.is_(True))
+        .filter(CsCitizenScientist.manager_decision.is_(None))
+        .order_by(CsCitizenScientist.created.asc())
+        .limit(limit)
+        .all()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -827,14 +891,16 @@ def count_active_members(project_id):
 
 
 def stats_set(project_id, observations=None, sites_monitored=None,
-              citizen_scientists=None):
+              citizen_scientists=None, member_states=None):
     """Set ABSOLUTE values for the recomputed counters of one project.
 
     Unlike :func:`stats_increment` (event counters like joins), the
     observation counters are periodically recomputed from the connected data
-    sources, so they need a setter, not a delta. Field names are hard-coded --
-    no injection surface. Ensures the counter row exists; runs in the caller's
-    session (commit is the caller's job, matching the other helpers).
+    sources, so they need a setter, not a delta. ``member_states`` is derived
+    from the project's declared countries whenever they change. Field names
+    are hard-coded -- no injection surface. Ensures the counter row exists;
+    runs in the caller's session (commit is the caller's job, matching the
+    other helpers).
     """
     _ensure_mappers()
     ensure_stats(project_id)
@@ -845,6 +911,8 @@ def stats_set(project_id, observations=None, sites_monitored=None,
         updates['sites_monitored'] = int(sites_monitored)
     if citizen_scientists is not None:
         updates['citizen_scientists'] = int(citizen_scientists)
+    if member_states is not None:
+        updates['member_states'] = int(member_states)
     if not updates:
         return
     sets = ', '.join('{0} = :{0}'.format(field) for field in updates)
@@ -1090,6 +1158,16 @@ def get_content(id_or_slug):
     )
 
 
+def _anonymous_visibility_clause():
+    """Rows an ANONYMOUS visitor may list: public (or pre-column NULL) only.
+
+    'logged-in' rows are excluded here and included by
+    :func:`_public_visibility_clause`, which any authenticated caller gets.
+    """
+    return sa.or_(CsContent.visibility.is_(None),
+                  CsContent.visibility == u'public')
+
+
 def _public_visibility_clause():
     """NULL-safe "not private": rows predating the column count as public.
     A bare ``visibility != 'private'`` would silently EXCLUDE NULL rows."""
@@ -1120,7 +1198,7 @@ def list_content(content_type=None, project_id=None, status=None,
                  public_only=False, private_project_ids=None,
                  private_org_ids=None, q=None, date_from=None, date_to=None,
                  upcoming=False, created_by=None, source=None,
-                 project_ids=None, sort=None):
+                 project_ids=None, sort=None, include_logged_in=False):
     """List content with server-side filtering + paging. Returns ``(total, rows)``.
 
     All filter values are bound query parameters (no SQL is built from strings).
@@ -1177,7 +1255,10 @@ def list_content(content_type=None, project_id=None, status=None,
         else:
             query = query.filter(CsContent.source == source)
     if public_only:
-        clauses = [_public_visibility_clause()]
+        # Authenticated callers additionally see 'logged-in' rows (spec's
+        # middle visibility tier); anonymous callers are pinned to public.
+        clauses = [_public_visibility_clause() if include_logged_in
+                   else _anonymous_visibility_clause()]
         if private_project_ids:
             clauses.append(CsContent.project_id.in_(list(private_project_ids)))
         if private_org_ids:
@@ -1285,6 +1366,34 @@ def admin_project_ids(user_id):
         .all()
     )
     return [pid for (pid,) in rows]
+
+
+def projects_joined(user_id, limit=100):
+    """APPROVED projects where ``user_id`` is an ACTIVE member of ANY role.
+
+    The participant mirror of :func:`projects_administered` (spec section 4:
+    "My projects" is also the CS participant's hub, not only the manager's).
+    Approved-only on purpose: a scientist's membership of a pending or
+    rejected project is an artifact of moderation, not a place they can visit.
+    """
+    _ensure_mappers()
+    if not user_id:
+        return []
+    rows = (
+        Session.query(CsProject.id, CsProject.slug, CsProject.title,
+                      CsProject.initiative_group, CsProjectMember.role)
+        .join(CsProjectMember, sa.and_(
+            CsProjectMember.project_id == CsProject.id,
+            CsProjectMember.user_id == user_id,
+            CsProjectMember.status == 'active'))
+        .filter(CsProject.status == 'approved')
+        .order_by(CsProject.title)
+        .limit(limit)
+        .all()
+    )
+    return [{'id': id_, 'slug': slug, 'title': title,
+             'initiative_group': group, 'role': role}
+            for (id_, slug, title, group, role) in rows]
 
 
 def projects_administered(user_id, limit=100):
@@ -1519,10 +1628,15 @@ def pending_joins(project_ids=None, limit=20, offset=0):
         #
         # A purged account needs no guard at all: it simply does not come back
         # and .get() yields None. This is for the unreadable cases.
+        #
+        # Deliberately NO ``state == 'active'`` filter: the portal registration
+        # flow leaves the account ``pending`` until the email is verified and
+        # files the join request immediately, so the primary Track-1 applicant
+        # would otherwise render as a raw UUID in the review queue. The
+        # "Email not verified" chip already tells the reviewer the state.
         try:
             for user in (Session.query(model.User)
-                         .filter(model.User.id.in_(user_ids))
-                         .filter(model.User.state == 'active').all()):
+                         .filter(model.User.id.in_(user_ids)).all()):
                 people[user.id] = user
         except Exception:
             log.warning('csunesco: join requesters could not be resolved')

@@ -55,6 +55,89 @@ def stats_refresh():
                 result['sites_monitored']))
 
 
+@csunesco.command('backfill-stats')
+def backfill_stats():
+    """One-shot: derive ``member_states`` counters from declared countries.
+
+    The per-project counter was historically never fed, so every landing page
+    showed 0. New writes keep it in sync (approve/update); this backfills the
+    rows that predate that. Idempotent -- safe to re-run.
+    """
+    from ckanext.csunesco import db
+    from ckanext.csunesco.logic.action.projects import _member_states_count
+    import ckan.model as model
+
+    db.ensure_mappers()
+    projects = (model.Session.query(db.CsProject)
+                .filter(db.CsProject.status == 'approved').all())
+    if not projects:
+        click.echo('no approved projects; nothing to backfill.')
+        return
+    for project in projects:
+        count = _member_states_count(project)
+        db.stats_set(project.id, member_states=count)
+        click.echo('updated: %s (member_states=%s)' % (project.slug, count))
+    model.Session.commit()
+    click.echo('backfilled %d project(s).' % len(projects))
+
+
+def _site_context():
+    """A sysadmin-equivalent action context for CLI operation."""
+    import ckan.plugins.toolkit as tk
+    import ckan.model as model
+    site_user = tk.get_action('get_site_user')({'ignore_auth': True}, {})
+    return {'model': model, 'session': model.Session,
+            'user': site_user['name'], 'ignore_auth': True}
+
+
+@csunesco.command('manager-pending')
+def manager_pending():
+    """List Project Manager accounts awaiting an approve/decline decision."""
+    import ckan.model as model
+    from ckanext.csunesco import db
+
+    db.ensure_mappers()
+    profiles = db.pending_managers()
+    if not profiles:
+        click.echo('no pending manager accounts.')
+        return
+    for profile in profiles:
+        user = model.User.get(profile.user_id)
+        click.echo('%s | %s | org=%s (%s) | role=%s' % (
+            user.name if user else profile.user_id,
+            (user.email if user else None) or '-',
+            profile.org_name_requested or profile.org_id or '-',
+            profile.org_type or '-',
+            profile.org_role or '-'))
+
+
+@csunesco.command('manager-approve')
+@click.argument('username')
+def manager_approve(username):
+    """Approve a pending Project Manager account (activates + creates org)."""
+    import ckan.plugins.toolkit as tk
+
+    result = tk.get_action('csunesco_manager_approve')(
+        _site_context(), {'username': username})
+    click.echo('approved: %s (org=%s, role=%s%s)' % (
+        result['username'], result.get('org_id') or '-',
+        result.get('org_role') or '-',
+        ', already approved' if result.get('existed') else ''))
+
+
+@csunesco.command('manager-reject')
+@click.argument('username')
+@click.option('--reason', default=None, help='Optional note emailed to the '
+              'applicant.')
+def manager_reject(username, reason):
+    """Decline a pending Project Manager account (kept pending, notified)."""
+    import ckan.plugins.toolkit as tk
+
+    result = tk.get_action('csunesco_manager_reject')(
+        _site_context(), {'username': username, 'reason': reason})
+    click.echo('rejected: %s' % result['username'])
+
+
 @csunesco.command('seed-legacy-projects')
 @click.option('--force', is_flag=True,
               help='Re-impose the seed values on fields an admin already '

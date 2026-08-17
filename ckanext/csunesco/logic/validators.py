@@ -167,6 +167,134 @@ def csunesco_valid_country_list(value, context):
     return json.dumps(countries)
 
 
+# Bounds for user-supplied option lists (multi-selects with an "add your own"
+# escape hatch). Generous for real use, tight enough to stop payload abuse.
+MAX_LIST_ITEMS = 50
+MAX_LIST_ITEM_LENGTH = 200
+
+_TAG_RE = re.compile(r'<[^>]*>')
+
+
+def csunesco_valid_string_list(value):
+    """Coerce a list / JSON-array string / comma-separated string into a
+    clean list of plain-text items (tags stripped, trimmed, bounded).
+
+    The shared shape of every phase-1 multi-value field. Returns a Python
+    LIST -- these fields live inside the ``extras`` JSON blob, which
+    ``json.dumps`` serializes as a whole, unlike ``countries`` (a standalone
+    text column that stores its own JSON string).
+    """
+    if value in (None, ''):
+        return []
+    if isinstance(value, (list, tuple)):
+        items = list(value)
+    else:
+        text = str(value)
+        try:
+            parsed = json.loads(text)
+            items = parsed if isinstance(parsed, list) else [text]
+        except (ValueError, TypeError):
+            items = text.split(',')
+    cleaned = []
+    for item in items:
+        text = _TAG_RE.sub('', str(item)).strip()
+        if not text:
+            continue
+        if len(text) > MAX_LIST_ITEM_LENGTH:
+            raise tk.Invalid(tk._('List entries must be %d characters or '
+                                  'fewer') % MAX_LIST_ITEM_LENGTH)
+        if text not in cleaned:
+            cleaned.append(text)
+    if len(cleaned) > MAX_LIST_ITEMS:
+        raise tk.Invalid(tk._('Too many entries (maximum %d)')
+                         % MAX_LIST_ITEMS)
+    return cleaned
+
+
+def csunesco_choice(options, allow_other=False):
+    """Factory: a single value drawn from ``options`` (blank passes through).
+
+    ``allow_other=True`` accepts any bounded free string -- the spec's "Other
+    (option to add additional list item)" escape hatch.
+    """
+    allowed = set(options)
+
+    def validator(value):
+        if value in (None, ''):
+            return value
+        text = _TAG_RE.sub('', str(value)).strip()
+        if text in allowed:
+            return text
+        if allow_other and 0 < len(text) <= MAX_LIST_ITEM_LENGTH:
+            return text
+        raise tk.Invalid(tk._('Unknown option: %s') % text)
+    return validator
+
+
+def csunesco_choice_list(options, allow_other=False):
+    """Factory: run AFTER ``csunesco_valid_string_list`` -- each entry must be
+    a known option (or, with ``allow_other``, any bounded free string)."""
+    allowed = set(options)
+
+    def validator(value):
+        items = value if isinstance(value, list) else \
+            csunesco_valid_string_list(value)
+        for item in items:
+            if item in allowed:
+                continue
+            if allow_other:
+                continue
+            raise tk.Invalid(tk._('Unknown option: %s') % item)
+        return items
+    return validator
+
+
+def csunesco_require_list(min_items=1, max_items=None):
+    """Factory: STRICT-form rule -- the list must carry at least ``min_items``
+    (and at most ``max_items``) entries. Not used by the lenient action
+    schema, which must keep accepting the app's fixed payload."""
+    def validator(value):
+        items = value if isinstance(value, list) else \
+            csunesco_valid_string_list(value)
+        if len(items) < min_items:
+            raise tk.Invalid(
+                tk._('Select at least %d') % min_items if min_items > 1
+                else tk._('Missing value'))
+        if max_items is not None and len(items) > max_items:
+            raise tk.Invalid(tk._('Select at most %d') % max_items)
+        return items
+    return validator
+
+
+def _valid_float(value, low, high, label):
+    try:
+        number = float(str(value).strip())
+    except (TypeError, ValueError):
+        raise tk.Invalid(tk._('%s must be a number') % label)
+    if not (low <= number <= high):
+        raise tk.Invalid(tk._('%s must be between %s and %s')
+                         % (label, low, high))
+    return number
+
+
+def csunesco_valid_latitude(value):
+    if value in (None, ''):
+        return None
+    return _valid_float(value, -90, 90, tk._('Latitude'))
+
+
+def csunesco_valid_longitude(value):
+    if value in (None, ''):
+        return None
+    return _valid_float(value, -180, 180, tk._('Longitude'))
+
+
+def csunesco_valid_radius_km(value):
+    if value in (None, ''):
+        return None
+    return _valid_float(value, 0.01, 5000, tk._('Radius'))
+
+
 def csunesco_valid_document_url(value):
     """Allow only ``http``/``https`` document URLs (no javascript:, data:, ...)."""
     if value in (None, ''):
@@ -220,16 +348,19 @@ def csunesco_valid_content_type(value):
     return value
 
 
-CONTENT_VISIBILITIES = ('public', 'private')
+# 'logged-in' is the spec's middle tier (section 5): visible to any
+# authenticated portal user, hidden from anonymous visitors.
+CONTENT_VISIBILITIES = ('public', 'logged-in', 'private')
 
 
 def csunesco_valid_visibility(value):
-    """Accept only 'public' / 'private'; missing defaults to 'public'."""
+    """Accept 'public' / 'logged-in' / 'private'; missing defaults to public."""
     if not value:
         return 'public'
     value = str(value).strip().lower()
     if value not in CONTENT_VISIBILITIES:
-        raise tk.Invalid(tk._('Visibility must be public or private'))
+        raise tk.Invalid(tk._(
+            'Visibility must be public, logged-in or private'))
     return value
 
 
@@ -400,6 +531,10 @@ def csunesco_nonempty_media_list(value):
 def get_validators():
     return {
         'csunesco_valid_initiative': csunesco_valid_initiative,
+        'csunesco_valid_string_list': csunesco_valid_string_list,
+        'csunesco_valid_latitude': csunesco_valid_latitude,
+        'csunesco_valid_longitude': csunesco_valid_longitude,
+        'csunesco_valid_radius_km': csunesco_valid_radius_km,
         'csunesco_valid_slug': csunesco_valid_slug,
         'csunesco_valid_geojson': csunesco_valid_geojson,
         'csunesco_valid_country_list': csunesco_valid_country_list,

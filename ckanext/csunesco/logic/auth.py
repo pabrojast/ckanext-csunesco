@@ -63,6 +63,25 @@ def _is_project_admin(context, project_id):
                 and member.status == 'active')
 
 
+def _is_project_editor(context, project_id):
+    """True when the acting user is an active ``editor`` member of the project.
+
+    Editors are the spec's "additional users who can co-edit the project":
+    they may change its details, but they are NOT managers -- joins,
+    moderation and page publishing stay with the admin role.
+    """
+    if not project_id:
+        return False
+    user_obj = _user_obj(context)
+    if user_obj is None:
+        return False
+    from ckanext.csunesco import db
+    member = db.project_member(project_id, user_obj.id)
+    return bool(member
+                and member.role == 'editor'
+                and member.status == 'active')
+
+
 def is_reviewer(context):
     """True when the user actually has something to moderate.
 
@@ -244,6 +263,9 @@ def can_edit_project_details(context, project):
                   else getattr(project, 'id', None))
     if can_manage_project(context, project_id):
         return True
+    # Editors co-edit details (spec section 6.E) without gaining management.
+    if _is_project_editor(context, project_id):
+        return True
     status = (project.get('status') if isinstance(project, dict)
               else getattr(project, 'status', None))
     if status == 'approved':
@@ -319,6 +341,20 @@ def csunesco_join_reject(context, data_dict):
                         'admin can reject join requests')}
 
 
+def csunesco_project_manager_set(context, data_dict):
+    # Handing over (or sharing) the manager role is a management act: the
+    # current PM, the initiative admin or a sysadmin -- same circle that
+    # approves joins.
+    project_id = _join_scope_id(data_dict)
+    if (_is_sysadmin(context)
+            or _is_project_admin(context, project_id)
+            or _is_project_initiative_admin(context, project_id)):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only sysadmins, the project admin or the initiative '
+                        'admin can reassign the project manager')}
+
+
 def csunesco_project_trusted_set(context, data_dict):
     # Policy lever: trusted projects publish news/events without review.
     # Deliberately SYSADMIN-only (not the initiative admin): it disables a
@@ -372,6 +408,12 @@ def csunesco_aggregate_stats(context, data_dict):
 @tk.auth_allow_anonymous_access
 def csunesco_member_state_list(context, data_dict):
     # Public read: the member-state groups are public CKAN groups already.
+    return {'success': True}
+
+
+@tk.auth_allow_anonymous_access
+def csunesco_option_lists(context, data_dict):
+    # Public read: static form vocabularies, nothing sensitive.
     return {'success': True}
 
 
@@ -607,6 +649,13 @@ def csunesco_my_projects(context, data_dict):
     return {'success': False, 'msg': tk._('You must be logged in')}
 
 
+def csunesco_my_joined_projects(context, data_dict):
+    # Same shape: "which projects do *I* participate in".
+    if context.get('user'):
+        return {'success': True}
+    return {'success': False, 'msg': tk._('You must be logged in')}
+
+
 def csunesco_data_chat(context, data_dict):
     """Ask a question about an approved data source's observations.
 
@@ -739,12 +788,41 @@ def csunesco_register_citizen_scientist(context, data_dict):
             'msg': tk._('Only sysadmins can register citizen scientists')}
 
 
+def csunesco_manager_approve(context, data_dict):
+    # The spec's "IHP Admin approves/declines the user account" step. Account
+    # activation plus organization creation is platform-level power, so this
+    # stays sysadmin-only -- initiative admins moderate projects, not people.
+    if _is_sysadmin(context):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only sysadmins can approve manager accounts')}
+
+
+def csunesco_project_structure_upsert(context, data_dict):
+    # Server-to-server ONLY: the CS Toolbox app is the single writer of the
+    # phase-2 structure mirror, through its sysadmin service token -- the same
+    # trust model as csunesco_join_approve's impersonation path.
+    if _is_sysadmin(context):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only the trusted app backend can push the project '
+                        'structure')}
+
+
+def csunesco_manager_reject(context, data_dict):
+    if _is_sysadmin(context):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only sysadmins can decline manager accounts')}
+
+
 def get_auth_functions():
     return {
         'csunesco_project_approve': csunesco_project_approve,
         'csunesco_project_reject': csunesco_project_reject,
         'csunesco_join_approve': csunesco_join_approve,
         'csunesco_join_reject': csunesco_join_reject,
+        'csunesco_project_manager_set': csunesco_project_manager_set,
         'csunesco_project_trusted_set': csunesco_project_trusted_set,
         'csunesco_project_request_create': csunesco_project_request_create,
         'csunesco_join_request_create': csunesco_join_request_create,
@@ -753,6 +831,7 @@ def get_auth_functions():
         'csunesco_project_stats_show': csunesco_project_stats_show,
         'csunesco_aggregate_stats': csunesco_aggregate_stats,
         'csunesco_member_state_list': csunesco_member_state_list,
+        'csunesco_option_lists': csunesco_option_lists,
         'csunesco_project_update': csunesco_project_update,
         'csunesco_project_resubmit': csunesco_project_resubmit,
         'csunesco_admin_pending_list': csunesco_admin_pending_list,
@@ -774,6 +853,7 @@ def get_auth_functions():
         'csunesco_data_source_series': csunesco_data_source_series,
         'csunesco_data_chat': csunesco_data_chat,
         'csunesco_my_projects': csunesco_my_projects,
+        'csunesco_my_joined_projects': csunesco_my_joined_projects,
         'csunesco_project_page_show': csunesco_project_page_show,
         'csunesco_project_page_update': csunesco_project_page_update,
         'csunesco_project_page_submit': csunesco_project_page_submit,
@@ -788,4 +868,8 @@ def get_auth_functions():
             csunesco_initiative_page_publish,
         'csunesco_register_citizen_scientist':
             csunesco_register_citizen_scientist,
+        'csunesco_manager_approve': csunesco_manager_approve,
+        'csunesco_manager_reject': csunesco_manager_reject,
+        'csunesco_project_structure_upsert':
+            csunesco_project_structure_upsert,
     }

@@ -83,6 +83,19 @@ def _resolve_actor(context, data_dict):
     return current_user_id(context), False
 
 
+def _participation_closed(project):
+    """True when the project EXPLICITLY closed public participation.
+
+    An absent ``open_participation`` extra is treated as open: the flag
+    predates this gate, so legacy projects that never set it must stay
+    joinable. Only a stored ``False`` (the manager unchecked the box) closes
+    the project to new join requests.
+    """
+    extras = db._load_json(project.extras, {})
+    return (isinstance(extras, dict)
+            and extras.get('open_participation') is False)
+
+
 def csunesco_join_request_create(context, data_dict):
     """Request to join an APPROVED project (idempotent for the acting user)."""
     if not context.get('user'):
@@ -97,6 +110,15 @@ def csunesco_join_request_create(context, data_dict):
             'Project not found or not open for join requests')]})
 
     user_id, on_behalf = _resolve_actor(context, data_dict)
+
+    # A project that explicitly closed public participation takes no new join
+    # requests from the web. Sysadmin callers bypass the gate: that is the
+    # trusted-proxy path (the CS Toolbox outbox and PM-invited joins), which
+    # must keep working for invitation-based projects.
+    from ckanext.csunesco.logic import auth as cs_auth
+    if _participation_closed(project) and not cs_auth._is_sysadmin(context):
+        raise tk.ValidationError({'project_id': [tk._(
+            'Project not found or not open for join requests')]})
     note = _clean_note(data_dict.get('note'))
     # Provenance is DERIVED, never taken from the payload. It is rendered to a
     # reviewer as "via the CS Toolbox app", so letting a caller assert it would
@@ -197,6 +219,12 @@ def csunesco_join_approve(context, data_dict):
     new_count = db.stats_increment(project_id, 'citizen_scientists', 1)
     model.Session.commit()
 
+    # AFTER the commit: the applicant finally hears back (best-effort).
+    from ckanext.csunesco.logic import notify
+    project = db.get_project(project_id)
+    notify.notify_join_decision(
+        user_id, project.title if project else '', approved=True)
+
     return {
         'membership': db.member_dictize(db.project_member(project_id, user_id)),
         'citizen_scientists': new_count,
@@ -227,7 +255,60 @@ def csunesco_join_reject(context, data_dict):
         db.stats_increment(project_id, 'citizen_scientists', -1)
     model.Session.commit()
 
+    from ckanext.csunesco.logic import notify
+    project = db.get_project(project_id)
+    notify.notify_join_decision(
+        user_id, project.title if project else '', approved=False)
+
     return db.member_dictize(db.project_member(project_id, user_id))
+
+
+def csunesco_project_manager_set(context, data_dict):
+    """Assign the Project Manager (admin) role to a named user.
+
+    Spec 6.E: the PM "defaults to the creator; can be reassigned". ADDITIVE
+    by default -- the spec explicitly allows more than one manager -- and
+    ``replace: true`` additionally demotes every other current admin to
+    editor, which is the actual hand-over gesture.
+    """
+    tk.check_access('csunesco_project_manager_set', context, data_dict)
+    data_dict = data_dict or {}
+    project = _resolve_project(data_dict)
+    if project is None:
+        raise tk.ObjectNotFound(tk._('Project not found'))
+
+    username = (data_dict.get('username') or '').strip()
+    if not username:
+        raise tk.ValidationError({'username': [tk._('Missing value')]})
+    user = model.User.get(username)
+    if user is None:
+        raise tk.ValidationError({'username': [tk._(
+            'Unknown user: %s') % username]})
+
+    now = _utcnow()
+    member = db.project_member(project.id, user.id)
+    if member is None:
+        member = db.CsProjectMember()
+        member.project_id = project.id
+        member.user_id = user.id
+        member.source = 'ckan'
+        member.created = now
+        model.Session.add(member)
+    member.role = 'admin'
+    member.status = 'active'
+
+    if tk.asbool(data_dict.get('replace', False)):
+        others = (
+            model.Session.query(db.CsProjectMember)
+            .filter(db.CsProjectMember.project_id == project.id)
+            .filter(db.CsProjectMember.role == 'admin')
+            .filter(db.CsProjectMember.user_id != user.id)
+            .all()
+        )
+        for other in others:
+            other.role = 'editor'
+    model.Session.commit()
+    return db.member_dictize(member)
 
 
 def get_actions():
@@ -235,4 +316,5 @@ def get_actions():
         'csunesco_join_request_create': csunesco_join_request_create,
         'csunesco_join_approve': csunesco_join_approve,
         'csunesco_join_reject': csunesco_join_reject,
+        'csunesco_project_manager_set': csunesco_project_manager_set,
     }

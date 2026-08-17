@@ -224,3 +224,45 @@ def test_member_dictize_exposes_the_note(session, project):
     session.add(member)
     session.commit()
     assert db.member_dictize(member)['note'] == 'Because rivers.'
+
+
+# --------------------------------------------------------------------------- #
+# The open-participation gate                                                 #
+# --------------------------------------------------------------------------- #
+
+def _closed_project(session):
+    """A project whose manager EXPLICITLY closed public participation."""
+    row = db.CsProject()
+    row.slug = 'closed-x'
+    row.title = 'Closed X'
+    row.status = 'approved'
+    row.extras = '{"open_participation": false}'
+    session.add(row)
+    session.commit()
+    return row
+
+
+def test_a_closed_project_rejects_a_web_join(actions, session):
+    project = _closed_project(session)
+    with pytest.raises(tk.ValidationError):
+        actions.csunesco_join_request_create(
+            _ctx(), {'project_id': project.id})
+
+
+def test_an_absent_flag_keeps_the_project_joinable(actions, session, project):
+    """Legacy semantics: the flag predates the gate, so a project that never
+    set it must stay open -- only an explicit False closes it."""
+    out = actions.csunesco_join_request_create(
+        _ctx(), {'project_id': project.id})
+    assert out['status'] == 'pending'
+
+
+def test_a_sysadmin_bypasses_the_gate(actions, session, monkeypatch):
+    """The trusted-proxy path (the CS Toolbox outbox, PM invitations) must
+    keep working for invitation-only projects."""
+    from ckanext.csunesco.logic import auth as cs_auth
+    project = _closed_project(session)
+    monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: True)
+    out = actions.csunesco_join_request_create(
+        _ctx(), {'project_id': project.id})
+    assert out['status'] == 'pending'

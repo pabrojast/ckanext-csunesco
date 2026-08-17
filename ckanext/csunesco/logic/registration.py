@@ -24,6 +24,7 @@ import re
 import secrets
 import threading
 import time
+import unicodedata
 from collections import defaultdict, deque
 
 from flask import request
@@ -150,7 +151,11 @@ def _parse_optional_profile(data):
         raise ValidationError({'message': GENERIC_ERROR})
 
     nationality = (data.get('nationality') or '').strip().upper()
-    if nationality and nationality not in constants.ISO_3166_ALPHA2:
+    # 'OTHER' is the spec's escape hatch for nationalities the ISO list cannot
+    # express (stateless, unrecognized territories). Stored as the sentinel
+    # itself so profiles remain comparable.
+    if (nationality and nationality != 'OTHER'
+            and nationality not in constants.ISO_3166_ALPHA2):
         raise ValidationError({'message': GENERIC_ERROR})
 
     gender = (data.get('gender') or '').strip()
@@ -160,10 +165,41 @@ def _parse_optional_profile(data):
     return date_of_birth, nationality or None, gender or None
 
 
+def _generate_username(fullname, email=None):
+    """Derive an available CKAN username from a person's name (spec: username
+    is optional and "generated based on their name" when left blank).
+
+    Slugifies the full name (fallback: the email local part), then probes CKAN
+    for availability, appending ``-2``, ``-3``... on collision. A final random
+    suffix guarantees termination even against an adversarial namespace. The
+    result always satisfies CKAN's name rules (lowercase ``a-z0-9-_``, >= 2
+    chars).
+    """
+    base_source = (fullname or '').strip() or (email or '').split('@')[0]
+    # Deaccent first ('María Pérez' -> 'Maria Perez') so common Latin names
+    # produce readable handles instead of hyphen soup.
+    base_source = unicodedata.normalize('NFKD', base_source)
+    base_source = base_source.encode('ascii', 'ignore').decode('ascii')
+    base = re.sub(r'[^a-z0-9_-]+', '-', base_source.lower()).strip('-_')
+    base = re.sub(r'-{2,}', '-', base)[:80]
+    if len(base) < 2:
+        base = 'citizen'
+    candidate = base
+    for suffix in range(2, 200):
+        if model.User.get(candidate) is None:
+            return candidate
+        candidate = '%s-%d' % (base, suffix)
+    return '%s-%s' % (base, secrets.token_hex(4))
+
+
 def _country_name(code, locale='en'):
     """Canonical/localized country label for an ISO code, with safe fallback."""
     if not code:
         return None
+    if code == 'OTHER':
+        # The non-ISO sentinel the form offers; Babel knows no territory for
+        # it, and 'OTHER' as a stored country label would read as shouting.
+        return 'Other'
     try:
         parsed = Locale.parse(locale or 'en', sep='_')
     except (UnknownLocaleError, ValueError):
@@ -308,6 +344,12 @@ def create_citizen_scientist(context, data, verification_token=None):
         country = _country_name(nationality, 'en')
     terms_accepted = bool(data.get('terms_accepted'))
 
+    # Username is optional (spec: generated from the name when blank). This is
+    # ADDITIVE for the API path: a payload that sends one behaves exactly as
+    # before.
+    if not username and (fullname or email):
+        username = _generate_username(fullname, email)
+
     # Server-side minimums (mirror the web form). Any failure -> generic error.
     if not username or not email or not password:
         raise ValidationError({'message': GENERIC_ERROR})
@@ -367,7 +409,8 @@ def create_citizen_scientist(context, data, verification_token=None):
             date_of_birth=date_of_birth,
             nationality=nationality,
             gender=gender,
-            terms_accepted=terms_accepted)
+            terms_accepted=terms_accepted,
+            manager=data.get('manager'))
     except Exception:
         model.Session.rollback()
         log.warning('csunesco: citizen scientist profile row could not be '
@@ -480,6 +523,12 @@ def register_citizen():
     if not terms:
         return _fail()
 
+    # Spec-required identity/demographics -- enforced in the WEB form only.
+    # The API action (ofform's frozen payload) stays lenient on purpose; the
+    # per-caller strictness split lives here in the view.
+    if not fullname or not date_of_birth or not gender:
+        return _fail()
+
     # Password: required, min length, must match confirmation.
     if not password or len(password) < MIN_PASSWORD_LENGTH:
         return _fail()
@@ -567,6 +616,176 @@ def register_citizen():
     })
 
 
+def _organization_options():
+    """Existing CKAN organizations for the PM form, fail-soft and sorted."""
+    try:
+        rows = tk.get_action('organization_list')({
+            'model': model, 'session': model.Session,
+            'user': getattr(tk.g, 'user', None),
+        }, {'all_fields': True, 'limit': 1000})
+    except Exception:
+        log.warning('csunesco: organization list unavailable for PM form')
+        return []
+    options = [{'name': row.get('name'),
+                'title': row.get('title') or row.get('name')}
+               for row in rows if row.get('name')]
+    return sorted(options, key=lambda row: row['title'].casefold())
+
+
+def _render_manager(extra_vars):
+    """Render the PM registration form with its stable choice lists."""
+    extra_vars.setdefault('recaptcha_publickey',
+                          tk.config.get('ckan.recaptcha.publickey'))
+    extra_vars.setdefault('country_options', _country_options())
+    extra_vars.setdefault('org_types', constants.ORG_TYPES)
+    extra_vars.setdefault('organizations', _organization_options())
+    extra_vars.setdefault('today', datetime.date.today().isoformat())
+    return tk.render('csunesco/register_manager.html', extra_vars=extra_vars)
+
+
+def register_manager():
+    """GET/POST: Project Manager self-registration (spec section 3).
+
+    Same hardening as the Citizen Scientist form (rate limit, reCAPTCHA,
+    generic errors, email verification), plus the Organization block. The
+    account is double-gated: after the email is verified it STAYS pending
+    until a sysadmin approves it (``csunesco_manager_approve``), which is when
+    the declared organization is created/joined -- never at sign-up, so an
+    unvetted visitor cannot spam the org registry.
+    """
+    if request.method == 'GET':
+        return _render_manager({'data': {}, 'errors': {}})
+
+    # --- POST ---------------------------------------------------------------
+    retry_after = _registration_retry_after()
+
+    email = request.form.get('email', '').strip()
+    username = request.form.get('username', '').lower().strip()
+    fullname = request.form.get('fullname', '').strip()
+    password = request.form.get('password', '')
+    confirm_password = request.form.get('confirm_password', '')
+    date_of_birth = request.form.get('date_of_birth', '').strip()
+    nationality = request.form.get('nationality', '').strip().upper()
+    gender = request.form.get('gender', '').strip()
+    org_type = request.form.get('org_type', '').strip()
+    org_name = request.form.get('org_name', '').strip()
+    new_org_name = request.form.get('new_org_name', '').strip()
+    org_title = request.form.get('org_title', '').strip()
+    responsibilities = request.form.get('responsibilities')
+
+    data = {
+        'email': email,
+        'username': username,
+        'fullname': fullname,
+        'date_of_birth': date_of_birth,
+        'nationality': nationality,
+        'gender': gender,
+        'org_type': org_type,
+        'org_name': org_name,
+        'new_org_name': new_org_name,
+        'org_title': org_title,
+    }
+
+    def _fail(status=200, headers=None):
+        rendered = _render_manager({
+            'data': data,
+            'errors': {'message': GENERIC_ERROR},
+        })
+        if status == 200 and not headers:
+            return rendered
+        return rendered, status, (headers or {})
+
+    if retry_after is not None:
+        return _fail(429, {'Retry-After': str(retry_after)})
+
+    # The responsibilities acknowledgement is this form's terms checkbox.
+    if not responsibilities:
+        return _fail()
+
+    # Spec-required fields: identity, demographics and the whole org block.
+    if not fullname or not date_of_birth or not gender:
+        return _fail()
+    if org_type not in {row['name'] for row in constants.ORG_TYPES}:
+        return _fail()
+    if not org_title:
+        return _fail()
+
+    # Organization: an existing one (role editor) XOR a new one (role admin).
+    creating_org = org_name == '__new__'
+    if creating_org and not new_org_name:
+        return _fail()
+    if not creating_org and not org_name:
+        return _fail()
+    org_id = None
+    if not creating_org:
+        # Validate against the live list so a forged value cannot smuggle an
+        # arbitrary string into the approval flow.
+        known = {row['name'] for row in _organization_options()}
+        if org_name not in known:
+            return _fail()
+        org_id = org_name
+
+    if not password or len(password) < MIN_PASSWORD_LENGTH:
+        return _fail()
+    if password != confirm_password:
+        return _fail()
+
+    try:
+        parsed_dob, parsed_nationality, parsed_gender = _parse_optional_profile({
+            'date_of_birth': date_of_birth,
+            'nationality': nationality,
+            'gender': gender,
+        })
+    except ValidationError:
+        return _fail()
+
+    if _recaptcha_configured():
+        if not _verify_recaptcha(request.form.get('recaptcha_response')):
+            return _fail()
+
+    context = {
+        'model': model,
+        'session': model.Session,
+        'user': tk.g.user,
+    }
+    verification_token = secrets.token_urlsafe(32)
+
+    try:
+        create_citizen_scientist(context, {
+            'email': email,
+            'username': username,
+            'fullname': fullname,
+            'password': password,
+            'date_of_birth': parsed_dob,
+            'nationality': parsed_nationality,
+            'gender': parsed_gender,
+            'terms_accepted': True,
+            'manager': {
+                'org_id': org_id,
+                'org_name_requested': new_org_name if creating_org else None,
+                'org_type': org_type,
+                'org_title': org_title,
+                # Derived, never chosen: a new org starts with its requester
+                # as admin; joining an existing org grants editor.
+                'org_role': 'admin' if creating_org else 'editor',
+            },
+        }, verification_token=verification_token)
+    except NotAuthorized:
+        log.warning('csunesco: user_create not authorized for PM register')
+        return _fail()
+    except ValidationError:
+        return _fail()
+
+    _send_verification_email(fullname or username, email, verification_token)
+
+    return _render_manager({
+        'data': {},
+        'errors': {},
+        'pending_verification': True,
+        'email': email,
+    })
+
+
 def _render_verify(state):
     """Render the /verify result page for a single ``state`` string."""
     return tk.render('csunesco/verify_result.html',
@@ -591,18 +810,25 @@ def verify_citizen(token):
     if created is None or (datetime.datetime.utcnow() - created) > ttl:
         return _render_verify('expired')
 
+    # Project Manager accounts have a SECOND gate: verifying the email proves
+    # the address but the account stays CKAN-pending until a sysadmin approves
+    # it (csunesco_manager_approve) -- the spec's "IHP Admin approves/declines
+    # the user account" step. Citizens activate right here as before.
+    is_manager = getattr(profile, 'profile_type', None) == 'manager'
+
     try:
-        user_obj = model.User.get(profile.user_id)
-        if user_obj is not None:
-            user_obj.activate()
-            model.Session.commit()
+        if not is_manager:
+            user_obj = model.User.get(profile.user_id)
+            if user_obj is not None:
+                user_obj.activate()
+                model.Session.commit()
         db.verify_citizen_scientist(profile)
     except Exception:
         model.Session.rollback()
         log.warning('csunesco: could not activate a verified citizen scientist')
         return _render_verify('error')
 
-    return _render_verify('ok')
+    return _render_verify('manager_pending' if is_manager else 'ok')
 
 
 def resend_verification():

@@ -155,6 +155,54 @@
     </section>
   {% endif %}
 
+  {# ---- Manager accounts awaiting a decision (sysadmin-only; spec: "the
+        IHP Admin approves or declines the user account"). A standalone band
+        rather than a tab: the queue is usually empty and must be impossible
+        to miss when it is not. #}
+  {% if is_sysadmin and pending_managers %}
+    <section class="cs-card" id="tab-managers"
+             aria-labelledby="cs-managers-title">
+      <h2 id="cs-managers-title" class="cs-form-heading">
+        {{ _("Project Manager accounts awaiting approval") }}
+        <span class="cs-results-count">({{ pending_managers | length }})</span>
+      </h2>
+      <ul class="cs-managers-list">
+        {% for manager in pending_managers %}
+          <li class="cs-managers-item">
+            <div class="cs-managers-who">
+              <strong>{{ manager.fullname or manager.username }}</strong>
+              <span class="cs-muted">({{ manager.username }}{% if manager.email %} · {{ manager.email }}{% endif %})</span>
+              <p class="cs-hint">
+                {% if manager.org_name_requested %}
+                  {{ _("New organization:") }} {{ manager.org_name_requested }}
+                {% elif manager.org_id %}
+                  {{ _("Existing organization:") }} {{ manager.org_id }}
+                {% endif %}
+                {% if manager.org_type %} · {{ manager.org_type }}{% endif %}
+                {% if manager.org_title %} · {{ manager.org_title }}{% endif %}
+                {% if manager.org_role %} · {{ _("role:") }} {{ manager.org_role }}{% endif %}
+              </p>
+            </div>
+            <div class="cs-managers-actions">
+              <form method="post"
+                    action="{{ h.url_for('csunesco.manager_approve', username=manager.username) }}">
+                {{ h.csrf_input() }}
+                <button type="submit" class="cs-btn cs-btn-primary">{{ _("Approve") }}</button>
+              </form>
+              <form method="post"
+                    action="{{ h.url_for('csunesco.manager_reject', username=manager.username) }}">
+                {{ h.csrf_input() }}
+                <input type="text" name="reason" maxlength="500"
+                       placeholder="{{ _('Optional note to the applicant') }}">
+                <button type="submit" class="cs-btn cs-btn-secondary">{{ _("Decline") }}</button>
+              </form>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
   <section class="cs-admin" aria-labelledby="cs-admin-title">
     <div class="cs-tabs" role="tablist" aria-label="{{ _('Pending items') }}">
       {% if can_review_projects %}

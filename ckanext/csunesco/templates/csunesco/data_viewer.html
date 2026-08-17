@@ -1,0 +1,52 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  Portal-wide Data viewer (spec section 4): every APPROVED data source across
+  projects, with links to the project landing (charts + map) and the raw
+  CSV/GeoJSON proxies. Anonymous-safe: the list action pins public callers to
+  approved sources.
+
+  Vars: sources, count, page, total_pages.
+#}
+
+{% block subtitle %}{{ _("Data viewer") }}{% endblock %}
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  <section class="cs-hero" aria-labelledby="cs-dataviewer-title">
+    <h1 id="cs-dataviewer-title">{{ _("Data viewer") }}</h1>
+    <p>{{ _("Explore the data collected by citizen science projects across the portal.") }}</p>
+  </section>
+
+  <section class="cs-section" aria-labelledby="cs-dataviewer-results">
+    <h2 id="cs-dataviewer-results" class="cs-section-title">
+      {{ _("Data sources") }} <span class="cs-results-count">({{ count }})</span>
+    </h2>
+
+    {% if not sources %}
+      <p class="cs-empty">{{ _("No data has been published yet. Data collected in the CS Toolbox app appears here once a project's data connection is approved.") }}</p>
+    {% else %}
+      <ul class="cs-dataviewer-list">
+        {% for source in sources %}
+          <li class="cs-card cs-dataviewer-item">
+            <h3 class="cs-dataviewer-title">{{ source.title }}</h3>
+            {% if source.description %}
+              <p class="cs-hint">{{ source.description }}</p>
+            {% endif %}
+            <p class="cs-dataviewer-links">
+              {% if source.project_slug %}
+                <a href="{{ h.url_for('csunesco.project_landing', slug=source.project_slug) }}">
+                  {{ source.project_title or _("Project page") }}
+                </a> ·
+              {% endif %}
+              <a href="{{ h.url_for('csunesco.data_source_csv', id=source.id) }}">CSV</a> ·
+              <a href="{{ h.url_for('csunesco.data_source_geojson', id=source.id) }}">GeoJSON</a>
+            </p>
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% snippet "csunesco/snippets/pagination.html", endpoint='csunesco.data_viewer', page=page, total_pages=total_pages, params={} %}
+    {% endif %}
+  </section>
+{% endblock %}

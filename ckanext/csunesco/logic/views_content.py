@@ -136,10 +136,16 @@ def _content_show(content_type, slug):
 
 
 def cs_content_index():
-    """Combined index of ALL content types, with a type chip filter (?type=)."""
+    """The Knowledge Hub index: ALL content types, chip filter + search.
+
+    Spec section 4: "Knowledge Hub -- resources and learning". The action has
+    supported ``q`` since it was written; the hub view simply never passed it
+    through, so the hub had no search.
+    """
     page = _positive_int(request.args.get('page'), 1)
     selected = (request.args.get('type') or '').strip()
     initiative = (request.args.get('initiative') or '').strip()
+    q = (request.args.get('q') or '').strip()
     if selected and selected not in _TYPE_VIEW:
         return tk.abort(404, tk._('Unknown content type'))
     data_dict = {
@@ -151,6 +157,8 @@ def cs_content_index():
         data_dict['content_type'] = selected
     if initiative:
         data_dict['initiative'] = initiative
+    if q:
+        data_dict['q'] = q
     try:
         listing = tk.get_action('csunesco_content_list')(
             _context(), data_dict)
@@ -168,6 +176,7 @@ def cs_content_index():
         'selected_type': selected,
         'type_choices': _CONTENT_TYPE_CHOICES,
         'selected_initiative': initiative,
+        'q': q,
     })
 
 

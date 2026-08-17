@@ -92,11 +92,16 @@ def test_staged_form_posts_multipart():
     assert 'enctype="multipart/form-data"' in _project_form_source()
 
 
-def test_staged_form_carries_the_checkbox_marker():
-    """An unchecked box submits nothing, which the server cannot tell from
-    "the form did not carry this field" -- so an edit could never turn
-    open_participation back off."""
-    assert 'open_participation_present' in _project_form_source()
+def test_staged_form_carries_the_participation_choice():
+    """The spec's participation field is a REQUIRED two-way choice (open with
+    a QR on the landing page vs limited to a selected group), posted as
+    ``participation_mode`` radios; the action derives the legacy
+    ``open_participation`` boolean from it so the app contract and the
+    Fase-0 join gate keep working."""
+    source = _project_form_source()
+    assert 'name="participation_mode"' in source
+    assert 'value="open"' in source
+    assert 'value="limited"' in source
 
 
 def test_blueprint_registers_the_edit_route():
@@ -134,10 +139,14 @@ def test_form_stages_match_the_step_map():
     assert steps, 'PROJECT_FORM_STEPS not found in constants.py'
     assert rendered == {str(step['step']) for step in steps}
 
-    # And every field named by the step map has an input in the template.
+    # And every field named by the step map has an input in the template --
+    # either a literal control or a multi_select macro invocation (the macro
+    # emits `name="{{ name }}"`, so the literal search cannot see it).
     for step in steps:
         for field in step['fields']:
-            assert 'name="%s"' % field in source, \
+            has_input = ('name="%s"' % field in source
+                         or "multi_select('%s'" % field in source)
+            assert has_input, \
                 'step %s names %r but the template has no such input' % (
                     step['step'], field)
 
@@ -229,3 +238,21 @@ def test_the_view_only_trusts_an_empty_country_selection_when_marked():
     unconditional = "'countries': [c for c in form.getlist('countries')" in \
         literal.split("if form.get('countries_present')")[0]
     assert not unconditional, 'countries is still sent unconditionally'
+
+
+def test_structure_snippet_gates_the_participants_only_fields():
+    """The landing's phase-2 section must consult the audience helper for the
+    participants-only pieces (spec section 5): the two C flags and the whole
+    D timeline/workplan. Without these calls an anonymous visitor would see
+    everything the app pushed."""
+    snippet = os.path.join(
+        PKG_DIR, 'templates', 'csunesco', 'snippets', 'project_structure.html')
+    with open(snippet, 'r') as handle:
+        source = handle.read()
+    assert "csunesco_field_audience_ok('timeframe_start'" in source
+    assert "csunesco_field_audience_ok('local_govt_engagement'" in source
+    # And the landing actually includes the snippet outside the block loop.
+    landing = os.path.join(
+        PKG_DIR, 'templates', 'csunesco', 'project_landing.html')
+    with open(landing, 'r') as handle:
+        assert 'snippets/project_structure.html' in handle.read()

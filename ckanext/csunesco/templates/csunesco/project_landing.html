@@ -57,6 +57,12 @@
         nothing when the project has none of these fields set. --------- #}
   {% snippet "csunesco/snippets/project_facts.html", project=project %}
 
+  {# ---- Phase-2 structure mirror (spec section 7), pushed by the CS Toolbox
+        app. Also OUTSIDE the block loop: audience filtering (public vs
+        participants-only) is enforced by the snippet itself and must not be
+        bypassable by page composition. Renders nothing without data. ---- #}
+  {% snippet "csunesco/snippets/project_structure.html", project=project %}
+
   {# ---- Trusted toggle (sysadmin-only policy lever, P2): trusted projects
         publish news/events without review. Deliberately OUTSIDE the block
         loop -- it is an admin control, not page content, so a manager can

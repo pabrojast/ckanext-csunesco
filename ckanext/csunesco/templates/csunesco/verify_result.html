@@ -3,8 +3,10 @@
 {#
   Result page for GET /citizen-science/verify/<token>.
 
-  ``state`` is one of: ok | expired | invalid | error. The copy never reveals
-  whether an address exists -- invalid and error share the same neutral message.
+  ``state`` is one of: ok | manager_pending | expired | invalid | error. The
+  copy never reveals whether an address exists -- invalid and error share the
+  same neutral message. ``manager_pending`` is the Project Manager double
+  gate: email confirmed, account still awaiting a sysadmin decision.
 #}
 
 {% block subtitle %}{{ _("Email verification") }}{% endblock %}
@@ -22,6 +24,14 @@
       <a class="cs-btn cs-btn-primary" href="{{ h.url_for('user.login') }}">
         {{ _("Log in") }}
       </a>
+    </section>
+  {% elif state == 'manager_pending' %}
+    <section class="cs-hero" aria-labelledby="cs-verify-title">
+      <h1 id="cs-verify-title">{{ _("Email verified — awaiting approval") }}</h1>
+      <p>{{ _("Thanks for confirming your email address.") }}</p>
+    </section>
+    <section class="cs-card" aria-label="{{ _('Next step') }}">
+      <p>{{ _("Project Manager accounts are reviewed by a platform administrator before activation. We'll email you as soon as your account is approved — there is nothing more you need to do now.") }}</p>
     </section>
   {% elif state == 'expired' %}
     <section class="cs-hero" aria-labelledby="cs-verify-title">

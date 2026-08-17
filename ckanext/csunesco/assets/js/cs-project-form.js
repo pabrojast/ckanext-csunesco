@@ -247,6 +247,11 @@
     });
 
     form.addEventListener("submit", function (event) {
+      /* "Save for later" carries formnovalidate: a draft must be savable
+       * half-filled, so client validation is skipped and the server applies
+       * only its lenient rules. */
+      var submitter = event.submitter;
+      if (submitter && submitter.hasAttribute("formnovalidate")) { return; }
       var badStep = validateAll();
       if (badStep) {
         event.preventDefault();

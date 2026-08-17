@@ -3743,3 +3743,149 @@
   font-size: 0.9rem;
   white-space: pre-line;
 }
+
+/* --- Spec phase-1 form additions ---------------------------------------- */
+
+/* Checkbox/radio grids for the multi-select option lists. */
+.cs-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.25rem 1rem;
+  margin: 0.25rem 0 0.5rem;
+}
+.cs-choice-grid .cs-checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-weight: 400;
+}
+.cs-choice-grid input[type="checkbox"],
+.cs-choice-grid input[type="radio"] {
+  margin-top: 0.2rem;
+  flex: none;
+}
+
+/* The always-visible "Save for later" bar under the wizard. */
+.cs-draft-actions {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--cs-border, #d0d7de);
+}
+
+/* Inline "(optional)" marker beside a label. */
+.cs-hint-inline {
+  font-weight: 400;
+  font-size: 0.85em;
+  color: var(--cs-muted, #6a737d);
+}
+
+.cs-point-radius {
+  border: 1px solid var(--cs-border, #d0d7de);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+/* --- Phase-2 structure mirror on the landing ----------------------------- */
+.cs-structure-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.cs-structure-param-group {
+  margin: 0.15rem 0;
+}
+.cs-structure-workplan-title {
+  margin: 1rem 0 0.4rem;
+  font-size: 1rem;
+}
+.cs-structure-workplan {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.45rem;
+}
+.cs-structure-step-title {
+  font-weight: 600;
+}
+.cs-structure-step-meta {
+  color: var(--cs-muted, #6a737d);
+  font-size: 0.85rem;
+  margin-left: 0.4rem;
+}
+
+/* --- Participant "My projects" hub --------------------------------------- */
+.cs-myprojects-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+.cs-myprojects-item > div {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.cs-myprojects-title {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+.cs-myprojects-forum {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed #d0d7de;
+}
+
+/* --- Manager approval band + hero search + data viewer ------------------- */
+.cs-managers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+.cs-managers-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.cs-managers-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.cs-managers-actions form {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.cs-hero-search {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  max-width: 34rem;
+}
+.cs-hero-search input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius, 8px);
+  border: 1px solid #d0d7de;
+}
+
+.cs-dataviewer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+.cs-dataviewer-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}

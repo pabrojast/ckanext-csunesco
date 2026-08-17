@@ -91,12 +91,21 @@
         <dd><p class="cs-facts-text">{{ project.how_to_participate }}</p></dd>
       {% endif %}
 
-      {% if project.contact_person or project.contact_email %}
+      {#
+        Audience-gated (spec section 5): the contact details are for
+        logged-in users and participants, never for anonymous visitors --
+        h.csunesco_field_audience_ok reads the static FIELD_AUDIENCE map.
+      #}
+      {% set show_person = project.contact_person
+         and h.csunesco_field_audience_ok('contact_person', project) %}
+      {% set show_email = project.contact_email
+         and h.csunesco_field_audience_ok('contact_email', project) %}
+      {% if show_person or show_email %}
         <dt>{{ _("Contact") }}</dt>
         <dd>
-          {%- if project.contact_person %}{{ project.contact_person }}{% endif -%}
-          {%- if project.contact_person and project.contact_email %} — {% endif -%}
-          {%- if project.contact_email -%}
+          {%- if show_person %}{{ project.contact_person }}{% endif -%}
+          {%- if show_person and show_email %} — {% endif -%}
+          {%- if show_email -%}
             <a href="mailto:{{ project.contact_email }}">{{ project.contact_email }}</a>
           {%- endif -%}
         </dd>

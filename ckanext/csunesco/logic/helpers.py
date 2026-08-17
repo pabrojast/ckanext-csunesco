@@ -194,6 +194,60 @@ def csunesco_can_manage_project(project_id):
         return False
 
 
+def csunesco_has_joined_projects():
+    """True when the acting user participates in at least one approved
+    project (drives the nav's participant "My projects" entry). Fail-soft."""
+    if not tk.g.user:
+        return False
+    try:
+        import ckan.model as model
+        from ckanext.csunesco import db
+        user = model.User.get(tk.g.user)
+        if user is None:
+            return False
+        return bool(db.projects_joined(user.id, limit=1))
+    except Exception:
+        log.warning('csunesco: joined-projects check failed')
+        return False
+
+
+def csunesco_field_audience_ok(field, project):
+    """May the acting visitor see ``field`` of ``project``? (spec section 5)
+
+    The audience map is STATIC (``constants.FIELD_AUDIENCE``): fields absent
+    from it are public, 'logged-in' needs any authenticated portal user, and
+    'participants' needs an active membership of that project (managers and
+    sysadmins included). Any failure degrades to hidden -- privacy fails
+    closed.
+    """
+    from ckanext.csunesco import constants as cs_constants
+    audience = cs_constants.FIELD_AUDIENCE.get(field)
+    if audience is None:
+        return True
+    if not tk.g.user:
+        return False
+    if audience == 'logged-in':
+        return True
+    # participants only
+    try:
+        import ckan.model as model
+        from ckanext.csunesco import db
+        from ckanext.csunesco.logic import auth
+        project_id = (project.get('id') if isinstance(project, dict)
+                      else getattr(project, 'id', None))
+        context = {'model': model, 'user': tk.g.user}
+        if auth._is_sysadmin(context):
+            return True
+        user_obj = auth._user_obj(context)
+        if user_obj is None:
+            return False
+        member = db.project_member(project_id, user_obj.id)
+        return bool(member and member.status == 'active')
+    except Exception:
+        log.warning('csunesco: field audience could not be resolved')
+        return False
+
+
 def csunesco_data_stories_new_url():
     """URL of the Data Stories editor, or ``None`` when the feature is off.
 

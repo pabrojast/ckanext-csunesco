@@ -14,50 +14,180 @@ CS_INITIATIVES = [
     {'name': 'be-resilient', 'title': 'Be Resilient'},
     {'name': 'islandwatch', 'title': 'Island Watch'},
     {'name': 'riverwatch', 'title': 'River Watch'},
-    {'name': 'c4water', 'title': 'C4Water'},
+    # ``name`` must stay 'c4water': it is the seeded CKAN group slug and the
+    # alias the app's initiative routing normalizes to. Only the human label
+    # follows the spec's "Citizens4Water".
+    {'name': 'c4water', 'title': 'Citizens4Water'},
 ]
 
 # CKAN group type used for the initiative groups above.
 CS_INITIATIVE_GROUP_TYPE = 'group'
 
-# The stages of the project form (/citizen-science/project/new and .../edit).
+# The stages of the project form (/citizen-science/project/new and .../edit),
+# following the spec's phase-1 sections A-F ("Public Portal Structure +
+# Project Forms", section 6).
 #
 # ONE definition drives the step indicator, the server-side "which stage holds
 # the first error" jump, and the scaffold test that asserts the template's
 # ``data-step`` blocks still agree with this list. Titles and hints are English
 # source strings; the template runs them through ``_()``.
 #
-# ``fields`` must stay in sync with ``logic.schema.project_request_schema()``
-# minus ``slug`` (which is derived from the title and never shown) -- that is
-# what the scaffold test checks, so a field added to the schema and forgotten
-# here fails loudly instead of silently never rendering.
+# ``fields`` must stay in sync with the form template's inputs -- the scaffold
+# test checks every named field has an input, so a field added to the schema
+# and forgotten here fails loudly instead of silently never rendering.
 PROJECT_FORM_STEPS = [
-    {'step': 1, 'key': 'essentials', 'title': u'The essentials',
-     'hint': u'What the project is called, and its initiative if it belongs '
-             u'to one.',
-     'fields': ('title', 'initiative')},
-    {'step': 2, 'key': 'where', 'title': u'Where it happens',
-     'hint': u'The countries involved, any biosphere reserve, and the region '
+    {'step': 1, 'key': 'identity', 'title': u'Basic identity',
+     'hint': u'What the project is called, how it introduces itself, and its '
+             u'images.',
+     'fields': ('title', 'slug', 'short_description', 'image_url',
+                'logo_url', 'heading_image_url')},
+    {'step': 2, 'key': 'classification', 'title': u'Classification',
+     'hint': u'Keywords, the water bodies and data involved, and the '
+             u'initiative if it belongs to one.',
+     'fields': ('keywords', 'initiative', 'water_type', 'water_data_type')},
+    {'step': 3, 'key': 'location', 'title': u'Location',
+     'hint': u'Where the project happens: extent, countries and the region '
              u'shown on the map.',
-     'fields': ('countries', 'biosphere_reserve', 'region_geojson')},
-    {'step': 3, 'key': 'about', 'title': u'What it is about',
-     'hint': u'A short summary, and how volunteers take part.',
-     'fields': ('short_description', 'how_to_participate')},
-    {'step': 4, 'key': 'participation', 'title': u'Taking part',
-     'hint': u'When the project runs and who it is for.',
-     'fields': ('start_date', 'end_date', 'open_participation',
-                'target_group')},
-    {'step': 5, 'key': 'contact', 'title': u'Contact and materials',
-     'hint': u'Who to reach, plus a reference document and a cover image.',
-     'fields': ('contact_person', 'contact_email', 'project_document_url',
-                'image_url')},
+     'fields': ('geographic_extent', 'countries', 'locality',
+                'biosphere_reserve', 'region_geojson', 'point_lat',
+                'point_lng', 'point_radius_km')},
+    {'step': 4, 'key': 'participation', 'title': u'Participation',
+     'hint': u'Who can take part, when the project runs and who benefits.',
+     'fields': ('participation_mode', 'allowed_participants', 'languages',
+                'stakeholders', 'activity_status', 'start_date', 'end_date',
+                'how_to_participate', 'target_group')},
+    {'step': 5, 'key': 'leadership', 'title': u'Leadership and contact',
+     'hint': u'The institutions behind the project and who to reach.',
+     'fields': ('lead_partner_type', 'lead_organisation',
+                'other_organisations', 'editors', 'contact_person',
+                'contact_email')},
+    {'step': 6, 'key': 'funding', 'title': u'Funding and references',
+     'hint': u'Who funds the project and where to read more.',
+     'fields': ('funding_body', 'funding_programme', 'project_document_url',
+                'international_frameworks')},
 ]
+
+# --------------------------------------------------------------------------- #
+# Phase-1 option lists (spec section 6). Plain data, mirrored to the CS
+# Toolbox app through the ``csunesco_option_lists`` action -- never hard-code
+# these in a second place.
+# --------------------------------------------------------------------------- #
+
+WATER_TYPES = (
+    'Lake Surface water', 'River', 'Stream', 'Pond', 'Wetland', 'Soil water',
+    'Groundwater', 'Estuarine/Coastal', 'Snow & ice', 'Other',
+)
+
+WATER_DATA_TYPES = (
+    'Water quantity', 'Physical water quality', 'Chemical water quality',
+    'Biological water quality', 'Water related hazard', 'Hydro-meteorological',
+    'Other',
+)
+
+GEOGRAPHIC_EXTENTS = (
+    'Global', 'Macro-regional', 'National', 'Transnational / transboundary',
+    'Sub-national', 'Regional',
+    'UNESCO Site: Biosphere Reserve, Geopark, Natural Heritage Site, '
+    'Ecohydrology Demosite',
+    'City', 'Neighbourhood',
+)
+
+STAKEHOLDER_GROUPS = (
+    'Citizens', 'Researchers', 'School teachers', 'School children',
+    'Policy makers', 'Authorities', 'Businesses',
+)
+
+ACTIVITY_STATUSES = (
+    'Not yet started', 'Active', 'Periodically active', 'On hold',
+)
+
+LEAD_PARTNER_TYPES = (
+    'UNESCO IHP Secretariat', 'UNESCO Field Office', 'IHP National Committee',
+    'UNESCO Category I Center', 'UNESCO Category II Center',
+    'UNESCO Chair of UNITWIN', 'Non-Governmental Organization',
+    'Governmental Organizations', 'University', 'Research Institute',
+    'Private Partner', 'Citizen Movement', 'Other',
+)
+
+FUNDING_BODIES = (
+    'Flanders', 'Japan', 'Austria', 'Swiss National Science Foundation', 'EU',
+    'Kurt Eberhard Bode Foundation', 'University of Amsterdam', 'VLIR UOS',
+    'AXA Reseach Fund', 'European Union',
+    'Italian Ministry of University and Research', 'UKRI',
+    'Ministry of Research, Innovation and Digitization',
+    'Federal Minstry of Education and Research (01BF 2108)',
+    'National Monitoring Center for Biodiversity (NMZB) and Federal Agency '
+    'for Nature Conservation (BfN)',
+    'Federal Ministry of Education and Research (BMBF)',
+    'Deutsche Bundesstiftung Umwelt (DBU)', 'IHE delft',
+    'European Commission',
+)
+
+INTL_FRAMEWORKS = (
+    'SDG 1: No Poverty', 'SDG 2: Zero Hunger',
+    'SDG 3: Good Health and Well-being', 'SDG 4: Quality Education',
+    'SDG 5: Gender Equality', 'SDG 6: Clean Water and Sanitation',
+    'SDG 7: Affordable and Clean Energy',
+    'SDG 8: Decent Work and Economic Growth',
+    'SDG 9: Industry, Innovation and Infrastructure',
+    'SDG 10: Reduced Inequalities',
+    'SDG 11: Sustainable Cities and Communities',
+    'SDG 12: Responsible Consumption and Production', 'SDG 13: Climate Action',
+    'SDG 14: Life Below Water', 'SDG 15: Life on Land',
+    'SDG 16: Peace, Justice and Strong Institutions',
+    'SDG 17: Partnerships for the Goals',
+    'Decade of Action on Cryospheric Sciences',
+    'Sendai Framework for Disaster Risk Reduction',
+    'Global Goals for Adaptation', 'Other',
+)
+
+# Participation modes (spec D: open to any participant, with a QR on the
+# landing page, or limited to a selected group).
+PARTICIPATION_MODES = ('open', 'limited')
+
+# Static field -> audience map for project fields (spec section 5). Fields
+# absent here are PUBLIC. Values: 'logged-in' (any authenticated portal user)
+# or 'participants' (active members of that project only). Rendering goes
+# through ``h.csunesco_field_audience_ok``.
+FIELD_AUDIENCE = {
+    'contact_email': 'logged-in',
+    'contact_person': 'logged-in',
+    'editors': 'logged-in',
+    'allowed_participants': 'participants',
+    # Phase-2 mirror (spec section 7): section D and the two C flags are
+    # participants-only; the rest of the structure is Public + Participants.
+    'local_govt_engagement': 'participants',
+    'indigenous_knowledge': 'participants',
+    'indigenous_knowledge_notes': 'participants',
+    'timeframe_start': 'participants',
+    'timeframe_end': 'participants',
+    'duration_of_involvement': 'participants',
+    'workplan': 'participants',
+}
 
 # The parent CKAN group whose ACTIVE child groups are the valid member states
 # (water-family pattern). It lived as a private copy in four modules -- db,
 # validators, helpers and views -- each carrying a "keep in sync with the
 # others" comment, which is the shape of a literal that eventually drifts.
 MEMBER_STATES_GROUP = 'member-states'
+
+# Institution types offered by the Project Manager registration form (spec
+# "Public Portal Structure + Project Forms", section 3.C). ``name`` is the
+# stored value; ``title`` the human label -- same shape as CS_INITIATIVES.
+ORG_TYPES = [
+    {'name': 'unesco-ihp-secretariat', 'title': 'UNESCO IHP Secretariat'},
+    {'name': 'unesco-field-office', 'title': 'UNESCO Field Office'},
+    {'name': 'ihp-national-committee', 'title': 'IHP National Committee'},
+    {'name': 'unesco-category-1-center', 'title': 'UNESCO Category I Center'},
+    {'name': 'unesco-category-2-center', 'title': 'UNESCO Category II Center'},
+    {'name': 'unesco-chair-unitwin', 'title': 'UNESCO Chair or UNITWIN'},
+    {'name': 'ngo', 'title': 'Non-Governmental Organization'},
+    {'name': 'governmental', 'title': 'Governmental Organization'},
+    {'name': 'university', 'title': 'University'},
+    {'name': 'private-partner', 'title': 'Private Partner'},
+    {'name': 'research-institution', 'title': 'Research Institution'},
+    {'name': 'other', 'title': 'Other'},
+]
 
 # The regional projects of the retired CS Toolbox site
 # (cstoolbox.quartex.co.za), seeded as regular APPROVED ``cs_project`` rows by

@@ -8,6 +8,7 @@ inherit CKAN's own coercion (e.g. ``unicode_safe``).
 """
 import ckan.plugins.toolkit as tk
 
+from ckanext.csunesco import constants
 from ckanext.csunesco.logic import validators as v
 
 
@@ -23,6 +24,27 @@ PROJECT_EXTRA_FIELDS = (
     'target_group',
     'contact_person',
     'contact_email',
+    # --- spec phase-1 additions (sections A-F) -----------------------------
+    'keywords',
+    'water_type',
+    'water_data_type',
+    'geographic_extent',
+    'locality',
+    'point_lat',
+    'point_lng',
+    'point_radius_km',
+    'participation_mode',
+    'allowed_participants',
+    'languages',
+    'stakeholders',
+    'activity_status',
+    'lead_partner_type',
+    'lead_organisation',
+    'other_organisations',
+    'editors',
+    'funding_body',
+    'funding_programme',
+    'international_frameworks',
 )
 
 # The subset of the above that is free text typed by a user, and therefore has
@@ -71,6 +93,11 @@ def project_request_schema():
         'image_url': [
             ignore_missing, unicode_safe, v.csunesco_valid_image_url],
 
+        'logo_url': [
+            ignore_missing, unicode_safe, v.csunesco_valid_image_url],
+        'heading_image_url': [
+            ignore_missing, unicode_safe, v.csunesco_valid_image_url],
+
         # --- stored in ``extras`` ------------------------------------------
         'how_to_participate': [ignore_missing, unicode_safe],
         'start_date': [ignore_missing, v.csunesco_valid_iso_date],
@@ -82,7 +109,84 @@ def project_request_schema():
         'target_group': [ignore_missing, unicode_safe],
         'contact_person': [ignore_missing, unicode_safe],
         'contact_email': [ignore_missing, unicode_safe, email_validator],
+
+        # --- spec phase-1 additions (sections A-F), all lenient here -------
+        'keywords': [ignore_missing, v.csunesco_valid_string_list,
+                     v.csunesco_require_list(0, 3)],
+        'water_type': [
+            ignore_missing, v.csunesco_valid_string_list,
+            v.csunesco_choice_list(constants.WATER_TYPES, allow_other=True)],
+        'water_data_type': [
+            ignore_missing, v.csunesco_valid_string_list,
+            v.csunesco_choice_list(constants.WATER_DATA_TYPES,
+                                   allow_other=True)],
+        'geographic_extent': [
+            ignore_missing, unicode_safe,
+            v.csunesco_choice(constants.GEOGRAPHIC_EXTENTS)],
+        'locality': [ignore_missing, unicode_safe],
+        'point_lat': [ignore_missing, v.csunesco_valid_latitude],
+        'point_lng': [ignore_missing, v.csunesco_valid_longitude],
+        'point_radius_km': [ignore_missing, v.csunesco_valid_radius_km],
+        'participation_mode': [
+            ignore_missing, unicode_safe,
+            v.csunesco_choice(constants.PARTICIPATION_MODES)],
+        'allowed_participants': [
+            ignore_missing, v.csunesco_valid_string_list],
+        'languages': [ignore_missing, v.csunesco_valid_string_list],
+        'stakeholders': [
+            ignore_missing, v.csunesco_valid_string_list,
+            v.csunesco_choice_list(constants.STAKEHOLDER_GROUPS,
+                                   allow_other=True)],
+        'activity_status': [
+            ignore_missing, v.csunesco_valid_string_list,
+            v.csunesco_choice_list(constants.ACTIVITY_STATUSES)],
+        'lead_partner_type': [
+            ignore_missing, unicode_safe,
+            v.csunesco_choice(constants.LEAD_PARTNER_TYPES)],
+        'lead_organisation': [ignore_missing, unicode_safe],
+        'other_organisations': [
+            ignore_missing, v.csunesco_valid_string_list],
+        'editors': [ignore_missing, v.csunesco_valid_string_list],
+        'funding_body': [
+            ignore_missing, v.csunesco_valid_string_list,
+            v.csunesco_choice_list(constants.FUNDING_BODIES,
+                                   allow_other=True)],
+        'funding_programme': [ignore_missing, unicode_safe],
+        'international_frameworks': [
+            ignore_missing, v.csunesco_valid_string_list,
+            v.csunesco_choice_list(constants.INTL_FRAMEWORKS)],
     }
+
+
+def project_request_form_schema():
+    """The STRICT variant validated by the WEB form views only.
+
+    The per-caller split (see ``project_request_schema``'s docstring): the
+    action keeps its lenient schema frozen for the CS Toolbox outbox, while
+    the portal's own form enforces the spec's starred fields BEFORE calling
+    the action. Requirements live here exclusively -- never tighten the base.
+    """
+    not_empty = tk.get_validator('not_empty')
+    schema = project_request_schema()
+    require = {
+        'short_description': [not_empty] + schema['short_description'],
+        # Spec B: 2-3 keywords.
+        'keywords': [not_empty, v.csunesco_valid_string_list,
+                     v.csunesco_require_list(2, 3)],
+        'water_type': [not_empty] + schema['water_type'][1:] + [
+            v.csunesco_require_list(1)],
+        'water_data_type': [not_empty] + schema['water_data_type'][1:] + [
+            v.csunesco_require_list(1)],
+        'geographic_extent': [not_empty] + schema['geographic_extent'][1:],
+        'countries': [not_empty] + schema['countries'][1:],
+        'participation_mode': [not_empty] + schema['participation_mode'][1:],
+        'activity_status': [not_empty] + schema['activity_status'][1:] + [
+            v.csunesco_require_list(1)],
+        'lead_partner_type': [not_empty] + schema['lead_partner_type'][1:],
+        'lead_organisation': [not_empty] + schema['lead_organisation'][1:],
+    }
+    schema.update(require)
+    return schema
 
 
 def project_update_schema(present_keys=None):

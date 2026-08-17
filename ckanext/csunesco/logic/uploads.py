@@ -10,16 +10,25 @@ The old file may still be used by the published page (or pasted elsewhere), so
 automatic deletion would make draft editing capable of breaking live pages.
 """
 import os
+from io import BytesIO
 from urllib.parse import urlsplit
 
 import ckan.lib.uploader as ckan_uploader
 import ckan.plugins.toolkit as tk
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 
 UPLOAD_TO = 'csunesco'
 PUBLIC_PREFIX = '/uploads/{0}/'.format(UPLOAD_TO)
 MAX_UPLOADS_PER_REQUEST = 12
+
+# Spec section 6.A: normalized sizes for the three project images. Uploads are
+# center-cropped to the target aspect and resized server-side.
+PROJECT_IMAGE_SIZES = {
+    'image_url': (600, 400),          # cover / thumbnail
+    'logo_url': (600, 400),           # project logo
+    'heading_image_url': (1100, 400),  # profile heading image
+}
 
 
 class PageImageUploadError(Exception):
@@ -104,6 +113,35 @@ def _validate_image(upload):
         stream.seek(position)
 
 
+def _resized_upload(upload, size):
+    """A new in-memory upload holding the image fitted to ``size``.
+
+    ``ImageOps.fit`` center-crops to the target aspect then resizes, which is
+    the spec's "resized automatically". The original format survives (JPEG
+    stays JPEG); JPEG cannot carry alpha, so it is flattened to RGB. Runs
+    AFTER ``_validate_image``, so the bytes are known-good.
+    """
+    from werkzeug.datastructures import FileStorage
+
+    stream = getattr(upload, 'stream', upload)
+    stream.seek(0)
+    with Image.open(stream) as image:
+        fmt = image.format
+        if image.size == size:
+            stream.seek(0)
+            return upload
+        mode = 'RGB' if fmt == 'JPEG' else 'RGBA'
+        fitted = ImageOps.fit(image.convert(mode), size,
+                              method=Image.LANCZOS)
+    buffer = BytesIO()
+    fitted.save(buffer, format=fmt)
+    buffer.seek(0)
+    return FileStorage(
+        stream=buffer,
+        filename=getattr(upload, 'filename', None),
+        content_type=getattr(upload, 'content_type', None))
+
+
 def _stored_url(value):
     """Keep backend URLs intact; expand only CKAN's bare local filename."""
     value = str(value or u'').strip()
@@ -132,10 +170,13 @@ class UploadBatch(object):
         self._jobs = []
         self._written = []
         self._stored_assets = []
+        self._project_holders = {}
         self.project_image_url = None
+        self.project_image_urls = {}
 
     def add_picker(self, target, url_field, upload_field, clear_field,
-                   block=None, item=None, error_field='image_upload'):
+                   block=None, item=None, error_field='image_upload',
+                   resize_to=None):
         """Apply clear semantics or stage one non-empty file input."""
         upload = target.pop(upload_field, None)
         clear = target.pop(clear_field, None)
@@ -147,6 +188,7 @@ class UploadBatch(object):
                 'block': block,
                 'item': item,
                 'error_field': error_field,
+                'resize_to': resize_to,
             })
         elif _truthy(clear):
             target[url_field] = u''
@@ -174,16 +216,21 @@ class UploadBatch(object):
                                         block=block, item=index)
         return raw_blocks
 
+    def prepare_project_image(self, field, url, upload=None, clear=None):
+        """Stage one of the project's images (cover / logo / heading).
+
+        ``field`` keys :data:`PROJECT_IMAGE_SIZES`, whose entry drives the
+        server-side fit-and-resize.
+        """
+        holder = {'url': url or u'', 'upload': upload, 'clear': clear}
+        self.add_picker(holder, 'url', 'upload', 'clear', block=None,
+                        error_field='%s_upload' % field,
+                        resize_to=PROJECT_IMAGE_SIZES.get(field))
+        self._project_holders[field] = holder
+
     def prepare_project_cover(self, url, upload=None, clear=None):
-        holder = {
-            'project_image_url': url or u'',
-            'project_image_upload': upload,
-            'project_image_clear': clear,
-        }
-        self.add_picker(holder, 'project_image_url', 'project_image_upload',
-                        'project_image_clear', block=None,
-                        error_field='project_image_upload')
-        self._project_holder = holder
+        # Back-compat spelling of prepare_project_image('image_url', ...).
+        self.prepare_project_image('image_url', url, upload, clear)
 
     def write(self):
         if len(self._jobs) > MAX_UPLOADS_PER_REQUEST:
@@ -206,6 +253,9 @@ class UploadBatch(object):
             # picker cannot leave the first one orphaned.
             for job in self._jobs:
                 _validate_image(job['upload'])
+                if job.get('resize_to'):
+                    job['upload'] = _resized_upload(job['upload'],
+                                                    job['resize_to'])
                 data = {'url': u'', 'upload': job['upload']}
                 upload = ckan_uploader.get_uploader(UPLOAD_TO)
                 upload.update_data_dict(data, 'url', 'upload', 'clear')
@@ -247,9 +297,13 @@ class UploadBatch(object):
                              'error_field', 'image_upload'), 'upload_failed')
             ])
 
-        if hasattr(self, '_project_holder'):
-            self.project_image_url = self._project_holder[
-                'project_image_url']
+        self.project_image_urls = {
+            field: holder['url']
+            for field, holder in self._project_holders.items()
+        }
+        # Back-compat: the cover keeps its historical attribute.
+        if 'image_url' in self.project_image_urls:
+            self.project_image_url = self.project_image_urls['image_url']
         return self
 
     def rollback(self):
@@ -273,12 +327,22 @@ class UploadBatch(object):
         self._stored_assets = []
 
 
-def process_page_images(raw_blocks, project_cover=None):
-    """Resolve all multipart controls and return the rollback-capable batch."""
+def process_page_images(raw_blocks, project_cover=None, project_images=None):
+    """Resolve all multipart controls and return the rollback-capable batch.
+
+    ``project_images`` maps a project image field (a
+    :data:`PROJECT_IMAGE_SIZES` key) to its picker dict
+    (``{'url', 'upload', 'clear'}``) -- the three-image form of the spec's
+    section 6.A. ``project_cover`` remains the single-cover spelling.
+    """
     batch = UploadBatch()
     batch.prepare_blocks(raw_blocks)
     if project_cover is not None:
         batch.prepare_project_cover(
             project_cover.get('url'), project_cover.get('upload'),
             project_cover.get('clear'))
+    for field, picker in (project_images or {}).items():
+        batch.prepare_project_image(
+            field, picker.get('url'), picker.get('upload'),
+            picker.get('clear'))
     return batch.write()

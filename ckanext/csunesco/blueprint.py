@@ -78,6 +78,18 @@ def register_citizen():
     return registration.register_citizen()
 
 
+def register_manager():
+    """Project Manager self-registration (GET form / POST create account)."""
+    from ckanext.csunesco.logic import registration
+    return registration.register_manager()
+
+
+def my_projects():
+    """The participant's project hub (logged-in; spec section 4)."""
+    from ckanext.csunesco.logic import views
+    return views.my_projects()
+
+
 def verify_citizen(token):
     """GET: activate a pending Citizen Scientist account via its email token."""
     from ckanext.csunesco.logic import registration
@@ -128,6 +140,18 @@ def join_reject(project_id, user_id):
     """POST: reject a pending join request."""
     from ckanext.csunesco.logic import views_admin
     return views_admin.join_reject(project_id, user_id)
+
+
+def manager_approve(username):
+    """POST: approve a pending Project Manager account (sysadmin)."""
+    from ckanext.csunesco.logic import views_admin
+    return views_admin.manager_approve(username)
+
+
+def manager_reject(username):
+    """POST: decline a pending Project Manager account (sysadmin)."""
+    from ckanext.csunesco.logic import views_admin
+    return views_admin.manager_reject(username)
 
 
 def content_approve(id):
@@ -245,6 +269,12 @@ def org_content_new(org):
 # ---------------------------------------------------------------------------
 # App-data pipeline -- live proxy, connect flow and its admin decisions.
 # ---------------------------------------------------------------------------
+
+def data_viewer():
+    """Portal-wide index of approved data sources (spec: Data viewer page)."""
+    from ckanext.csunesco.logic import views_data
+    return views_data.data_viewer()
+
 
 def data_source_csv(id):
     """Live CSV proxy for an APPROVED data source (public)."""
@@ -374,11 +404,22 @@ csunesco_bp.add_url_rule(
 )
 csunesco_bp.add_url_rule('/project/<slug>/join', 'join_project', join_project,
                          methods=['POST'])
+# The participant's hub (spec "My projects" for CS members; managers keep the
+# admin dashboard). Static rule, so it never collides with /project/<slug>.
+csunesco_bp.add_url_rule('/my-projects', 'my_projects', my_projects,
+                         methods=['GET'])
 # Resolves to /citizen-science/register-citizen (blueprint prefix). Parallel to
 # CKAN's /user/register but with no organization step. Keep the endpoint name
 # ``register_citizen`` stable -- templates and tests reference it.
 csunesco_bp.add_url_rule(
     '/register-citizen', 'register_citizen', register_citizen,
+    methods=['GET', 'POST'],
+)
+# Project Manager registration: the SAME identity/demographics plus the
+# Organization block (spec section 3). Approval-gated -- see
+# csunesco_manager_approve.
+csunesco_bp.add_url_rule(
+    '/register/project-manager', 'register_manager', register_manager,
     methods=['GET', 'POST'],
 )
 # Email verification for the web self-registration flow. ``/verify/resend`` is a
@@ -415,6 +456,14 @@ csunesco_bp.add_url_rule(
     methods=['POST'])
 csunesco_bp.add_url_rule(
     '/admin/join/<project_id>/<user_id>/reject', 'join_reject', join_reject,
+    methods=['POST'])
+# Manager-account decisions (spec: the IHP Admin approves/declines the user
+# account). Sysadmin-only via the actions' own auth.
+csunesco_bp.add_url_rule(
+    '/admin/manager/<username>/approve', 'manager_approve', manager_approve,
+    methods=['POST'])
+csunesco_bp.add_url_rule(
+    '/admin/manager/<username>/reject', 'manager_reject', manager_reject,
     methods=['POST'])
 csunesco_bp.add_url_rule(
     '/admin/content/<id>/approve', 'content_approve', content_approve,
@@ -484,6 +533,9 @@ csunesco_bp.add_url_rule('/content/<id>/edit', 'content_edit', content_edit,
                          methods=['GET', 'POST'])
 
 # App-data pipeline: public live proxy + the manager connect flow.
+# The portal-wide Data viewer (spec section 4). STATIC rule registered before
+# the parameterized proxies for clarity; the patterns cannot collide anyway.
+csunesco_bp.add_url_rule('/data', 'data_viewer', data_viewer, methods=['GET'])
 csunesco_bp.add_url_rule(
     '/data/<id>.csv', 'data_source_csv', data_source_csv, methods=['GET'])
 csunesco_bp.add_url_rule(

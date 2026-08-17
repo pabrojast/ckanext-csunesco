@@ -5,9 +5,9 @@
   and /project/<slug>/edit (mode 'edit'): the fields, their stages and their
   validation are identical, only the target action and the wording differ.
 
-  Five stages, ONE <form>, ONE POST at the end. Hidden stages still submit --
-  `display:none` only affects painting -- so the server contract is unchanged
-  from the single-page version it replaces (PRG + navl `error_dict`).
+  Six stages following the spec's phase-1 sections A-F, ONE <form>, ONE POST
+  at the end. Hidden stages still submit -- `display:none` only affects
+  painting -- so the server contract is unchanged.
 
   THE JAVASCRIPT-FREE PATH IS THE PRIMARY PATH. Every stage renders visible by
   default; hiding is gated on `.is-enhanced`, a class only the script adds. The
@@ -19,10 +19,14 @@
   Every `{{ ... }}` is autoescaped; no `| safe` on user data anywhere.
 
   Vars: mode, project, data, errors, success, initiatives, member_states,
-        member_states_available, steps, open_step.
+        member_states_available, steps, open_step, water_types,
+        water_data_types, geographic_extents, stakeholder_groups,
+        activity_statuses, lead_partner_types, funding_bodies,
+        intl_frameworks, organizations, is_draft.
 #}
 
 {% set is_new = mode != 'edit' %}
+{% set total_steps = steps | length %}
 
 {% macro field_error(name) %}
   {% if errors.get(name) %}
@@ -32,15 +36,38 @@
 
 {#
   One aria-describedby per control, as the original did: the hint id when the
-  field has one, plus the error id when it is in error. Kept in a macro so all
-  fifteen fields wire it identically -- two of them used to render no error
-  element at all, which made a failure on them invisible.
+  field has one, plus the error id when it is in error.
 #}
 {% macro described_by(name, has_hint) %}
   {%- set ids = [] -%}
   {%- if has_hint %}{% set ids = ids + ['cs-f-' ~ name ~ '-hint'] %}{% endif -%}
   {%- if errors.get(name) %}{% set ids = ids + ['cs-f-' ~ name ~ '-error'] %}{% endif -%}
   {%- if ids %} aria-describedby="{{ ids | join(' ') }}"{% endif -%}
+{% endmacro %}
+
+{#
+  A checkbox group for the spec's multi-selects. The group always renders, so
+  the server may treat an empty selection as "cleared". ``allow_other`` adds
+  the free-text escape hatch; stored custom values (not in the option list)
+  round-trip through it.
+#}
+{% macro multi_select(name, options, selected, allow_other=false) %}
+  {% set picked = selected or [] %}
+  <div class="cs-choice-grid" role="group" aria-labelledby="cs-f-{{ name }}-label">
+    {% for option in options %}
+      <label class="cs-checkbox-label">
+        <input type="checkbox" name="{{ name }}" value="{{ option }}"
+               {% if option in picked %}checked{% endif %}>
+        <span>{{ _(option) }}</span>
+      </label>
+    {% endfor %}
+  </div>
+  {% if allow_other %}
+    {% set custom = picked | reject('in', options) | list %}
+    <label class="cs-hint" for="cs-f-{{ name }}_other">{{ _("Add your own (comma-separated)") }}</label>
+    <input type="text" id="cs-f-{{ name }}_other" name="{{ name }}_other"
+           value="{{ custom | join(', ') }}" maxlength="400">
+  {% endif %}
 {% endmacro %}
 
 {% block subtitle %}{{ _("Propose a Project") if is_new else _("Edit project") }}{% endblock %}
@@ -65,7 +92,10 @@
     <section class="cs-hero" aria-labelledby="cs-req-title">
       {% if is_new %}
         <h1 id="cs-req-title">{{ _("Propose a Citizen Science project") }}</h1>
-        <p>{{ _("Submit a project for review. Approved projects get a public landing page, a region map and a join flow.") }}</p>
+        <p>{{ _("Submit a project for review. Approved projects get a public landing page, a region map and a join flow. You can save a draft at any point and finish later.") }}</p>
+      {% elif is_draft %}
+        <h1 id="cs-req-title">{{ _("Finish your draft project") }}</h1>
+        <p>{{ _("This project is a draft only you can see. Submit it for review when it is ready.") }}</p>
       {% else %}
         <h1 id="cs-req-title">{{ _("Edit project details") }}</h1>
         <p>{{ _("Change this project's details. Its web address stays the same, and editing does not send an approved project back for review.") }}</p>
@@ -75,11 +105,6 @@
     <section class="cs-card cs-form-card cs-form-card--wide" aria-labelledby="cs-req-form-title">
       <h2 id="cs-req-form-title" class="cs-form-heading">{{ _("Project details") }}</h2>
 
-      {#
-        Error summary. The single-page version had none: a failure on a field
-        further down the page gave no signal at the top, and with stages that
-        would be a field you cannot even see. Focused by the script on load.
-      #}
       {% set ns = namespace(items=[]) %}
       {% for step in steps %}
         {% for name in step.fields %}
@@ -116,7 +141,7 @@
         #}
         <div class="cs-wizard-progress" id="cs-wizard-progress" hidden>
           <div class="cs-wizard-bar" id="cs-wizard-bar" role="progressbar"
-               aria-valuemin="1" aria-valuemax="{{ steps | length }}"
+               aria-valuemin="1" aria-valuemax="{{ total_steps }}"
                aria-valuenow="{{ open_step }}"
                aria-label="{{ _('Form progress') }}">
             <div class="cs-wizard-bar-fill" id="cs-wizard-bar-fill"></div>
@@ -133,12 +158,12 @@
         </div>
         <p class="cs-visually-hidden" aria-live="polite" id="cs-wizard-live"></p>
 
-        {# ================= 1. The essentials ============================== #}
+        {# ================= 1. Basic identity ============================== #}
         {% set step = steps[0] %}
         <section class="cs-step{% if open_step == 1 %} is-active{% endif %}"
                  data-step="1" role="group" aria-labelledby="cs-step-1-title">
           <h3 class="cs-step-title" id="cs-step-1-title" tabindex="-1">
-            {{ _("Step 1 of 5") }} — {{ _(step.title) }}
+            {{ _("Step %(n)s of %(total)s", n=1, total=total_steps) }} — {{ _(step.title) }}
           </h3>
           <p class="cs-hint">{{ _(step.hint) }}</p>
 
@@ -149,6 +174,105 @@
                    {% if errors.title %}aria-invalid="true"{% endif %}
                    {{- described_by('title', false) }}>
             {{ field_error('title') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-slug">{{ _("Project URL") }}</label>
+            {% if is_new %}
+              <input type="text" id="cs-f-slug" name="slug" value="{{ data.slug or '' }}"
+                     maxlength="100" autocapitalize="none" spellcheck="false"
+                     {% if errors.slug %}aria-invalid="true"{% endif %}
+                     {{- described_by('slug', true) }}>
+              <p id="cs-f-slug-hint" class="cs-hint">{{ _("Optional. Lowercase letters, numbers and hyphens. Leave blank to generate it from the title.") }}</p>
+            {% else %}
+              <input type="text" id="cs-f-slug" name="slug" value="{{ data.slug or '' }}"
+                     readonly aria-readonly="true"
+                     {{- described_by('slug', true) }}>
+              <p id="cs-f-slug-hint" class="cs-hint">{{ _("The web address is permanent once the project is created.") }}</p>
+            {% endif %}
+            {{ field_error('slug') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-short_description">{{ _("Short description") }} <span class="cs-req" aria-hidden="true">*</span></label>
+            <textarea id="cs-f-short_description" name="short_description" rows="4"
+                      maxlength="2000" required aria-required="true"
+                      {% if errors.short_description %}aria-invalid="true"{% endif %}
+                      {{- described_by('short_description', true) }}>{{ data.short_description or '' }}</textarea>
+            <p id="cs-f-short_description-hint" class="cs-hint">{{ _("A one-paragraph summary shown on cards and the landing hero.") }}</p>
+            {{ field_error('short_description') }}
+          </div>
+
+          <div class="cs-field">
+            <span class="cs-field-legend">{{ _("Cover / thumbnail image") }}</span>
+            {% snippet "csunesco/blocks/edit/_image_picker.html",
+                       input_id="cs-f-image",
+                       url_name="image_url",
+                       upload_name="image_upload",
+                       clear_name="image_clear",
+                       value=data.image_url,
+                       label=_("Cover image address"),
+                       clear_label=_("Remove the current cover image"),
+                       url_field="image_url",
+                       upload_field="image_upload" %}
+            <p class="cs-hint">{{ _("Optional. Resized to 600×400. Shown as the project's banner and card cover.") }}</p>
+            {{ field_error('image_url') }}
+          </div>
+
+          <div class="cs-field">
+            <span class="cs-field-legend">{{ _("Project logo") }}</span>
+            {% snippet "csunesco/blocks/edit/_image_picker.html",
+                       input_id="cs-f-logo",
+                       url_name="logo_url",
+                       upload_name="logo_upload",
+                       clear_name="logo_clear",
+                       value=data.logo_url,
+                       label=_("Logo address"),
+                       clear_label=_("Remove the current logo"),
+                       url_field="logo_url",
+                       upload_field="logo_upload" %}
+            <p class="cs-hint">{{ _("Optional. Resized to 600×400.") }}</p>
+            {{ field_error('logo_url') }}
+          </div>
+
+          <div class="cs-field">
+            <span class="cs-field-legend">{{ _("Profile heading image") }}</span>
+            {% snippet "csunesco/blocks/edit/_image_picker.html",
+                       input_id="cs-f-heading",
+                       url_name="heading_image_url",
+                       upload_name="heading_upload",
+                       clear_name="heading_clear",
+                       value=data.heading_image_url,
+                       label=_("Heading image address"),
+                       clear_label=_("Remove the current heading image"),
+                       url_field="heading_image_url",
+                       upload_field="heading_upload" %}
+            <p class="cs-hint">{{ _("Optional. Resized to 1100×400. Shown across the top of the project profile.") }}</p>
+            {{ field_error('heading_image_url') }}
+          </div>
+
+          <div class="cs-wizard-nav" hidden>
+            <button type="button" class="cs-btn cs-btn-primary cs-wizard-next">{{ _("Next") }}</button>
+          </div>
+        </section>
+
+        {# ================= 2. Classification ============================== #}
+        {% set step = steps[1] %}
+        <section class="cs-step{% if open_step == 2 %} is-active{% endif %}"
+                 data-step="2" role="group" aria-labelledby="cs-step-2-title">
+          <h3 class="cs-step-title" id="cs-step-2-title" tabindex="-1">
+            {{ _("Step %(n)s of %(total)s", n=2, total=total_steps) }} — {{ _(step.title) }}
+          </h3>
+          <p class="cs-hint">{{ _(step.hint) }}</p>
+
+          <div class="cs-field">
+            <label for="cs-f-keywords">{{ _("Keywords") }} <span class="cs-req" aria-hidden="true">*</span></label>
+            <input type="text" id="cs-f-keywords" name="keywords" value="{{ data.keywords or '' }}"
+                   maxlength="400" required aria-required="true"
+                   {% if errors.keywords %}aria-invalid="true"{% endif %}
+                   {{- described_by('keywords', true) }}>
+            <p id="cs-f-keywords-hint" class="cs-hint">{{ _("2–3 keywords, separated by commas.") }}</p>
+            {{ field_error('keywords') }}
           </div>
 
           <div class="cs-field">
@@ -167,38 +291,48 @@
             {{ field_error('initiative') }}
           </div>
 
+          <div class="cs-field">
+            <span class="cs-field-legend" id="cs-f-water_type-label">{{ _("Water type") }} <span class="cs-req" aria-hidden="true">*</span></span>
+            {{ multi_select('water_type', water_types, data.water_type, allow_other=true) }}
+            {{ field_error('water_type') }}
+          </div>
+
+          <div class="cs-field">
+            <span class="cs-field-legend" id="cs-f-water_data_type-label">{{ _("Water data type") }} <span class="cs-req" aria-hidden="true">*</span></span>
+            {{ multi_select('water_data_type', water_data_types, data.water_data_type, allow_other=true) }}
+            {{ field_error('water_data_type') }}
+          </div>
+
           <div class="cs-wizard-nav" hidden>
+            <button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _("Back") }}</button>
             <button type="button" class="cs-btn cs-btn-primary cs-wizard-next">{{ _("Next") }}</button>
           </div>
         </section>
 
-        {# ================= 2. Where it happens ============================ #}
-        {% set step = steps[1] %}
-        <section class="cs-step{% if open_step == 2 %} is-active{% endif %}"
-                 data-step="2" role="group" aria-labelledby="cs-step-2-title">
-          <h3 class="cs-step-title" id="cs-step-2-title" tabindex="-1">
-            {{ _("Step 2 of 5") }} — {{ _(step.title) }}
+        {# ================= 3. Location ==================================== #}
+        {% set step = steps[2] %}
+        <section class="cs-step{% if open_step == 3 %} is-active{% endif %}"
+                 data-step="3" role="group" aria-labelledby="cs-step-3-title">
+          <h3 class="cs-step-title" id="cs-step-3-title" tabindex="-1">
+            {{ _("Step %(n)s of %(total)s", n=3, total=total_steps) }} — {{ _(step.title) }}
           </h3>
           <p class="cs-hint">{{ _(step.hint) }}</p>
 
-          {#
-            The country picker. The <select multiple> is the SOURCE OF TRUTH for
-            what gets submitted, in both the plain and the enhanced path: the
-            script hides it (never disables it -- a disabled control is dropped
-            from the POST, which on an edit would wipe every country) and drives
-            it by flipping option.selected. So there is exactly one name on the
-            page and no chance of the chips and the payload disagreeing.
-          #}
-          {#
-            The picker's own strings live here, not in the bundle, so they go
-            through this page's translation catalogue.
+          <div class="cs-field">
+            <label for="cs-f-geographic_extent">{{ _("Geographic extent") }} <span class="cs-req" aria-hidden="true">*</span></label>
+            <select id="cs-f-geographic_extent" name="geographic_extent"
+                    required aria-required="true"
+                    {% if errors.geographic_extent %}aria-invalid="true"{% endif %}
+                    {{- described_by('geographic_extent', false) }}>
+              <option value="">{{ _("Select…") }}</option>
+              {% for extent in geographic_extents %}
+                <option value="{{ extent }}"
+                        {% if extent == data.geographic_extent %}selected{% endif %}>{{ _(extent) }}</option>
+              {% endfor %}
+            </select>
+            {{ field_error('geographic_extent') }}
+          </div>
 
-            Placeholders are {name} / {count}, NOT %s / %n: Jinja's `_()`
-            always runs `result % variables` on what gettext returns, so a
-            literal % in a translated string raises
-            "TypeError: not enough arguments for format string" and takes the
-            whole page down with a 500. The JS substitutes these itself.
-          #}
           <div class="cs-field cs-countrypicker" data-countrypicker
                data-label-remove="{{ _('Remove') }}"
                data-label-empty="{{ _('No countries selected yet.') }}"
@@ -206,25 +340,18 @@
                data-label-added="{{ _('{name} added, {count} selected') }}"
                data-label-removed="{{ _('{name} removed, {count} selected') }}"
                data-label-matches="{{ _('{count} countries match') }}">
-            <label for="cs-f-countries">{{ _("Countries (member states)") }}</label>
+            <label for="cs-f-countries">{{ _("Countries involved") }} <span class="cs-req" aria-hidden="true">*</span></label>
 
             {% if not member_states_available %}
               <p class="cs-form-error" role="status">
-                {{ _("The member-state list could not be loaded right now. You can save without countries and add them later.") }}
+                {{ _("The member-state list could not be loaded right now. You can save a draft without countries and add them later.") }}
               </p>
             {% elif not member_states %}
               <p class="cs-hint">
-                {{ _("No member states are configured on this portal yet. You can save without countries; an administrator can add them later.") }}
+                {{ _("No member states are configured on this portal yet. You can save a draft without countries; an administrator can add them later.") }}
               </p>
             {% endif %}
 
-            {#
-              The marker proves the control rendered. Without it, a picker that
-              failed to render at all is indistinguishable from "the user
-              deselected everything", and the edit view would read an empty
-              getlist() and CLEAR the project's countries. Same reasoning as
-              open_participation below.
-            #}
             <input type="hidden" name="countries_present" value="1">
             <select id="cs-f-countries" name="countries" multiple size="8"
                     {% if errors.countries %}aria-invalid="true"{% endif %}
@@ -233,14 +360,6 @@
                 <option value="{{ state.name }}"
                         {% if state.name in (data.countries or []) %}selected{% endif %}>{{ state.title }}</option>
               {% endfor %}
-              {#
-                Countries this project already declared that are NOT in the
-                current list -- because the list could not be loaded, because
-                the portal is unseeded, or because that member state was
-                de-published since. They MUST still be emitted, or editing
-                anything else on the form would silently drop them: the select
-                is the only place the stored value round-trips through.
-              #}
               {% set known = member_states | map(attribute='name') | list %}
               {% for name in (data.countries or []) if name not in known %}
                 <option value="{{ name }}" selected>{{ h.csunesco_member_state_title(name) }}</option>
@@ -251,6 +370,16 @@
               {{ _("Hold Ctrl/Cmd to select more than one.") }}
             </p>
             {{ field_error('countries') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-locality">{{ _("Project locality") }}</label>
+            <input type="text" id="cs-f-locality" name="locality"
+                   value="{{ data.locality or '' }}" maxlength="200"
+                   {% if errors.locality %}aria-invalid="true"{% endif %}
+                   {{- described_by('locality', true) }}>
+            <p id="cs-f-locality-hint" class="cs-hint">{{ _("Optional. The name of the locality of the project.") }}</p>
+            {{ field_error('locality') }}
           </div>
 
           <div class="cs-field">
@@ -268,44 +397,40 @@
             <textarea id="cs-f-region_geojson" name="region_geojson" rows="5"
                       {% if errors.region_geojson %}aria-invalid="true"{% endif %}
                       {{- described_by('region_geojson', true) }}>{{ data.region_geojson or '' }}</textarea>
-            <p id="cs-f-region_geojson-hint" class="cs-hint">{{ _("Optional. Paste a GeoJSON Feature, FeatureCollection, Polygon or MultiPolygon.") }}</p>
+            <p id="cs-f-region_geojson-hint" class="cs-hint">{{ _("Optional. Paste a GeoJSON Feature, FeatureCollection, Polygon or MultiPolygon — or use the point and radius below instead.") }}</p>
             {{ field_error('region_geojson') }}
           </div>
 
-          <div class="cs-wizard-nav" hidden>
-            <button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _("Back") }}</button>
-            <button type="button" class="cs-btn cs-btn-primary cs-wizard-next">{{ _("Next") }}</button>
-          </div>
-        </section>
-
-        {# ================= 3. What it is about ============================ #}
-        {% set step = steps[2] %}
-        <section class="cs-step{% if open_step == 3 %} is-active{% endif %}"
-                 data-step="3" role="group" aria-labelledby="cs-step-3-title">
-          <h3 class="cs-step-title" id="cs-step-3-title" tabindex="-1">
-            {{ _("Step 3 of 5") }} — {{ _(step.title) }}
-          </h3>
-          <p class="cs-hint">{{ _(step.hint) }}</p>
-
-          <div class="cs-field">
-            <label for="cs-f-short_description">{{ _("Short description") }}</label>
-            <textarea id="cs-f-short_description" name="short_description" rows="4"
-                      maxlength="2000"
-                      {% if errors.short_description %}aria-invalid="true"{% endif %}
-                      {{- described_by('short_description', true) }}>{{ data.short_description or '' }}</textarea>
-            <p id="cs-f-short_description-hint" class="cs-hint">{{ _("A one-paragraph summary shown on cards and the landing hero.") }}</p>
-            {{ field_error('short_description') }}
-          </div>
-
-          <div class="cs-field">
-            <label for="cs-f-how_to_participate">{{ _("How to take part") }}</label>
-            <textarea id="cs-f-how_to_participate" name="how_to_participate" rows="4"
-                      maxlength="4000"
-                      {% if errors.how_to_participate %}aria-invalid="true"{% endif %}
-                      {{- described_by('how_to_participate', true) }}>{{ data.how_to_participate or '' }}</textarea>
-            <p id="cs-f-how_to_participate-hint" class="cs-hint">{{ _("Optional. What a volunteer actually does, and what they need to bring or install.") }}</p>
-            {{ field_error('how_to_participate') }}
-          </div>
+          <fieldset class="cs-field cs-point-radius">
+            <legend class="cs-field-legend">{{ _("Or drop a point and define a radius") }}</legend>
+            <div class="cs-register-grid">
+              <div class="cs-field">
+                <label for="cs-f-point_lat">{{ _("Latitude") }}</label>
+                <input type="number" id="cs-f-point_lat" name="point_lat" step="any"
+                       min="-90" max="90" value="{{ data.point_lat }}"
+                       {% if errors.point_lat %}aria-invalid="true"{% endif %}
+                       {{- described_by('point_lat', false) }}>
+                {{ field_error('point_lat') }}
+              </div>
+              <div class="cs-field">
+                <label for="cs-f-point_lng">{{ _("Longitude") }}</label>
+                <input type="number" id="cs-f-point_lng" name="point_lng" step="any"
+                       min="-180" max="180" value="{{ data.point_lng }}"
+                       {% if errors.point_lng %}aria-invalid="true"{% endif %}
+                       {{- described_by('point_lng', false) }}>
+                {{ field_error('point_lng') }}
+              </div>
+              <div class="cs-field">
+                <label for="cs-f-point_radius_km">{{ _("Radius (km)") }}</label>
+                <input type="number" id="cs-f-point_radius_km" name="point_radius_km"
+                       step="any" min="0.01" max="5000" value="{{ data.point_radius_km }}"
+                       {% if errors.point_radius_km %}aria-invalid="true"{% endif %}
+                       {{- described_by('point_radius_km', false) }}>
+                {{ field_error('point_radius_km') }}
+              </div>
+            </div>
+            <p class="cs-hint">{{ _("Used only when the GeoJSON box above is empty: the map then shows a circle around your point.") }}</p>
+          </fieldset>
 
           <div class="cs-wizard-nav" hidden>
             <button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _("Back") }}</button>
@@ -313,14 +438,60 @@
           </div>
         </section>
 
-        {# ================= 4. Taking part ================================= #}
+        {# ================= 4. Participation =============================== #}
         {% set step = steps[3] %}
         <section class="cs-step{% if open_step == 4 %} is-active{% endif %}"
                  data-step="4" role="group" aria-labelledby="cs-step-4-title">
           <h3 class="cs-step-title" id="cs-step-4-title" tabindex="-1">
-            {{ _("Step 4 of 5") }} — {{ _(step.title) }}
+            {{ _("Step %(n)s of %(total)s", n=4, total=total_steps) }} — {{ _(step.title) }}
           </h3>
           <p class="cs-hint">{{ _(step.hint) }}</p>
+
+          <fieldset class="cs-field">
+            <legend class="cs-field-legend">{{ _("Public participation") }} <span class="cs-req" aria-hidden="true">*</span></legend>
+            <label class="cs-checkbox-label">
+              <input type="radio" name="participation_mode" value="open"
+                     {% if data.participation_mode == 'open' %}checked{% endif %}>
+              <span>{{ _("Open to any participant — the landing page shows a QR code to join") }}</span>
+            </label>
+            <label class="cs-checkbox-label">
+              <input type="radio" name="participation_mode" value="limited"
+                     {% if data.participation_mode == 'limited' %}checked{% endif %}>
+              <span>{{ _("Limited to a selected group") }}</span>
+            </label>
+            {{ field_error('participation_mode') }}
+          </fieldset>
+
+          <div class="cs-field">
+            <label for="cs-f-allowed_participants">{{ _("Allowed participants") }}</label>
+            <textarea id="cs-f-allowed_participants" name="allowed_participants" rows="3"
+                      {% if errors.allowed_participants %}aria-invalid="true"{% endif %}
+                      {{- described_by('allowed_participants', true) }}>{{ data.allowed_participants or '' }}</textarea>
+            <p id="cs-f-allowed_participants-hint" class="cs-hint">{{ _("For limited participation: emails or usernames, one per line. Only project participants ever see this list.") }}</p>
+            {{ field_error('allowed_participants') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-languages">{{ _("Languages") }}</label>
+            <input type="text" id="cs-f-languages" name="languages"
+                   value="{{ data.languages or '' }}" maxlength="400"
+                   {% if errors.languages %}aria-invalid="true"{% endif %}
+                   {{- described_by('languages', true) }}>
+            <p id="cs-f-languages-hint" class="cs-hint">{{ _("Optional. Languages used in the project, separated by commas.") }}</p>
+            {{ field_error('languages') }}
+          </div>
+
+          <div class="cs-field">
+            <span class="cs-field-legend" id="cs-f-stakeholders-label">{{ _("Stakeholders benefiting") }}</span>
+            {{ multi_select('stakeholders', stakeholder_groups, data.stakeholders, allow_other=true) }}
+            {{ field_error('stakeholders') }}
+          </div>
+
+          <div class="cs-field">
+            <span class="cs-field-legend" id="cs-f-activity_status-label">{{ _("Activity status") }} <span class="cs-req" aria-hidden="true">*</span></span>
+            {{ multi_select('activity_status', activity_statuses, data.activity_status) }}
+            {{ field_error('activity_status') }}
+          </div>
 
           <div class="cs-field">
             <label for="cs-f-start_date">{{ _("Start date") }}</label>
@@ -333,11 +504,6 @@
           </div>
 
           <div class="cs-field">
-            {#
-              The cross-field message is carried on the element rather than
-              built in the script, so it goes through the same translation
-              catalogue as everything else on the page.
-            #}
             <label for="cs-f-end_date">{{ _("End date") }}</label>
             <input type="date" id="cs-f-end_date" name="end_date"
                    value="{{ data.end_date or '' }}"
@@ -349,21 +515,13 @@
           </div>
 
           <div class="cs-field">
-            {#
-              An unchecked box submits NOTHING, which the server cannot tell
-              apart from "the form did not carry this field". The marker says
-              the control was rendered, so an absent box means an explicit No.
-            #}
-            <input type="hidden" name="open_participation_present" value="1">
-            <label class="cs-checkbox-label" for="cs-f-open_participation">
-              <input type="checkbox" id="cs-f-open_participation"
-                     name="open_participation" value="1"
-                     {% if data.open_participation %}checked{% endif %}
-                     {{- described_by('open_participation', true) }}>
-              {{ _("Open to anyone who wants to take part") }}
-            </label>
-            <p id="cs-f-open_participation-hint" class="cs-hint">{{ _("Leave unticked if volunteers need training, an invitation or a selection step first.") }}</p>
-            {{ field_error('open_participation') }}
+            <label for="cs-f-how_to_participate">{{ _("How to take part") }}</label>
+            <textarea id="cs-f-how_to_participate" name="how_to_participate" rows="4"
+                      maxlength="4000"
+                      {% if errors.how_to_participate %}aria-invalid="true"{% endif %}
+                      {{- described_by('how_to_participate', true) }}>{{ data.how_to_participate or '' }}</textarea>
+            <p id="cs-f-how_to_participate-hint" class="cs-hint">{{ _("Optional. What a volunteer actually does, and what they need to bring or install.") }}</p>
+            {{ field_error('how_to_participate') }}
           </div>
 
           <div class="cs-field">
@@ -382,14 +540,65 @@
           </div>
         </section>
 
-        {# ================= 5. Contact and materials ======================= #}
+        {# ================= 5. Leadership and contact ====================== #}
         {% set step = steps[4] %}
         <section class="cs-step{% if open_step == 5 %} is-active{% endif %}"
                  data-step="5" role="group" aria-labelledby="cs-step-5-title">
           <h3 class="cs-step-title" id="cs-step-5-title" tabindex="-1">
-            {{ _("Step 5 of 5") }} — {{ _(step.title) }}
+            {{ _("Step %(n)s of %(total)s", n=5, total=total_steps) }} — {{ _(step.title) }}
           </h3>
           <p class="cs-hint">{{ _(step.hint) }}</p>
+
+          <div class="cs-field">
+            <label for="cs-f-lead_partner_type">{{ _("Lead partner type") }} <span class="cs-req" aria-hidden="true">*</span></label>
+            <select id="cs-f-lead_partner_type" name="lead_partner_type"
+                    required aria-required="true"
+                    {% if errors.lead_partner_type %}aria-invalid="true"{% endif %}
+                    {{- described_by('lead_partner_type', true) }}>
+              <option value="">{{ _("Select…") }}</option>
+              {% for partner_type in lead_partner_types %}
+                <option value="{{ partner_type }}"
+                        {% if partner_type == data.lead_partner_type %}selected{% endif %}>{{ _(partner_type) }}</option>
+              {% endfor %}
+            </select>
+            <p id="cs-f-lead_partner_type-hint" class="cs-hint">{{ _("The type of institution coordinating the project.") }}</p>
+            {{ field_error('lead_partner_type') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-lead_organisation">{{ _("Lead organisation") }} <span class="cs-req" aria-hidden="true">*</span></label>
+            <input type="text" id="cs-f-lead_organisation" name="lead_organisation"
+                   value="{{ data.lead_organisation or '' }}" maxlength="200"
+                   list="cs-org-options" required aria-required="true"
+                   {% if errors.lead_organisation %}aria-invalid="true"{% endif %}
+                   {{- described_by('lead_organisation', true) }}>
+            <datalist id="cs-org-options">
+              {% for org in organizations %}
+                <option value="{{ org.name }}">{{ org.title }}</option>
+              {% endfor %}
+            </datalist>
+            <p id="cs-f-lead_organisation-hint" class="cs-hint">{{ _("Pick an existing organization, or type the name of one that is not listed yet.") }}</p>
+            {{ field_error('lead_organisation') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-other_organisations">{{ _("Other organisations") }}</label>
+            <textarea id="cs-f-other_organisations" name="other_organisations" rows="3"
+                      {% if errors.other_organisations %}aria-invalid="true"{% endif %}
+                      {{- described_by('other_organisations', true) }}>{{ data.other_organisations or '' }}</textarea>
+            <p id="cs-f-other_organisations-hint" class="cs-hint">{{ _("Optional. Other organisations participating in the project, one per line.") }}</p>
+            {{ field_error('other_organisations') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-editors">{{ _("Editors") }}</label>
+            <input type="text" id="cs-f-editors" name="editors"
+                   value="{{ data.editors or '' }}" maxlength="400"
+                   {% if errors.editors %}aria-invalid="true"{% endif %}
+                   {{- described_by('editors', true) }}>
+            <p id="cs-f-editors-hint" class="cs-hint">{{ _("Optional. Usernames of additional people who can co-edit the project, separated by commas.") }}</p>
+            {{ field_error('editors') }}
+          </div>
 
           <div class="cs-field">
             <label for="cs-f-contact_person">{{ _("Contact person") }}</label>
@@ -407,8 +616,39 @@
                    value="{{ data.contact_email or '' }}" maxlength="254"
                    {% if errors.contact_email %}aria-invalid="true"{% endif %}
                    {{- described_by('contact_email', true) }}>
-            <p id="cs-f-contact_email-hint" class="cs-hint">{{ _("Optional. Shown publicly on the project page, so prefer a shared team address to a personal one.") }}</p>
+            <p id="cs-f-contact_email-hint" class="cs-hint">{{ _("Optional. Shown to logged-in users and project participants only.") }}</p>
             {{ field_error('contact_email') }}
+          </div>
+
+          <div class="cs-wizard-nav" hidden>
+            <button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _("Back") }}</button>
+            <button type="button" class="cs-btn cs-btn-primary cs-wizard-next">{{ _("Next") }}</button>
+          </div>
+        </section>
+
+        {# ================= 6. Funding and references ====================== #}
+        {% set step = steps[5] %}
+        <section class="cs-step{% if open_step == 6 %} is-active{% endif %}"
+                 data-step="6" role="group" aria-labelledby="cs-step-6-title">
+          <h3 class="cs-step-title" id="cs-step-6-title" tabindex="-1">
+            {{ _("Step %(n)s of %(total)s", n=6, total=total_steps) }} — {{ _(step.title) }}
+          </h3>
+          <p class="cs-hint">{{ _(step.hint) }}</p>
+
+          <div class="cs-field">
+            <span class="cs-field-legend" id="cs-f-funding_body-label">{{ _("Funding body") }}</span>
+            {{ multi_select('funding_body', funding_bodies, data.funding_body, allow_other=true) }}
+            {{ field_error('funding_body') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-funding_programme">{{ _("Funding programme") }}</label>
+            <input type="text" id="cs-f-funding_programme" name="funding_programme"
+                   value="{{ data.funding_programme or '' }}" maxlength="200"
+                   {% if errors.funding_programme %}aria-invalid="true"{% endif %}
+                   {{- described_by('funding_programme', true) }}>
+            <p id="cs-f-funding_programme-hint" class="cs-hint">{{ _("Optional. The name of the programme that funds the project.") }}</p>
+            {{ field_error('funding_programme') }}
           </div>
 
           <div class="cs-field">
@@ -421,25 +661,11 @@
             {{ field_error('project_document_url') }}
           </div>
 
-          {#
-            The shared URL-or-upload picker the page editor already uses, so
-            the accepted formats, the size cap and the "uploads are not
-            configured" fallback are one implementation, not two.
-          #}
           <div class="cs-field">
-            <span class="cs-field-legend">{{ _("Cover image") }}</span>
-            {% snippet "csunesco/blocks/edit/_image_picker.html",
-                       input_id="cs-f-image",
-                       url_name="image_url",
-                       upload_name="image_upload",
-                       clear_name="image_clear",
-                       value=data.image_url,
-                       label=_("Cover image address"),
-                       clear_label=_("Remove the current cover image"),
-                       url_field="image_url",
-                       upload_field="image_upload" %}
-            <p class="cs-hint">{{ _("Optional. Shown as the project's banner and card cover.") }}</p>
-            {{ field_error('image_url') }}
+            <span class="cs-field-legend" id="cs-f-international_frameworks-label">{{ _("International frameworks") }}</span>
+            <p class="cs-hint">{{ _("Optional. Does the project contribute to any of these frameworks?") }}</p>
+            {{ multi_select('international_frameworks', intl_frameworks, data.international_frameworks) }}
+            {{ field_error('international_frameworks') }}
           </div>
 
           <div class="cs-wizard-nav" hidden>
@@ -447,11 +673,22 @@
           </div>
 
           <div class="cs-form-actions">
-            <button type="submit" id="cs-req-submit" class="cs-btn cs-btn-primary">
-              <span class="cs-btn-label" data-sending="{{ _('Sending…') }}">{{ _("Submit for review") if is_new else _("Save changes") }}</span>
-              <span class="cs-btn-spinner" aria-hidden="true" hidden></span>
-            </button>
-            {% if not is_new %}
+            {% if is_new %}
+              <button type="submit" id="cs-req-submit" class="cs-btn cs-btn-primary">
+                <span class="cs-btn-label" data-sending="{{ _('Sending…') }}">{{ _("Submit for review") }}</span>
+                <span class="cs-btn-spinner" aria-hidden="true" hidden></span>
+              </button>
+            {% elif is_draft %}
+              <button type="submit" name="submit_review" value="1"
+                      id="cs-req-submit" class="cs-btn cs-btn-primary">
+                <span class="cs-btn-label" data-sending="{{ _('Sending…') }}">{{ _("Submit for review") }}</span>
+                <span class="cs-btn-spinner" aria-hidden="true" hidden></span>
+              </button>
+            {% else %}
+              <button type="submit" id="cs-req-submit" class="cs-btn cs-btn-primary">
+                <span class="cs-btn-label" data-sending="{{ _('Sending…') }}">{{ _("Save changes") }}</span>
+                <span class="cs-btn-spinner" aria-hidden="true" hidden></span>
+              </button>
               <a class="cs-btn cs-btn-secondary"
                  href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
                 {{ _("Cancel") }}
@@ -459,6 +696,28 @@
             {% endif %}
           </div>
         </section>
+
+        {#
+          OUTSIDE the step sections so the enhanced wizard shows it on every
+          stage: a draft must be savable from anywhere, not only after
+          clicking Next through five validated steps. ``formnovalidate`` (and
+          the matching check in the wizard script) skips client validation --
+          the server applies only the lenient rules to drafts.
+        #}
+        {% if is_new or is_draft %}
+          <div class="cs-form-actions cs-draft-actions">
+            {% if is_new %}
+              <button type="submit" name="save_draft" value="1"
+                      class="cs-btn cs-btn-secondary" formnovalidate>
+                {{ _("Save for later") }}
+              </button>
+            {% else %}
+              <button type="submit" class="cs-btn cs-btn-secondary" formnovalidate>
+                {{ _("Save draft") }}
+              </button>
+            {% endif %}
+          </div>
+        {% endif %}
       </form>
     </section>
   {% endif %}

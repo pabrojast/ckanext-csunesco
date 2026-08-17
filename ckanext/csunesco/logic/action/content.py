@@ -652,6 +652,7 @@ def csunesco_content_list(context, data_dict):
         limit=limit,
         offset=offset,
         public_only=public_only,
+        include_logged_in=bool(current_user_id(context)),
         private_project_ids=private_project_ids,
         private_org_ids=private_org_ids,
         q=q,
@@ -712,6 +713,11 @@ def csunesco_content_show(context, data_dict):
     # Private content: approved or not, only the scope's people may read it.
     if (content.visibility == 'private'
             and not _can_view_private(context, content)):
+        raise tk.NotAuthorized(tk._('Not authorized to view this content'))
+    # 'logged-in' content (spec's middle tier): any authenticated portal
+    # user; anonymous visitors are refused.
+    if (content.visibility == 'logged-in'
+            and not current_user_id(context)):
         raise tk.NotAuthorized(tk._('Not authorized to view this content'))
     return db.content_dictize(content)
 

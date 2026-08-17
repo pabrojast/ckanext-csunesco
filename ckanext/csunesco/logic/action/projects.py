@@ -14,6 +14,7 @@ import ckan.plugins.toolkit as tk
 import ckan.model as model
 import sqlalchemy as sa
 
+from ckanext.csunesco import constants
 from ckanext.csunesco import db
 from ckanext.csunesco.logic import auth
 from ckanext.csunesco.logic import schema as cs_schema
@@ -31,6 +32,134 @@ _ALLOWED_ATTRS = {'a': ['href', 'title', 'rel']}
 
 def _utcnow():
     return datetime.datetime.utcnow()
+
+
+def _member_states_count(project):
+    """Distinct declared countries of one project (feeds its counter row).
+
+    The per-project ``member_states`` counter is DERIVED from the declared
+    countries -- unlike observations it has no external data source, so it is
+    recomputed wherever the countries can change (approve, update, backfill).
+    """
+    countries = db._load_json(project.countries, [])
+    if not isinstance(countries, list):
+        return 0
+    return len({str(c).strip() for c in countries if str(c).strip()})
+
+
+def _sync_participation(data):
+    """Keep ``participation_mode`` and ``open_participation`` coherent.
+
+    The web form posts the spec's ``participation_mode`` choice; the CS
+    Toolbox app (and the Fase-0 join gate) speak the boolean
+    ``open_participation``. Whichever side arrives, the other is derived so
+    both readers keep working.
+    """
+    if data.get('participation_mode'):
+        data['open_participation'] = data['participation_mode'] == 'open'
+    elif 'open_participation' in data and 'participation_mode' not in data:
+        data['participation_mode'] = (
+            'open' if data['open_participation'] else 'limited')
+    return data
+
+
+def _circle_geojson(lat, lng, radius_km, segments=48):
+    """A polygon approximating a circle, for the spec's point+radius region.
+
+    The region validator only accepts (Multi)Polygon shapes and the landing
+    map renders those, so the point+radius input is materialized into a
+    48-vertex polygon instead of teaching every reader a new geometry type.
+    """
+    import math
+    lat_rad = math.radians(lat)
+    dlat = radius_km / 111.32
+    dlng = radius_km / max(0.001, 111.32 * math.cos(lat_rad))
+    ring = []
+    for step in range(segments + 1):
+        angle = 2 * math.pi * step / segments
+        ring.append([round(lng + dlng * math.cos(angle), 6),
+                     round(lat + dlat * math.sin(angle), 6)])
+    return json.dumps({
+        'type': 'Feature',
+        'properties': {'csunesco_point_radius_km': radius_km,
+                       'csunesco_point': [round(lng, 6), round(lat, 6)]},
+        'geometry': {'type': 'Polygon', 'coordinates': [ring]},
+    })
+
+
+def _apply_point_radius(data):
+    """When a full point+radius triple arrives WITHOUT an explicit region,
+    synthesize the region polygon from it. An explicit region always wins."""
+    lat = data.get('point_lat')
+    lng = data.get('point_lng')
+    radius = data.get('point_radius_km')
+    if lat is None or lng is None or radius is None:
+        return data
+    if data.get('region_geojson'):
+        return data
+    data['region_geojson'] = _circle_geojson(lat, lng, radius)
+    return data
+
+
+def _resolve_lead_organisation(data):
+    """CKAN org id for ``lead_organisation`` when it names an existing org.
+
+    The field itself is free text (the spec's "not listed -- create a new
+    one" is satisfied by storing the declared name verbatim); the column link
+    is a bonus that only fires on an exact org name/id match.
+    """
+    name = (data.get('lead_organisation') or '').strip()
+    if not name:
+        return None
+    try:
+        group = model.Group.get(name)
+    except Exception:
+        return None
+    if group is not None and getattr(group, 'is_organization', False):
+        return group.id
+    return None
+
+
+def _sync_editor_members(project_id, editors, now):
+    """Reconcile the ``editor``-role member rows with a username list.
+
+    Unknown usernames are a HARD error -- silently dropping one would tell
+    the manager their colleague was added when they were not. Existing
+    admin/scientist rows are never touched; an editor removed from the list
+    loses only the editor row. Runs in the caller's session (no commit).
+    """
+    resolved = {}
+    for username in editors:
+        user = model.User.get(username)
+        if user is None:
+            raise tk.ValidationError({'editors': [tk._(
+                'Unknown user: %s') % username]})
+        resolved[user.id] = username
+    existing = (
+        model.Session.query(db.CsProjectMember)
+        .filter(db.CsProjectMember.project_id == project_id)
+        .filter(db.CsProjectMember.role == 'editor')
+        .all()
+    )
+    seen = set()
+    for member in existing:
+        if member.user_id in resolved:
+            seen.add(member.user_id)
+            if member.status != 'active':
+                member.status = 'active'
+        else:
+            model.Session.delete(member)
+    for user_id in resolved:
+        if user_id in seen:
+            continue
+        member = db.CsProjectMember()
+        member.project_id = project_id
+        member.user_id = user_id
+        member.role = 'editor'
+        member.status = 'active'
+        member.source = 'ckan'
+        member.created = now
+        model.Session.add(member)
 
 
 def _project_extras(data, current=None):
@@ -149,6 +278,8 @@ def csunesco_project_request_create(context, data_dict):
     data, errors = tk.navl_validate(incoming, schema, context)
     if errors:
         raise tk.ValidationError(errors)
+    _sync_participation(data)
+    _apply_point_radius(data)
 
     slug_base = data.get('slug') or data['title']
     slug = db.unique_slug(slug_base)
@@ -165,21 +296,35 @@ def csunesco_project_request_create(context, data_dict):
     project.short_description = _sanitize_html(data.get('short_description'))
     project.project_document_url = data.get('project_document_url')
     project.image_url = data.get('image_url')
+    project.logo_url = data.get('logo_url')
+    project.heading_image_url = data.get('heading_image_url')
+    project.organization_id = _resolve_lead_organisation(data)
     # The staged form's extra detail fields. No migration: they ride in the
     # existing JSON column and project_dictize merges them back on read.
     project.extras = json.dumps(_project_extras(data))
-    project.status = 'pending'
+    # The web form's "Save for later" path creates a DRAFT (visible only to
+    # its creator, absent from every queue and listing) instead of filing a
+    # review request. Only the view sets the flag -- the API/outbox path
+    # always files pending, unchanged.
+    project.status = 'draft' if context.get('csunesco_draft') else 'pending'
     project.created_by = current_user_id(context)
     project.created = now
     project.modified = now
     model.Session.add(project)
+    if data.get('editors'):
+        # flush() so the new project has an id for the member rows; still ONE
+        # commit for the whole create.
+        model.Session.flush()
+        _sync_editor_members(project.id, data['editors'], now)
     model.Session.commit()
     return db.project_dictize(project)
 
 
 # Form field -> ``cs_project`` column for the fields an edit may change.
-# Deliberately EXCLUDES slug (URL stability), status, trusted, created_by,
-# organization_id and the whole moderation audit trail.
+# Deliberately EXCLUDES slug (URL stability), status, trusted, created_by and
+# the whole moderation audit trail. ``organization_id`` is not here either:
+# it is DERIVED from ``lead_organisation`` (see ``_resolve_lead_organisation``),
+# never written directly.
 PROJECT_EDITABLE_COLUMNS = (
     ('title', 'title'),
     ('initiative', 'initiative_group'),
@@ -188,6 +333,8 @@ PROJECT_EDITABLE_COLUMNS = (
     ('region_geojson', 'region_geojson'),
     ('project_document_url', 'project_document_url'),
     ('image_url', 'image_url'),
+    ('logo_url', 'logo_url'),
+    ('heading_image_url', 'heading_image_url'),
 )
 
 
@@ -242,6 +389,8 @@ def csunesco_project_update(context, data_dict):
         incoming, cs_schema.project_update_schema(incoming.keys()), context)
     if errors:
         raise tk.ValidationError(errors)
+    _sync_participation(data)
+    _apply_point_radius(data)
 
     old_values = db.project_dictize(project)
     previous_initiative = project.initiative_group
@@ -288,6 +437,15 @@ def csunesco_project_update(context, data_dict):
          .filter(db.CsContent.project_id == project.id)
          .update({'initiative_group': project.initiative_group},
                  synchronize_session=False))
+    if 'lead_organisation' in data:
+        project.organization_id = _resolve_lead_organisation(data)
+    if 'editors' in data:
+        _sync_editor_members(project.id, data.get('editors') or [], _utcnow())
+    if 'countries' in data and project.status == 'approved':
+        # Keep the derived member-states counter in step with the edit. Only
+        # for approved projects: pending requests get theirs seeded on
+        # approval, so no counter row is created ahead of moderation.
+        db.stats_set(project.id, member_states=_member_states_count(project))
     project.modified = _utcnow()
     model.Session.commit()
     return db.project_dictize(project)
@@ -327,10 +485,12 @@ def csunesco_project_resubmit(context, data_dict):
     # "only pending projects can be approved" guard -- re-queueing an already
     # pending request would be a no-op that reorders the queue, and
     # re-queueing an APPROVED one would unpublish a live landing page.
-    if project.status != 'rejected':
+    # 'draft' joined 'rejected' when the form gained "Save for later": both
+    # are author-held states whose only exit is this send-for-review door.
+    if project.status not in ('rejected', 'draft'):
         raise tk.ValidationError({'status': [tk._(
-            'Only rejected projects can be resubmitted (current status: %s)'
-        ) % project.status]})
+            'Only rejected or draft projects can be submitted for review '
+            '(current status: %s)') % project.status]})
 
     now = _utcnow()
     project.status = 'pending'
@@ -373,7 +533,15 @@ def csunesco_project_approve(context, data_dict):
         member.created = now
         model.Session.add(member)
     db.ensure_stats(project.id)
+    # Seed the derived member-states counter from the declared countries; the
+    # landing page's At-a-Glance band reads the counter row, which was
+    # otherwise never fed for this field.
+    db.stats_set(project.id, member_states=_member_states_count(project))
     model.Session.commit()
+    # AFTER the commit: a mailer hiccup must never roll back an approval.
+    from ckanext.csunesco.logic import notify
+    notify.notify_project_decision(project.created_by, project.title,
+                                   approved=True)
     return db.project_dictize(project)
 
 
@@ -396,6 +564,10 @@ def csunesco_project_reject(context, data_dict):
     project.rejection_reason = (data_dict or {}).get('reason')
     project.modified = now
     model.Session.commit()
+    from ckanext.csunesco.logic import notify
+    notify.notify_project_decision(project.created_by, project.title,
+                                   approved=False,
+                                   reason=project.rejection_reason)
     return db.project_dictize(project)
 
 
@@ -461,31 +633,68 @@ def csunesco_project_list(context, data_dict):
             db.CsProject.short_description.ilike(like),
         ))
 
-    # Stable total, independent of limit/offset.
-    total = query.count()
-    rows = (
-        query.order_by(db.CsProject.created.desc())
-        .limit(limit)
-        .offset(offset)
-        .all()
-    )
-    results = []
-    for project in rows:
-        item = db.project_dictize(project)
-        item.pop('region_geojson', None)
-        results.append(item)
+    # Spec phase-1 facets living in the extras JSON blob. Filtered in PYTHON
+    # over a BOUNDED sweep rather than with LIKE-over-JSON: a quoted-substring
+    # match cannot tell `water_type: ["River"]` from `keywords: ["River"]`,
+    # and the portal counts projects in the tens, not thousands. Promote to
+    # columns if that ever changes.
+    extras_filters = {}
+    for facet in ('water_type', 'water_data_type', 'activity_status',
+                  'geographic_extent'):
+        value = (data_dict.get(facet) or '').strip() \
+            if isinstance(data_dict.get(facet), str) else data_dict.get(facet)
+        if value:
+            extras_filters[facet] = str(value)
 
+    if extras_filters:
+        swept = (query.order_by(db.CsProject.created.desc())
+                 .limit(1000).all())
+        dictized = [db.project_dictize(project) for project in swept]
+        matched = []
+        for item in dictized:
+            ok = True
+            for facet, wanted in extras_filters.items():
+                stored = item.get(facet)
+                if isinstance(stored, (list, tuple)):
+                    ok = wanted in stored
+                else:
+                    ok = stored == wanted
+                if not ok:
+                    break
+            if ok:
+                matched.append(item)
+        total = len(matched)
+        results = matched[offset:offset + limit]
+        for item in results:
+            item.pop('region_geojson', None)
+    else:
+        # Stable total, independent of limit/offset.
+        total = query.count()
+        rows = (
+            query.order_by(db.CsProject.created.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+        results = []
+        for project in rows:
+            item = db.project_dictize(project)
+            item.pop('region_geojson', None)
+            results.append(item)
+
+    applied = {
+        'initiative': initiative,
+        'country': country,
+        'status': status,
+        'q': q,
+        'limit': limit,
+        'offset': offset,
+    }
+    applied.update(extras_filters)
     return {
         'count': total,
         'results': results,
-        'applied_filters': {
-            'initiative': initiative,
-            'country': country,
-            'status': status,
-            'q': q,
-            'limit': limit,
-            'offset': offset,
-        },
+        'applied_filters': applied,
     }
 
 
@@ -564,6 +773,30 @@ def csunesco_aggregate_stats(context, data_dict):
 
 
 @tk.side_effect_free
+def csunesco_option_lists(context, data_dict):
+    """The phase-1 form's option lists as one JSON document (public read).
+
+    The single source the CS Toolbox app mirrors instead of hard-coding a
+    second copy of each list -- its snapshot test compares against this
+    payload, so renaming or removing an option is a VISIBLE contract change.
+    """
+    tk.check_access('csunesco_option_lists', context, data_dict)
+    return {
+        'water_types': list(constants.WATER_TYPES),
+        'water_data_types': list(constants.WATER_DATA_TYPES),
+        'geographic_extents': list(constants.GEOGRAPHIC_EXTENTS),
+        'stakeholder_groups': list(constants.STAKEHOLDER_GROUPS),
+        'activity_statuses': list(constants.ACTIVITY_STATUSES),
+        'lead_partner_types': list(constants.LEAD_PARTNER_TYPES),
+        'funding_bodies': list(constants.FUNDING_BODIES),
+        'international_frameworks': list(constants.INTL_FRAMEWORKS),
+        'participation_modes': list(constants.PARTICIPATION_MODES),
+        'org_types': [dict(row) for row in constants.ORG_TYPES],
+        'initiatives': [dict(row) for row in constants.CS_INITIATIVES],
+    }
+
+
+@tk.side_effect_free
 def csunesco_member_state_list(context, data_dict):
     """The member states a project may declare: ``{'member_states': [...]}``.
 
@@ -595,9 +828,22 @@ def csunesco_my_projects(context, data_dict):
     return {'projects': db.projects_administered(current_user_id(context))}
 
 
+@tk.side_effect_free
+def csunesco_my_joined_projects(context, data_dict):
+    """The APPROVED projects the acting user participates in (any role).
+
+    The participant half of "My projects" (spec section 4): a citizen
+    scientist with an approved membership previously had NO page listing
+    their projects -- the admin dashboard is manager/creator-only.
+    """
+    tk.check_access('csunesco_my_joined_projects', context, data_dict)
+    return {'projects': db.projects_joined(current_user_id(context))}
+
+
 def get_actions():
     return {
         'csunesco_my_projects': csunesco_my_projects,
+        'csunesco_my_joined_projects': csunesco_my_joined_projects,
         'csunesco_project_request_create': csunesco_project_request_create,
         'csunesco_project_update': csunesco_project_update,
         'csunesco_project_resubmit': csunesco_project_resubmit,
@@ -609,4 +855,5 @@ def get_actions():
         'csunesco_project_stats_show': csunesco_project_stats_show,
         'csunesco_aggregate_stats': csunesco_aggregate_stats,
         'csunesco_member_state_list': csunesco_member_state_list,
+        'csunesco_option_lists': csunesco_option_lists,
     }
