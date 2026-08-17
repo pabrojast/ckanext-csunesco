@@ -47,9 +47,9 @@
     </div>
 
     {% if selected_type %}
-      {% snippet "csunesco/snippets/pagination.html", endpoint='csunesco.cs_content_index', page=page, total_pages=total_pages, params={'type': selected_type} %}
+      {% snippet "csunesco/snippets/pagination.html", endpoint='csunesco.cs_content_index', page=page, total_pages=total_pages, params={'type': selected_type, 'initiative': selected_initiative} %}
     {% else %}
-      {% snippet "csunesco/snippets/pagination.html", endpoint='csunesco.cs_content_index', page=page, total_pages=total_pages %}
+      {% snippet "csunesco/snippets/pagination.html", endpoint='csunesco.cs_content_index', page=page, total_pages=total_pages, params={'initiative': selected_initiative} if selected_initiative else {} %}
     {% endif %}
   </section>
 {% endblock %}

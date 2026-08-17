@@ -23,8 +23,9 @@ ONE_PIXEL_PNG = base64.b64decode(
 
 
 class DummyFile(object):
-    def __init__(self, filename):
+    def __init__(self, filename, data=ONE_PIXEL_PNG):
         self.filename = filename
+        self.stream = io.BytesIO(data)
 
 
 class FakeUploader(object):
@@ -47,6 +48,22 @@ class FakeUploader(object):
                 stream.write(b'image')
 
 
+class FakeAssetStorage(object):
+    def __init__(self):
+        self.deleted = []
+
+    def delete(self, reference):
+        self.deleted.append(reference)
+
+
+class FakeAssetUploader(FakeUploader):
+    def __init__(self, url, storage, failure=None):
+        super().__init__(url, failure=failure)
+        self._storage = storage
+        self._object_type = 'csunesco'
+        self._filename = 'generated.webp'
+
+
 def _factory(monkeypatch, uploaders):
     queue = list(uploaders)
     monkeypatch.setattr(uploads, 'uploads_enabled', lambda: True)
@@ -62,6 +79,44 @@ def test_uploaded_file_wins_and_becomes_an_internal_url(monkeypatch):
     batch = uploads.process_page_images(raw)
     assert raw[0]['image_url'] == '/uploads/csunesco/generated.webp'
     assert batch.project_image_url is None
+
+
+def test_external_uploader_url_is_preserved_and_can_be_rolled_back(
+        monkeypatch):
+    storage = FakeAssetStorage()
+    public_url = 'https://assets.example.test/csunesco/generated.webp'
+    _factory(monkeypatch, [FakeAssetUploader(public_url, storage)])
+    raw = [{'type': 'site_hero', 'id': 'abcdef01',
+            'image_upload': DummyFile('new.webp')}]
+
+    batch = uploads.process_page_images(raw)
+
+    assert raw[0]['image_url'] == public_url
+    batch.rollback()
+    assert storage.deleted == ['csunesco/generated.webp']
+
+
+def test_external_uploader_enables_uploads_without_local_storage(monkeypatch):
+    storage = FakeAssetStorage()
+    uploader = FakeAssetUploader('https://assets.test/image.png', storage)
+    monkeypatch.setitem(tk.config, 'ckan.storage_path', '')
+    monkeypatch.setitem(tk.config, 'ckan.uploads_enabled', True)
+    monkeypatch.setattr(
+        uploads.ckan_uploader, 'get_uploader', lambda _kind: uploader)
+    assert uploads.uploads_enabled() is True
+
+
+def test_declared_image_with_invalid_bytes_is_refused_before_write(
+        monkeypatch):
+    uploader = FakeUploader('bad.png')
+    _factory(monkeypatch, [uploader])
+    raw = [{'type': 'site_hero', 'id': 'abcdef01',
+            'image_upload': DummyFile('bad.png', b'not an image')}]
+
+    with pytest.raises(uploads.PageImageUploadError) as caught:
+        uploads.process_page_images(raw)
+
+    assert caught.value.problems[0]['reason'] == 'upload_bad_type'
 
 
 def test_real_ckan_uploader_writes_and_batch_can_roll_it_back(monkeypatch,

@@ -157,6 +157,49 @@ def test_qrcode_is_a_declared_dependency():
     assert 'qrcode' in source, 'qrcode missing from install_requires'
 
 
+# --------------------------------------------------------------------------- #
+# Citizen Scientist registration redesign: cross-file structural guards.      #
+# --------------------------------------------------------------------------- #
+
+REGISTER_FORM = os.path.join(
+    PKG_DIR, 'templates', 'csunesco', 'register_citizen.html')
+
+
+def _register_form_source():
+    with open(REGISTER_FORM, 'r') as handle:
+        return handle.read()
+
+
+def test_registration_bundle_exists_and_is_declared():
+    assert os.path.isfile(os.path.join(
+        PKG_DIR, 'assets', 'js', 'cs-register.js'))
+    with open(os.path.join(PKG_DIR, 'assets', 'webassets.yml'), 'r') as handle:
+        manifest = handle.read()
+    assert 'cs-register-js:' in manifest
+    assert "{% asset 'csunesco/cs-register-js' %}" in _register_form_source()
+
+
+def test_registration_form_carries_the_new_contract_without_password_values():
+    source = _register_form_source()
+    for name in ('project', 'date_of_birth', 'nationality', 'gender', 'terms'):
+        assert 'name="%s"' % name in source
+    password_tag = re.search(r'<input type="password" id="cs-password"[^>]*>',
+                             source, re.S).group(0)
+    confirm_tag = re.search(
+        r'<input type="password" id="cs-confirm-password"[^>]*>',
+        source, re.S).group(0)
+    assert 'value=' not in password_tag
+    assert 'value=' not in confirm_tag
+
+
+def test_project_register_link_preserves_the_project_slug():
+    join_template = os.path.join(
+        PKG_DIR, 'templates', 'csunesco', 'blocks', 'builtin_join.html')
+    with open(join_template, 'r') as handle:
+        source = handle.read()
+    assert "register_citizen', project=ctx.project.slug" in source
+
+
 def test_country_picker_round_trips_values_outside_the_current_list():
     """A project's stored countries must survive an edit even when the
     member-state list is empty, degraded, or has dropped one of them.

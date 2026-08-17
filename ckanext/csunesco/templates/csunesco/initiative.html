@@ -1,71 +1,19 @@
 {% extends "csunesco/base.html" %}
 
-{#
-  Single initiative page (increment 4): header + a grid of the approved projects
-  filed under this initiative, with an in-grid empty state. All output is
-  autoescaped -- no `| safe` on user data.
-
-  Vars: initiative ({name, title}), projects (list), project_count (int).
-#}
-
 {% block subtitle %}{{ initiative.title }}{% endblock %}
 
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
-  <section class="cs-hero" aria-labelledby="cs-init-title">
-    <h1 id="cs-init-title">{{ initiative.title }}</h1>
-    {# Newstyle gettext: variables go as kwargs of _() — an explicit `%` after
-       _() crashes because gettext already formatted with an empty mapping. #}
-    <p>{{ _("Community projects contributing to the %(name)s initiative.", name=initiative.title) }}</p>
-  </section>
-
-  <section class="cs-section" aria-labelledby="cs-init-projects-title">
-    <div class="cs-section-header">
-      <h2 id="cs-init-projects-title" class="cs-section-title">{{ _("Projects") }}</h2>
-      <a class="cs-link"
-         href="{{ h.url_for('csunesco.project_list', initiative=initiative.name) }}">
-        {{ _("Search within all projects") }} &rarr;
-      </a>
-    </div>
-    <div class="cs-project-grid">
-      {% for project in projects %}
-        {% snippet "csunesco/snippets/project_card.html", project=project %}
-      {% else %}
-        <p class="cs-empty">{{ _("No approved projects in this initiative yet.") }}</p>
-      {% endfor %}
-    </div>
-  </section>
-
-  {% if news %}
-    <section class="cs-section" aria-labelledby="cs-init-news-title">
-      <div class="cs-section-header">
-        <h2 id="cs-init-news-title" class="cs-section-title">{{ _("Latest news") }}</h2>
-        <a class="cs-link" href="{{ h.url_for('csunesco.cs_news_index') }}">
-          {{ _("All news") }} &rarr;
-        </a>
-      </div>
-      <div class="cs-content-grid">
-        {% for item in news %}
-          {% snippet "csunesco/snippets/content_card.html", item=item %}
-        {% endfor %}
-      </div>
-    </section>
+  {% if is_draft_preview %}
+    <p class="cs-preview-banner"><strong>{{ _("Draft preview.") }}</strong>
+      <a class="cs-btn cs-btn-secondary cs-btn-sm" href="{{ h.url_for('csunesco.initiative_page_edit', name=initiative.name) }}">{{ _("Back to the editor") }}</a>
+    </p>
   {% endif %}
-
-  {% if events %}
-    <section class="cs-section" aria-labelledby="cs-init-events-title">
-      <div class="cs-section-header">
-        <h2 id="cs-init-events-title" class="cs-section-title">{{ _("Upcoming events") }}</h2>
-        <a class="cs-link" href="{{ h.url_for('csunesco.cs_events_index') }}">
-          {{ _("All events") }} &rarr;
-        </a>
-      </div>
-      <div class="cs-content-grid">
-        {% for item in events %}
-          {% snippet "csunesco/snippets/content_card.html", item=item %}
-        {% endfor %}
-      </div>
-    </section>
+  {% if ctx.can_manage and not is_draft_preview %}
+    <p class="cs-page-edit-bar"><a class="cs-btn cs-btn-secondary cs-btn-sm" href="{{ h.url_for('csunesco.initiative_page_edit', name=initiative.name) }}">{{ _("Edit this page") }}</a></p>
   {% endif %}
+  {% for block in blocks %}{% snippet "csunesco/snippets/block_render.html", block=block, ctx=ctx %}{% endfor %}
 {% endblock %}
+
+{% block scripts %}{{ super() }}{% if ctx.has_lightbox %}{% asset 'csunesco/cs-page-view-js' %}{% endif %}{% endblock %}

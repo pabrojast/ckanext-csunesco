@@ -241,6 +241,24 @@ def admin_dashboard():
     })
 
 
+def project_review(id):
+    if not tk.g.user:
+        return _not_authorized_response()
+    try:
+        project = tk.get_action('csunesco_project_review_show')(
+            _context(), {'id': id})
+    except tk.NotAuthorized:
+        return _not_authorized_response()
+    except tk.ObjectNotFound:
+        return tk.abort(404, tk._('No project request is awaiting review'))
+    except Exception:
+        log.warning('csunesco: project review could not be loaded')
+        return tk.abort(404, tk._('No project request is awaiting review'))
+    return tk.render('csunesco/project_review.html', extra_vars={
+        'project': project,
+    })
+
+
 # ---------------------------------------------------------------------------
 # Moderation POST handlers (each delegates to a domain action)
 # ---------------------------------------------------------------------------

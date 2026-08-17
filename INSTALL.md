@@ -86,6 +86,18 @@ ckan.recaptcha.publickey  = <site-key>
 ckan.recaptcha.privatekey = <secret-key>
 ```
 
+Registration also has a best-effort per-worker IP throttle enabled by default;
+it counts successful and failed POSTs. Override it only when the deployment's
+traffic model requires different values:
+
+```ini
+ckanext.csunesco.registration_rate_limit_enabled = true
+ckanext.csunesco.registration_rate_limit_max     = 10
+ckanext.csunesco.registration_rate_limit_window  = 300
+```
+
+For several CKAN workers, keep a shared rate limit at the reverse proxy/WAF too.
+
 ## 6. Optional: the "Ask the data" block
 
 The `data_chat` block lets signed-in visitors ask questions about a project's
@@ -121,10 +133,15 @@ persistent storage:
 ckan.uploads_enabled = true
 ckan.storage_path = /var/lib/ckan/default
 ckan.max_image_size = 2
+ckan.upload.csunesco.types = image
+ckan.upload.csunesco.mimetypes = image/jpeg image/png image/webp
 ```
 
 The CKAN process must be able to create and write
-`storage/uploads/csunesco/` below that path. Uploaded images are public and
+`storage/uploads/csunesco/` below that path. When an uploader plugin such as
+`ckanext-asset-storage` is configured, its canonical URL is stored instead and
+`ckan.storage_path` is not required. In either case the actual JPEG/PNG/WebP
+bytes are validated before writing. Uploaded images are public and
 receive unique filenames; replacing an image changes the page reference but
 does not delete the older file because a published page may still use it.
 

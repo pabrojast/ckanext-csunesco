@@ -243,13 +243,51 @@ def csunesco_project_update(context, data_dict):
     if errors:
         raise tk.ValidationError(errors)
 
+    old_values = db.project_dictize(project)
+    previous_initiative = project.initiative_group
     for field, column in PROJECT_EDITABLE_COLUMNS:
         if field in data:
             setattr(project, column, data[field])
     if 'short_description' in data:
         # SANITIZE before storing -- the same rule as the create path.
         project.short_description = _sanitize_html(data['short_description'])
-    project.extras = json.dumps(_project_extras(data, project.extras))
+    extras = _project_extras(data, project.extras)
+    candidate = db.project_dictize(project)
+    candidate.update(extras)
+    changed = []
+    tracked = [field for field, _column in PROJECT_EDITABLE_COLUMNS]
+    tracked.extend(['short_description'] + list(cs_schema.PROJECT_EXTRA_FIELDS))
+    for field in tracked:
+        if field not in data:
+            continue
+        old_key = 'initiative_group' if field == 'initiative' else field
+        new_value = (extras.get(field)
+                     if field in cs_schema.PROJECT_EXTRA_FIELDS
+                     else candidate.get(old_key))
+        if old_values.get(old_key) != new_value:
+            changed.append(field)
+    if changed:
+        user_id = current_user_id(context)
+        user = context.get('auth_user_obj')
+        user_name = ((getattr(user, 'display_name', None)
+                      or getattr(user, 'name', None)) if user else None)
+        history = extras.get('edit_history')
+        history = list(history) if isinstance(history, list) else []
+        history.append({
+            'user_id': user_id,
+            'user_name': user_name or context.get('user') or user_id or u'',
+            'timestamp': _utcnow().replace(microsecond=0).isoformat() + 'Z',
+            'fields': sorted(set(changed)),
+        })
+        extras['edit_history'] = history[-50:]
+    project.extras = json.dumps(extras)
+    if previous_initiative != project.initiative_group:
+        # Content inherits its moderation scope from the project. Keep it in
+        # sync atomically when a reviewer corrects the initiative.
+        (model.Session.query(db.CsContent)
+         .filter(db.CsContent.project_id == project.id)
+         .update({'initiative_group': project.initiative_group},
+                 synchronize_session=False))
     project.modified = _utcnow()
     model.Session.commit()
     return db.project_dictize(project)
@@ -515,7 +553,14 @@ def csunesco_aggregate_stats(context, data_dict):
     """
     tk.check_access('csunesco_aggregate_stats', context, data_dict)
     db.ensure_mappers()
-    return db.aggregate_stats()
+    data_dict = data_dict or {}
+    initiative = data_dict.get('initiative') or None
+    if initiative:
+        canonical = {item['name'] for item in constants.CS_INITIATIVES}
+        if initiative not in canonical:
+            raise tk.ValidationError({'initiative': [tk._(
+                'Unknown Citizen Science initiative')]})
+    return db.aggregate_stats(initiative_group=initiative)
 
 
 @tk.side_effect_free

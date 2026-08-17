@@ -112,6 +112,12 @@ def project_reject(id):
     return views_admin.project_reject(id)
 
 
+def project_review(id):
+    """Full pending-project review record."""
+    from ckanext.csunesco.logic import views_admin
+    return views_admin.project_review(id)
+
+
 def join_approve(project_id, user_id):
     """POST: approve a pending join request."""
     from ckanext.csunesco.logic import views_admin
@@ -300,6 +306,18 @@ def site_page_preview():
     return views_page.site_page_preview()
 
 
+def initiative_page_edit(name):
+    """Initiative-page editor for its ADM or a sysadmin."""
+    from ckanext.csunesco.logic import views_page
+    return views_page.initiative_page_edit(name)
+
+
+def initiative_page_preview(name):
+    """Preview an initiative page draft."""
+    from ckanext.csunesco.logic import views_page
+    return views_page.initiative_page_preview(name)
+
+
 def data_source_approve(id):
     """POST: approve a pending data source (creates the CKAN dataset)."""
     from ckanext.csunesco.logic import views_admin
@@ -389,6 +407,9 @@ csunesco_bp.add_url_rule(
 csunesco_bp.add_url_rule(
     '/admin/project/<id>/reject', 'project_reject', project_reject,
     methods=['POST'])
+csunesco_bp.add_url_rule(
+    '/admin/project/<id>/review', 'project_review', project_review,
+    methods=['GET'])
 csunesco_bp.add_url_rule(
     '/admin/join/<project_id>/<user_id>/approve', 'join_approve', join_approve,
     methods=['POST'])
@@ -498,6 +519,13 @@ csunesco_bp.add_url_rule(
     '/page', 'site_page_edit', site_page_edit, methods=['GET', 'POST'])
 csunesco_bp.add_url_rule(
     '/page/preview', 'site_page_preview', site_page_preview, methods=['GET'])
+
+csunesco_bp.add_url_rule(
+    '/initiative/<name>/page', 'initiative_page_edit', initiative_page_edit,
+    methods=['GET', 'POST'])
+csunesco_bp.add_url_rule(
+    '/initiative/<name>/page/preview', 'initiative_page_preview',
+    initiative_page_preview, methods=['GET'])
 
 
 def get_blueprints():

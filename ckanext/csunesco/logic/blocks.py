@@ -626,6 +626,15 @@ def _n_site_news(raw, report=None):
     }
 
 
+# Initiative built-ins use the same small author overrides as their hub
+# counterparts. Their live projects/content/counters are resolved at render
+# time and never copied into the page JSON.
+_n_initiative_hero = _n_site_hero
+_n_initiative_about = _n_site_about
+_n_initiative_projects = _n_site_projects
+_n_initiative_content = _n_site_news
+
+
 # --------------------------------------------------------------------------- #
 # The registry                                                                #
 # --------------------------------------------------------------------------- #
@@ -689,11 +698,11 @@ _TYPES = [
     # --- author-added -----------------------------------------------------
     BlockType('rich_text', u'Text', u'text', _n_rich_text,
               u'A paragraph of formatted text.', max_instances=20,
-              scopes=('project', 'site')),
+              scopes=('project', 'site', 'initiative')),
     BlockType('media_text', u'Image + text', u'media-text', _n_media_text,
               u'An image beside a paragraph of formatted text.',
               max_instances=4, requires_review=True,
-              scopes=('project', 'site'), category='media'),
+              scopes=('project', 'site', 'initiative'), category='media'),
     BlockType('chart', u'Chart', u'chart', _n_chart,
               u'A chart of the observations your volunteers collected in the '
               u'app. Nothing shows until you pick which data to chart.',
@@ -705,14 +714,14 @@ _TYPES = [
     BlockType('stats', u'Your own counters', u'counters', _n_stats,
               u'Up to four big numbers you choose - typed in, or kept up to '
               u'date automatically from your data.', max_instances=3,
-              scopes=('project', 'site'), category='data'),
+              scopes=('project', 'site', 'initiative'), category='data'),
     BlockType('image', u'Images', u'image', _n_image,
               u'One image or a gallery.', max_instances=8,
-              requires_review=True, scopes=('project', 'site'),
+              requires_review=True, scopes=('project', 'site', 'initiative'),
               category='media'),
     BlockType('video', u'Video', u'video', _n_video,
               u'A YouTube or Vimeo video.', max_instances=4,
-              requires_review=True, scopes=('project', 'site'),
+              requires_review=True, scopes=('project', 'site', 'initiative'),
               category='media'),
     BlockType('observation_map', u'Observation map', u'pin',
               _n_observation_map,
@@ -721,19 +730,19 @@ _TYPES = [
     BlockType('terria_map', u'Interactive map', u'map', _n_terria_map,
               u'A map you built in the IHP-WINS map viewer and shared with its '
               u'Share button.', max_instances=2, requires_review=True,
-              category='data'),
+              scopes=('project', 'initiative'), category='data'),
     BlockType('content_list', u'A list of news or events', u'news',
               _n_content_list,
               u'Pick exactly which news, events or publications to list, and '
               u'how many. (The standard "News, Events & More" section already '
               u'shows the most recent ones.)', max_instances=4,
-              scopes=('project', 'site'), category='lists'),
+              scopes=('project', 'site', 'initiative'), category='lists'),
     BlockType('datasets_list', u'Datasets', u'database', _n_datasets_list,
               u'A list of datasets published on IHP-WINS.', max_instances=2,
               scopes=('project', 'site'), category='lists'),
     BlockType('callout', u'Highlight', u'bulb', _n_callout,
               u'A highlighted note with an optional button.', max_instances=6,
-              scopes=('project', 'site')),
+              scopes=('project', 'site', 'initiative')),
 
     # --- built-in wrappers for the standard sections -----------------------
     # Addable=False: they exist on every page from the start and are toggled
@@ -796,6 +805,25 @@ _TYPES = [
               u'empty to keep the standard translated text.',
               builtin=True, addable=False, scopes=('site',),
               has_editor=True),
+
+    # --- built-in wrappers for an initiative page -------------------------
+    BlockType('initiative_hero', u'Hero banner', u'globe',
+              _n_initiative_hero, builtin=True, addable=False,
+              scopes=('initiative',), has_editor=True),
+    BlockType('initiative_glance', u'At a Glance', u'gauge', _n_builtin,
+              builtin=True, addable=False, scopes=('initiative',)),
+    BlockType('initiative_about', u'About this initiative', u'doc',
+              _n_initiative_about, builtin=True, addable=False,
+              scopes=('initiative',), has_editor=True),
+    BlockType('initiative_projects', u'Projects', u'pin',
+              _n_initiative_projects, builtin=True, addable=False,
+              scopes=('initiative',), has_editor=True),
+    BlockType('initiative_news', u'Latest news', u'news',
+              _n_initiative_content, builtin=True, addable=False,
+              scopes=('initiative',), has_editor=True),
+    BlockType('initiative_events', u'Upcoming events', u'calendar',
+              _n_initiative_content, builtin=True, addable=False,
+              scopes=('initiative',), has_editor=True),
 ]
 
 BLOCK_TYPES = dict((block_type.key, block_type) for block_type in _TYPES)
@@ -833,10 +861,20 @@ SITE_DEFAULT_BLOCK_TYPES = (
     'site_cta',
 )
 
+INITIATIVE_DEFAULT_BLOCK_TYPES = (
+    'initiative_hero',
+    'initiative_glance',
+    'initiative_about',
+    'initiative_projects',
+    'initiative_news',
+    'initiative_events',
+)
+
 # ensure_builtins / default pages, keyed by scope.
 BUILTIN_TYPES_BY_SCOPE = {
     'project': DEFAULT_BLOCK_TYPES,
     'site': SITE_DEFAULT_BLOCK_TYPES,
+    'initiative': INITIATIVE_DEFAULT_BLOCK_TYPES,
 }
 
 
@@ -849,6 +887,11 @@ def default_site_blocks():
     """A fresh copy of the default hub page (matches the pre-block hub)."""
     return normalize_blocks(
         [{'type': key} for key in SITE_DEFAULT_BLOCK_TYPES])
+
+
+def default_initiative_blocks():
+    return normalize_blocks(
+        [{'type': key} for key in INITIATIVE_DEFAULT_BLOCK_TYPES])
 
 
 # --------------------------------------------------------------------------- #

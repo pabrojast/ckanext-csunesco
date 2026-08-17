@@ -30,6 +30,6 @@
       {% endfor %}
     </div>
 
-    {% snippet "csunesco/snippets/pagination.html", endpoint='csunesco.cs_publications_index', page=page, total_pages=total_pages %}
+    {% snippet "csunesco/snippets/pagination.html", endpoint='csunesco.cs_publications_index', page=page, total_pages=total_pages, params={'initiative': selected_initiative} if selected_initiative else {} %}
   </section>
 {% endblock %}

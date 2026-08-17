@@ -424,6 +424,15 @@ def csunesco_admin_pending_list(context, data_dict):
             'msg': tk._('You do not have access to the approval panel')}
 
 
+def csunesco_project_review_show(context, data_dict):
+    project_id = (data_dict or {}).get('id')
+    if _is_sysadmin(context) or _is_project_initiative_admin(
+            context, project_id):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only a project reviewer can see this request')}
+
+
 def csunesco_content_create(context, data_dict):
     # Sysadmin, the target project's admin/initiative admin (project content)
     # or an org admin/editor (organization content). When neither scope is
@@ -671,6 +680,23 @@ def csunesco_site_page_publish(context, data_dict):
     return csunesco_site_page_update(context, data_dict)
 
 
+@tk.auth_allow_anonymous_access
+def csunesco_initiative_page_show(context, data_dict):
+    return {'success': True}
+
+
+def csunesco_initiative_page_update(context, data_dict):
+    initiative = (data_dict or {}).get('initiative')
+    if _is_sysadmin(context) or initiative in _admin_initiative_groups(context):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only the initiative admin can edit this page')}
+
+
+def csunesco_initiative_page_publish(context, data_dict):
+    return csunesco_initiative_page_update(context, data_dict)
+
+
 def _is_page_initiative_admin(context, project_id):
     """ADM of the project whose page this is."""
     return _is_project_initiative_admin(context, project_id)
@@ -730,6 +756,7 @@ def get_auth_functions():
         'csunesco_project_update': csunesco_project_update,
         'csunesco_project_resubmit': csunesco_project_resubmit,
         'csunesco_admin_pending_list': csunesco_admin_pending_list,
+        'csunesco_project_review_show': csunesco_project_review_show,
         'csunesco_content_create': csunesco_content_create,
         'csunesco_content_update': csunesco_content_update,
         'csunesco_content_approve': csunesco_content_approve,
@@ -755,6 +782,10 @@ def get_auth_functions():
         'csunesco_site_page_show': csunesco_site_page_show,
         'csunesco_site_page_update': csunesco_site_page_update,
         'csunesco_site_page_publish': csunesco_site_page_publish,
+        'csunesco_initiative_page_show': csunesco_initiative_page_show,
+        'csunesco_initiative_page_update': csunesco_initiative_page_update,
+        'csunesco_initiative_page_publish':
+            csunesco_initiative_page_publish,
         'csunesco_register_citizen_scientist':
             csunesco_register_citizen_scientist,
     }

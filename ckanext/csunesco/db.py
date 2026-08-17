@@ -230,6 +230,13 @@ cs_citizen_scientist_table = Table(
     # Optional self-declared country captured at registration (UNESCO member
     # state). Free text -- kept for profile/reporting, never used for auth.
     Column('country', types.UnicodeText),
+    # Optional private profile fields introduced by the CS Toolbox sign-up
+    # redesign. ``nationality`` is an ISO-3166 alpha-2 code; ``country`` above
+    # remains the human/canonical compatibility value used by existing views.
+    Column('date_of_birth', types.Date),
+    Column('nationality', types.UnicodeText),
+    Column('gender', types.UnicodeText),
+    Column('terms_accepted_at', types.DateTime),
     # Email-verification state for web self-registration. API/ofform-created
     # accounts are trusted and land already verified. ``verification_token`` is
     # a single-use, unguessable token (indexed for the /verify lookup) that is
@@ -364,6 +371,10 @@ _AUTO_HEAL_COLUMNS = [
     ('cs_content', 'source', "TEXT DEFAULT 'ckan'"),
     ('cs_project_stats', 'member_states', 'INTEGER DEFAULT 0'),
     ('cs_citizen_scientist', 'country', 'TEXT'),
+    ('cs_citizen_scientist', 'date_of_birth', 'DATE'),
+    ('cs_citizen_scientist', 'nationality', 'TEXT'),
+    ('cs_citizen_scientist', 'gender', 'TEXT'),
+    ('cs_citizen_scientist', 'terms_accepted_at', 'TIMESTAMP'),
     ('cs_citizen_scientist', 'email_verified', 'BOOLEAN DEFAULT FALSE'),
     ('cs_citizen_scientist', 'verification_token', 'TEXT'),
     ('cs_citizen_scientist', 'token_created', 'TIMESTAMP'),
@@ -475,15 +486,18 @@ def get_citizen_scientist_by_token(token):
 
 
 def get_or_create_citizen_scientist(user_id, country=None,
-                                    verification_token=None):
+                                    verification_token=None,
+                                    date_of_birth=None, nationality=None,
+                                    gender=None, terms_accepted=False):
     """Idempotently mark a CKAN user as a Citizen Scientist.
 
     Inserts one ``cs_citizen_scientist`` row per ``user_id``; if a row already
     exists (unique constraint on ``user_id``) it is returned unchanged and no
-    second row is created. On first insert it records the optional ``country``
-    and, when ``verification_token`` is given, stamps the token + its creation
-    time and leaves ``email_verified`` False (web self-registration); with no
-    token the profile is considered already verified (API/ofform path).
+    second row is created. On first insert it records the optional private
+    profile fields and, when ``verification_token`` is given, stamps the token
+    + its creation time and leaves ``email_verified`` False (web
+    self-registration); with no token the profile is considered already
+    verified (API/ofform path).
 
     Callers own transaction control: the mappers are wired lazily here so the
     helper is safe to call before ``ensure_tables()`` has run this process.
@@ -501,6 +515,11 @@ def get_or_create_citizen_scientist(user_id, country=None,
     profile = CsCitizenScientist()
     profile.user_id = user_id
     profile.country = country or None
+    profile.date_of_birth = date_of_birth
+    profile.nationality = nationality or None
+    profile.gender = gender or None
+    if terms_accepted:
+        profile.terms_accepted_at = _utcnow()
     if verification_token:
         profile.email_verified = False
         profile.verification_token = verification_token
@@ -842,7 +861,7 @@ def stats_set(project_id, observations=None, sites_monitored=None,
         Session.expire(cached)
 
 
-def aggregate_stats():
+def aggregate_stats(initiative_group=None):
     """At-a-glance totals across APPROVED projects (hub band).
 
     * ``observations`` / ``sites_monitored``: summed from the per-project
@@ -857,6 +876,11 @@ def aggregate_stats():
     Read-only; never commits. All literals are bound parameters.
     """
     _ensure_mappers()
+    initiative_sql = (' AND p.initiative_group = :initiative'
+                      if initiative_group else '')
+    params = {'status': 'approved'}
+    if initiative_group:
+        params['initiative'] = initiative_group
     row = Session.execute(
         sa.text(
             'SELECT '
@@ -864,29 +888,40 @@ def aggregate_stats():
             'COALESCE(SUM(s.sites_monitored), 0) '
             'FROM cs_project_stats s '
             'JOIN cs_project p ON p.id = s.project_id '
-            'WHERE p.status = :status'
+            'WHERE p.status = :status' + initiative_sql
         ),
-        {'status': 'approved'},
+        params,
     ).first()
     observations = int(row[0] or 0) if row is not None else 0
     sites = int(row[1] or 0) if row is not None else 0
 
-    profile_ids = {
+    profile_ids = ({
         user_id for (user_id,) in
         Session.query(CsCitizenScientist.user_id).all() if user_id
-    }
-    member_ids = {
+    } if not initiative_group else set())
+    member_query = (
         user_id for (user_id,) in
         Session.query(CsProjectMember.user_id)
         .join(CsProject, CsProject.id == CsProjectMember.project_id)
         .filter(CsProject.status == 'approved')
         .filter(CsProjectMember.status == 'active')
+        .filter(CsProject.initiative_group == initiative_group)
         .all() if user_id
-    }
+    ) if initiative_group else (
+        user_id for (user_id,) in
+        Session.query(CsProjectMember.user_id)
+        .join(CsProject, CsProject.id == CsProjectMember.project_id)
+        .filter(CsProject.status == 'approved')
+        .filter(CsProjectMember.status == 'active').all() if user_id)
+    member_ids = set(member_query)
 
     countries = set()
-    for (raw,) in (Session.query(CsProject.countries)
-                   .filter(CsProject.status == 'approved').all()):
+    country_query = (Session.query(CsProject.countries)
+                     .filter(CsProject.status == 'approved'))
+    if initiative_group:
+        country_query = country_query.filter(
+            CsProject.initiative_group == initiative_group)
+    for (raw,) in country_query.all():
         parsed = _load_json(raw, [])
         if isinstance(parsed, list):
             countries.update(str(c).strip() for c in parsed if str(c).strip())
@@ -1812,6 +1847,16 @@ def page_dictize(page, include_draft=False):
 # dedicated ``csunesco_site_page_*`` actions are the only writers. Collision
 # with a real project id is impossible (``make_uuid`` never yields this).
 SITE_PAGE_ID = u'__site__'
+INITIATIVE_PAGE_PREFIX = u'__initiative__:'
+
+
+def initiative_page_id(initiative_group):
+    return INITIATIVE_PAGE_PREFIX + str(initiative_group or u'')
+
+
+def is_special_page_id(project_id):
+    return (project_id == SITE_PAGE_ID
+            or str(project_id or '').startswith(INITIATIVE_PAGE_PREFIX))
 
 
 def get_project_page(project_id):
@@ -1883,6 +1928,7 @@ def pending_pages(limit=20, offset=0, initiative_groups=None):
         # publish is sysadmin-direct), but if a bug ever left it there the
         # outerjoin would list it with a NULL title in the review tab.
         .filter(CsProjectPage.project_id != SITE_PAGE_ID)
+        .filter(~CsProjectPage.project_id.startswith(INITIATIVE_PAGE_PREFIX))
     )
     if initiative_groups is not None:
         if not initiative_groups:
@@ -1924,6 +1970,7 @@ def _count_pending_pages(initiative_groups=None):
         .filter(CsProjectPage.status == 'pending')
         # Same defensive exclusion as pending_pages().
         .filter(CsProjectPage.project_id != SITE_PAGE_ID)
+        .filter(~CsProjectPage.project_id.startswith(INITIATIVE_PAGE_PREFIX))
     )
     if initiative_groups is not None:
         if not initiative_groups:

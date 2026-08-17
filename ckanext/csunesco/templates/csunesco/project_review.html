@@ -1,0 +1,62 @@
+{% extends "csunesco/base.html" %}
+
+{% block subtitle %}{{ _("Review project") }} - {{ project.title }}{% endblock %}
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% macro value(value) -%}
+  {% if value is defined and value is not none and value != '' and value != [] %}{{ value }}{% else %}<span class="cs-muted">{{ _("Not provided") }}</span>{% endif %}
+{%- endmacro %}
+
+{% block cs_content %}
+  <header class="cs-wb-header">
+    <p class="cs-wb-eyebrow">{{ _("Project request") }}</p>
+    <h1 class="cs-wb-title">{{ project.title }}</h1>
+    <p><a class="cs-btn cs-btn-secondary cs-btn-sm" href="{{ h.url_for('csunesco.admin_dashboard') }}#tab-projects">{{ _("Back to project requests") }}</a></p>
+  </header>
+
+  <section class="cs-card cs-form-card cs-form-card--wide">
+    <h2>{{ _("Full submission") }}</h2>
+    {% if project.image_url %}<img class="cs-review-cover" src="{{ project.image_url }}" alt="" loading="lazy">{% else %}<p class="cs-muted">{{ _("Cover image: Not provided") }}</p>{% endif %}
+    <dl class="cs-facts">
+      <dt>{{ _("Title") }}</dt><dd>{{ value(project.title) }}</dd>
+      <dt>{{ _("Slug") }}</dt><dd>{{ value(project.slug) }}</dd>
+      <dt>{{ _("Initiative") }}</dt><dd>{{ project.initiative_title or project.initiative_group or _("Not part of an initiative") }}</dd>
+      <dt>{{ _("Countries") }}</dt><dd>{% if project.countries %}{% for state in h.csunesco_member_state_titles(project.countries) %}<span class="cs-chip">{{ state.title }}</span>{% endfor %}{% else %}<span class="cs-muted">{{ _("Not provided") }}</span>{% endif %}</dd>
+      <dt>{{ _("Biosphere reserve") }}</dt><dd>{{ value(project.biosphere_reserve) }}</dd>
+      <dt>{{ _("Description") }}</dt><dd>{{ value(project.short_description | striptags) }}</dd>
+      <dt>{{ _("How to take part") }}</dt><dd>{{ value(project.how_to_participate | striptags) }}</dd>
+      <dt>{{ _("Start date") }}</dt><dd>{{ value(project.start_date) }}</dd>
+      <dt>{{ _("End date") }}</dt><dd>{{ value(project.end_date) }}</dd>
+      <dt>{{ _("Open participation") }}</dt><dd>{{ _("Yes") if project.open_participation else _("No") }}</dd>
+      <dt>{{ _("Target group") }}</dt><dd>{{ value(project.target_group | striptags) }}</dd>
+      <dt>{{ _("Contact person") }}</dt><dd>{{ value(project.contact_person) }}</dd>
+      <dt>{{ _("Contact email") }}</dt><dd>{{ value(project.contact_email) }}</dd>
+      <dt>{{ _("Project document") }}</dt><dd>{% if project.project_document_url %}<a href="{{ project.project_document_url }}" target="_blank" rel="nofollow noopener">{{ project.project_document_url }}</a>{% else %}<span class="cs-muted">{{ _("Not provided") }}</span>{% endif %}</dd>
+      <dt>{{ _("Submitted by") }}</dt><dd>{{ value(project.created_by_name) }}</dd>
+      <dt>{{ _("Submitted at") }}</dt><dd>{{ value(project.created) }}</dd>
+    </dl>
+  </section>
+
+  <section class="cs-section" aria-labelledby="review-region-title">
+    <h2 id="review-region-title">{{ _("Project region") }}</h2>
+    {% if project.region_geojson %}
+      <div id="cs-map" class="cs-map" data-geojson-url="{{ h.url_for('csunesco.project_geojson', slug=project.slug) }}" role="img" aria-label="{{ _('Map of the project region') }}"><div class="cs-map-skeleton">{{ _("Loading map…") }}</div><p class="cs-map-fallback" hidden>{{ _("The interactive map could not be loaded.") }}</p></div>
+      <details class="cs-review-details"><summary>{{ _("GeoJSON") }}</summary><pre class="cs-review-json">{{ project.region_geojson }}</pre></details>
+    {% else %}<p class="cs-muted">{{ _("Not provided") }}</p>{% endif %}
+  </section>
+
+  <section class="cs-section" aria-labelledby="review-history-title">
+    <h2 id="review-history-title">{{ _("Edit history") }}</h2>
+    {% if project.edit_history %}
+      <ol class="cs-review-history">{% for entry in project.edit_history | reverse %}<li><strong>{{ entry.user_name or entry.user_id }}</strong> · {{ entry.timestamp }}<br><span class="cs-muted">{{ entry.fields | join(', ') }}</span></li>{% endfor %}</ol>
+    {% else %}<p class="cs-muted">{{ _("No edits have been recorded since submission.") }}</p>{% endif %}
+  </section>
+
+  <div class="cs-admin-actions cs-review-actions">
+    <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.project_edit', slug=project.slug, return_to='review') }}">{{ _("Edit request") }}</a>
+    <form method="post" action="{{ h.url_for('csunesco.project_approve', id=project.id) }}" data-confirm="{{ _('Approve this project?') }}">{{ h.csrf_input() }}<button class="cs-btn cs-btn-primary" type="submit">{{ _("Approve") }}</button></form>
+    <form method="post" action="{{ h.url_for('csunesco.project_reject', id=project.id) }}" data-confirm="{{ _('Reject this project?') }}">{{ h.csrf_input() }}<label for="review-reason">{{ _("Reason (optional)") }}</label><input id="review-reason" name="reason"><button class="cs-btn cs-btn-danger" type="submit">{{ _("Reject") }}</button></form>
+  </div>
+{% endblock %}
+
+{% block scripts %}{{ super() }}{% if project.region_geojson %}<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>{% asset 'csunesco/cs-map-js' %}{% endif %}{% endblock %}

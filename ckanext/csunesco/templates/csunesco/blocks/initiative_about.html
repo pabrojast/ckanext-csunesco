@@ -1,0 +1,11 @@
+{% if block.title or block.html or block.image_url %}
+  <section class="cs-section cs-about" id="block-{{ block.id }}">
+    <div class="cs-about-image">
+      {% if block.image_url %}<img src="{{ block.image_url }}" alt="{{ block.alt }}" loading="lazy">{% endif %}
+    </div>
+    <div class="cs-about-copy">
+      <h2 class="cs-section-title">{{ block.title or _("About this initiative") }}</h2>
+      {% if block.html %}<div class="cs-prose">{{ block.html | safe }}</div>{% endif %}
+    </div>
+  </section>
+{% endif %}

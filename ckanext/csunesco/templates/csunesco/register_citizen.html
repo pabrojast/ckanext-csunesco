@@ -1,194 +1,260 @@
 {% extends "csunesco/base.html" %}
 
 {#
-  Citizen Scientist self-registration (increment 2).
+  Citizen Scientist self-registration, aligned with the CS Toolbox sign-up.
 
-  Single-column, mobile-first, UNESCO-branded form parallel to CKAN's
-  /user/register but with NO organization step. All `{{ ... }}` output is
-  autoescaped by Jinja2 -- do NOT use `| safe` on user data (XSS). Errors are
-  intentionally GENERIC (no per-field / account-enumeration hints); the server
-  is the source of truth, the inline JS below is progressive enhancement only.
+  Server errors stay deliberately generic (no account enumeration). Client
+  hints are progressive enhancement only; every rule is repeated server-side.
+  User values are autoescaped and passwords are never echoed back.
 #}
 
 {% block subtitle %}{{ _("Become a Citizen Scientist") }}{% endblock %}
-
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
-  {% if pending_verification %}
-    {# Pending state: the account exists but is INACTIVE until the emailed link
-       is opened. Deliberately NO login CTA yet -- login is blocked until then. #}
-    <section class="cs-hero" aria-labelledby="cs-reg-success-title">
-      <h1 id="cs-reg-success-title">{{ _("Almost there — check your email") }}</h1>
-      <p>{{ _("We've sent you a link to activate your account.") }}</p>
-    </section>
-    <section class="cs-card" aria-label="{{ _('Next step') }}">
-      <p>{{ _("Open the verification link we emailed you to activate your account, then log in.") }}</p>
-      {% if email %}
-        <p class="cs-hint">{{ _("Sent to:") }} <strong>{{ email }}</strong></p>
-      {% endif %}
-      <p class="cs-hint">{{ _("The link expires in 48 hours. If it doesn't arrive, check your spam folder or request a new one.") }}</p>
-      <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.resend_verification') }}">
-        {{ _("Resend verification email") }}
-      </a>
-    </section>
-  {% else %}
-    <section class="cs-hero" aria-labelledby="cs-reg-title">
-      <h1 id="cs-reg-title">{{ _("Become a Citizen Scientist") }}</h1>
-      <p>{{ _("Create a free account to contribute observations to UNESCO/IHP-WINS Citizen Science initiatives. No organization required.") }}</p>
-    </section>
+  <div class="cs-register-page">
+    <section class="cs-register-shell" aria-labelledby="cs-reg-title">
+      <div class="cs-register-topbar">
+        <a class="cs-register-back" href="{{ h.url_for('user.login') }}">
+          <span aria-hidden="true">&larr;</span> {{ _("Back to sign in") }}
+        </a>
+      </div>
 
-    <section class="cs-card cs-form-card" aria-labelledby="cs-reg-form-title">
-      <h2 id="cs-reg-form-title" class="cs-form-heading">{{ _("Create your account") }}</h2>
-
-      {% if errors and errors.message %}
-        {# Single generic, form-level error. Required fields point at it via
-           aria-describedby so assistive tech announces it in context. #}
-        <div id="cs-reg-error" class="cs-form-error" role="alert">
-          {{ errors.message }}
+      <div class="cs-register-brand">
+        <span class="cs-register-brand-icon" aria-hidden="true">
+          {{ h.csunesco_icon('globe', 24) }}
+        </span>
+        <div>
+          <p class="cs-register-brand-title">{{ _("UNESCO Citizen Science") }}</p>
+          <p class="cs-register-brand-subtitle">{{ _("IHP-WINS Citizen Science Portal") }}</p>
         </div>
-      {% endif %}
+      </div>
 
-      <form method="post"
-            action="{{ h.url_for('csunesco.register_citizen') }}"
-            class="cs-form" id="cs-register-form" novalidate>
-        {{ h.csrf_input() }}
-
-        {# ---- Account -------------------------------------------------- #}
-        <fieldset class="cs-fieldset">
-          <legend>{{ _("Account") }}</legend>
-
-          <div class="cs-field">
-            <label for="cs-email">{{ _("Email") }} <span class="cs-req" aria-hidden="true">*</span></label>
-            <input type="email" id="cs-email" name="email"
-                   value="{{ data.email or '' }}"
-                   autocomplete="email" aria-required="true"
-                   aria-describedby="cs-email-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-            <p id="cs-email-hint" class="cs-hint">{{ _("We use your email for account recovery only.") }}</p>
-          </div>
-
-          <div class="cs-field">
-            <label for="cs-username">{{ _("Username") }} <span class="cs-req" aria-hidden="true">*</span></label>
-            <input type="text" id="cs-username" name="username"
-                   value="{{ data.username or '' }}"
-                   autocomplete="username" aria-required="true"
-                   aria-describedby="cs-username-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-            <p id="cs-username-hint" class="cs-hint">{{ _("Lowercase letters, numbers, - and _ only.") }}</p>
-          </div>
-
-          <div class="cs-field">
-            <label for="cs-password">{{ _("Password") }} <span class="cs-req" aria-hidden="true">*</span></label>
-            <input type="password" id="cs-password" name="password"
-                   autocomplete="new-password" aria-required="true"
-                   aria-describedby="cs-password-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-            <p id="cs-password-hint" class="cs-hint">{{ _("At least 8 characters.") }}</p>
-          </div>
-
-          <div class="cs-field">
-            <label for="cs-confirm-password">{{ _("Confirm password") }} <span class="cs-req" aria-hidden="true">*</span></label>
-            <input type="password" id="cs-confirm-password" name="confirm_password"
-                   autocomplete="new-password" aria-required="true"
-                   aria-describedby="cs-confirm-password-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-            <p id="cs-confirm-password-hint" class="cs-hint">{{ _("Re-enter the same password.") }}</p>
-          </div>
-        </fieldset>
-
-        {# ---- Optional profile ---------------------------------------- #}
-        <fieldset class="cs-fieldset">
-          <legend>{{ _("Profile (optional)") }}</legend>
-
-          <div class="cs-field">
-            <label for="cs-fullname">{{ _("Full name") }}</label>
-            <input type="text" id="cs-fullname" name="fullname"
-                   value="{{ data.fullname or '' }}"
-                   autocomplete="name">
-          </div>
-
-          <div class="cs-field">
-            <label for="cs-country">{{ _("Country") }}</label>
-            <input type="text" id="cs-country" name="country"
-                   value="{{ data.country or '' }}"
-                   autocomplete="country-name"
-                   aria-describedby="cs-country-hint">
-            <p id="cs-country-hint" class="cs-hint">{{ _("Optional. Your UNESCO member state.") }}</p>
-          </div>
-        </fieldset>
-
-        {# ---- Terms --------------------------------------------------- #}
-        <fieldset class="cs-fieldset">
-          <legend>{{ _("Terms") }}</legend>
-          <div class="cs-field cs-checkbox-field">
-            <input type="checkbox" id="cs-terms" name="terms" value="yes"
-                   aria-required="true"
-                   aria-describedby="{% if errors and errors.message %}cs-reg-error{% endif %}">
-            <label for="cs-terms" class="cs-checkbox-label">
-              {{ _("I accept the terms of participation and agree to contribute data responsibly.") }}
-              <span class="cs-req" aria-hidden="true">*</span>
-            </label>
-          </div>
-        </fieldset>
-
-        {# ---- reCAPTCHA v3 (only when configured) --------------------- #}
-        {% if recaptcha_publickey %}
-          <input type="hidden" name="recaptcha_response" id="cs-recaptcha-response">
-          <p class="cs-hint cs-recaptcha-note">
-            {{ _("This site is protected by reCAPTCHA; the Google Privacy Policy and Terms of Service apply.") }}
+      {% if pending_verification %}
+        <div class="cs-register-success" role="status">
+          <span class="cs-register-success-icon" aria-hidden="true">
+            {{ h.csunesco_icon('check', 28) }}
+          </span>
+          <h1 id="cs-reg-title">{{ _("Almost there — check your email") }}</h1>
+          <p>{{ _("We've sent you a link to activate your account.") }}</p>
+          {% if email %}
+            <p class="cs-register-muted">{{ _("Sent to:") }} <strong>{{ email }}</strong></p>
+          {% endif %}
+          {% if join_project %}
+            <p class="cs-register-join-success">
+              {{ _("Your request to join %(project)s has also been sent to the project manager.", project=join_project.title) }}
+            </p>
+          {% endif %}
+          <p class="cs-register-muted">
+            {{ _("The link expires in 48 hours. If it doesn't arrive, check your spam folder or request a new one.") }}
           </p>
+          <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.resend_verification') }}">
+            {{ _("Resend verification email") }}
+          </a>
+        </div>
+      {% else %}
+        <h1 id="cs-reg-title" class="cs-register-title">{{ _("Become a Citizen Scientist") }}</h1>
+        <p class="cs-register-intro">
+          {{ _("Sign up below as an individual Citizen Scientist. To join a project as a group, such as a school class, ask the project's focal point to add you; contact details are on the Citizen Science Portal.") }}
+        </p>
+
+        <p id="cs-reg-announcement" class="cs-visually-hidden" aria-live="polite"></p>
+
+        {% if errors and errors.message %}
+          <div id="cs-reg-error" class="cs-form-error" role="alert">
+            {{ errors.message }}
+          </div>
         {% endif %}
 
-        <div class="cs-form-actions">
-          <button type="submit" id="cs-submit" class="cs-btn cs-btn-primary">
+        <form method="post"
+              action="{{ h.url_for('csunesco.register_citizen') }}"
+              class="cs-register-form" id="cs-register-form" novalidate
+              data-recaptcha-key="{{ recaptcha_publickey or '' }}"
+              data-sending-label="{{ _('Sending…') }}"
+              data-submit-label="{{ _('Create account') }}"
+              data-recaptcha-loading="{{ _('Security check is still loading. Please try again.') }}"
+              data-recaptcha-error="{{ _('The security check could not be completed. Please try again.') }}">
+          {{ h.csrf_input() }}
+
+          <fieldset class="cs-register-fieldset">
+            <legend>{{ _("Create your account") }}</legend>
+
+            <div class="cs-field">
+              <label for="cs-email">{{ _("Email") }}</label>
+              <input type="email" id="cs-email" name="email"
+                     value="{{ data.email or '' }}" autocomplete="email"
+                     autocapitalize="none" spellcheck="false"
+                     aria-describedby="cs-email-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+              <p id="cs-email-hint" class="cs-hint"
+                 data-default="{{ _('Used to identify your account.') }}"
+                 data-error="{{ _('Enter a valid email address.') }}">
+                {{ _("Used to identify your account.") }}
+              </p>
+            </div>
+
+            <div class="cs-field">
+              <label for="cs-username">{{ _("Username") }}</label>
+              <input type="text" id="cs-username" name="username"
+                     value="{{ data.username or '' }}" autocomplete="username"
+                     autocapitalize="none" spellcheck="false"
+                     aria-describedby="cs-username-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+              <p id="cs-username-hint" class="cs-hint"
+                 data-default="{{ _('Lowercase letters, numbers and dashes.') }}"
+                 data-error="{{ _('Choose a username.') }}">
+                {{ _("Lowercase letters, numbers and dashes.") }}
+              </p>
+            </div>
+
+            <div class="cs-field">
+              <label for="cs-password">{{ _("Password") }}</label>
+              <div class="cs-password-field">
+                <input type="password" id="cs-password" name="password"
+                       autocomplete="new-password"
+                       aria-describedby="cs-password-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+                <button type="button" class="cs-password-toggle"
+                        aria-label="{{ _('Show password') }}"
+                        data-show-label="{{ _('Show password') }}"
+                        data-hide-label="{{ _('Hide password') }}"
+                        aria-pressed="false">
+                  {{ h.csunesco_icon('eye', 18) }}
+                </button>
+              </div>
+              <div class="cs-password-meter" aria-hidden="true">
+                <span></span><span></span><span></span><span></span>
+              </div>
+              <p id="cs-password-hint" class="cs-hint"
+                 data-default="{{ _('At least 8 characters.') }}"
+                 data-error="{{ _('Password must be at least 8 characters.') }}"
+                 data-strength-label="{{ _('Password strength') }}"
+                 data-strengths="{{ _('Weak') }}|{{ _('Fair') }}|{{ _('Good') }}|{{ _('Strong') }}">
+                {{ _("At least 8 characters.") }}
+              </p>
+            </div>
+
+            <div class="cs-field">
+              <label for="cs-confirm-password">{{ _("Confirm password") }}</label>
+              <input type="password" id="cs-confirm-password" name="confirm_password"
+                     autocomplete="new-password"
+                     aria-describedby="cs-confirm-password-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+              <p id="cs-confirm-password-hint" class="cs-hint cs-field-message"
+                 data-default="" data-error="{{ _('Passwords do not match.') }}"></p>
+            </div>
+
+            {% if projects %}
+              <div class="cs-register-join-box">
+                <label for="cs-project">{{ _("Join a project") }}</label>
+                <p class="cs-hint">
+                  {{ _("Pick a project from the list. Project invitation links select it automatically.") }}
+                </p>
+                {% if selected_project %}
+                  <span class="cs-register-join-badge">
+                    {{ _("Joining: %(project)s", project=selected_project.title) }}
+                  </span>
+                {% endif %}
+                <select id="cs-project" name="project">
+                  <option value="">{{ _("Choose a project…") }}</option>
+                  {% for project in projects %}
+                    {% set project_id = project.id|string %}
+                    <option value="{{ project.slug }}"
+                      {% if data.project == project.slug or data.project == project_id %}selected{% endif %}>
+                      {{ project.title }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+            {% endif %}
+
+            <div class="cs-register-terms">
+              <input type="checkbox" id="cs-terms" name="terms" value="yes"
+                     aria-describedby="cs-terms-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+              <label for="cs-terms">{{ _("I accept the terms of participation.") }}</label>
+            </div>
+            <p id="cs-terms-hint" class="cs-hint cs-field-message"
+               data-default="" data-error="{{ _('Please accept the terms to continue.') }}"></p>
+          </fieldset>
+
+          <fieldset class="cs-register-fieldset">
+            <legend>{{ _("Optional") }}</legend>
+
+            <div class="cs-field">
+              <label for="cs-fullname">{{ _("Full name") }}</label>
+              <input type="text" id="cs-fullname" name="fullname"
+                     value="{{ data.fullname or '' }}" autocomplete="name">
+            </div>
+
+            <div class="cs-field">
+              <label for="cs-date-of-birth">{{ _("Date of birth") }}</label>
+              <input type="date" id="cs-date-of-birth" name="date_of_birth"
+                     value="{{ data.date_of_birth or '' }}" max="{{ today }}"
+                     autocomplete="bday">
+            </div>
+
+            <div class="cs-register-grid">
+              <div class="cs-field">
+                <label for="cs-nationality">{{ _("Nationality") }}</label>
+                <select id="cs-nationality" name="nationality">
+                  <option value="">{{ _("Select…") }}</option>
+                  {% for option in country_options %}
+                    <option value="{{ option.code }}"
+                      {% if data.nationality == option.code %}selected{% endif %}>
+                      {{ option.label }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="cs-field">
+                <label for="cs-gender">{{ _("Gender") }}</label>
+                <select id="cs-gender" name="gender">
+                  <option value="">{{ _("Select…") }}</option>
+                  <option value="female"{% if data.gender == 'female' %} selected{% endif %}>{{ _("Female") }}</option>
+                  <option value="male"{% if data.gender == 'male' %} selected{% endif %}>{{ _("Male") }}</option>
+                  <option value="non_binary"{% if data.gender == 'non_binary' %} selected{% endif %}>{{ _("Non-binary") }}</option>
+                  <option value="prefer_not_to_say"{% if data.gender == 'prefer_not_to_say' %} selected{% endif %}>{{ _("Prefer not to say") }}</option>
+                </select>
+              </div>
+            </div>
+          </fieldset>
+
+          {% if recaptcha_publickey %}
+            <input type="hidden" name="recaptcha_response" id="cs-recaptcha-response">
+            <p class="cs-hint cs-recaptcha-note">
+              {{ _("This site is protected by reCAPTCHA; the Google Privacy Policy and Terms of Service apply.") }}
+            </p>
+          {% endif %}
+
+          <button type="submit" id="cs-submit" class="cs-btn cs-btn-primary cs-register-submit">
             {{ _("Create account") }}
           </button>
-        </div>
-      </form>
+        </form>
 
-      <p class="cs-form-footer">
-        {{ _("Already have an account?") }}
-        <a href="{{ h.url_for('user.login') }}">{{ _("Log in") }}</a>
-      </p>
+        {% if ofform_register_url %}
+          <div class="cs-register-divider" aria-hidden="true">{{ _("or") }}</div>
+          <div class="cs-register-ofform-card">
+            <span class="cs-register-ofform-icon" aria-hidden="true">
+              {{ h.csunesco_icon('globe', 18) }}
+            </span>
+            <p>{{ _("Register in the Citizen Science Toolbox") }}</p>
+            <a href="{{ ofform_register_url }}" target="_blank" rel="noopener noreferrer">
+              {{ _("Open") }} <span aria-hidden="true">&#8599;</span>
+            </a>
+          </div>
+        {% endif %}
+
+        <p class="cs-register-footer">
+          {{ _("Already have an account?") }}
+          <a href="{{ h.url_for('user.login') }}">{{ _("Sign in") }}</a>
+        </p>
+      {% endif %}
     </section>
+  </div>
 
-    {% if recaptcha_publickey %}
-      {# Load reCAPTCHA v3 only when configured (keys present). #}
-      <script src="https://www.google.com/recaptcha/api.js?render={{ recaptcha_publickey }}" async defer></script>
-    {% endif %}
-
-    <script>
-      // Progressive enhancement only: the server re-validates everything.
-      (function () {
-        var form = document.getElementById('cs-register-form');
-        var submit = document.getElementById('cs-submit');
-        if (!form || !submit) { return; }
-        var siteKey = {{ recaptcha_publickey | tojson }};
-
-        function lockSubmit() {
-          submit.disabled = true;
-          submit.classList.add('is-loading');
-        }
-
-        form.addEventListener('submit', function (event) {
-          // reCAPTCHA v3: fetch a token, stash it, then submit.
-          if (siteKey && typeof grecaptcha !== 'undefined') {
-            event.preventDefault();
-            lockSubmit();
-            grecaptcha.ready(function () {
-              grecaptcha.execute(siteKey, { action: 'register' }).then(function (token) {
-                var field = document.getElementById('cs-recaptcha-response');
-                if (field) { field.value = token; }
-                form.submit();
-              }).catch(function () {
-                // Let the user retry if the token could not be fetched.
-                submit.disabled = false;
-                submit.classList.remove('is-loading');
-              });
-            });
-          } else {
-            // No reCAPTCHA: just disable to prevent double submission.
-            lockSubmit();
-          }
-        });
-      })();
-    </script>
+  {% if recaptcha_publickey and not pending_verification %}
+    <script src="https://www.google.com/recaptcha/api.js?render={{ recaptcha_publickey }}" async defer></script>
   {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  {% asset 'csunesco/cs-register-js' %}
 {% endblock %}

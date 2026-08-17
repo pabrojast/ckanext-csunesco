@@ -36,6 +36,13 @@ def csunesco_register_citizen_scientist(context, data_dict):
     fullname = (data_dict.get('fullname') or '').strip()
     password = data_dict.get('password') or ''
     country = (data_dict.get('country') or '').strip()
+    date_of_birth = data_dict.get('date_of_birth')
+    nationality = (data_dict.get('nationality') or '').strip()
+    gender = (data_dict.get('gender') or '').strip()
+    try:
+        terms_accepted = tk.asbool(data_dict.get('terms_accepted', False))
+    except (TypeError, ValueError):
+        terms_accepted = False
 
     # IDEMPOTENT fast-path: an existing CKAN user that already carries a CS
     # profile means a previous registration succeeded. Return success WITHOUT
@@ -63,6 +70,12 @@ def csunesco_register_citizen_scientist(context, data_dict):
             'fullname': fullname,
             'password': password,
             'country': country,
+            'date_of_birth': date_of_birth,
+            'nationality': nationality,
+            'gender': gender,
+            # Optional for this trusted action: ofform already enforces terms
+            # before sending its legacy payload, which must remain unchanged.
+            'terms_accepted': terms_accepted,
         })
     except tk.ValidationError:
         # Collapse to a single generic error (no account enumeration).

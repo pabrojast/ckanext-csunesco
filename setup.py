@@ -27,6 +27,9 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
+        # CKAN already uses Babel for localization; declare our direct use so
+        # nationality labels never depend on an accidental transitive import.
+        'Babel',
         # HTML sanitizer for user-supplied news/event bodies + rejection
         # reasons (see ckanext/csunesco/logic/sanitize.py). The code degrades
         # gracefully (strips all tags) if it is somehow absent.

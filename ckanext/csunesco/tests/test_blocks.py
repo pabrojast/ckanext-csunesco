@@ -783,11 +783,14 @@ def test_data_chat_does_not_force_a_page_into_review():
 def test_registry_scopes_are_consistent():
     for block_type in b.BLOCK_TYPES.values():
         assert block_type.scopes, 'every type must live somewhere'
-        assert set(block_type.scopes) <= {'project', 'site'}
+        assert set(block_type.scopes) <= {'project', 'site', 'initiative'}
     # Every site default is a site builtin, and vice versa.
     site_builtins = {t.key for t in b.BLOCK_TYPES.values()
                      if t.builtin and 'site' in t.scopes}
     assert site_builtins == set(b.SITE_DEFAULT_BLOCK_TYPES)
+    initiative_builtins = {t.key for t in b.BLOCK_TYPES.values()
+                           if t.builtin and 'initiative' in t.scopes}
+    assert initiative_builtins == set(b.INITIATIVE_DEFAULT_BLOCK_TYPES)
     # Project builtins never leak into the site scope (and vice versa):
     # a builtin belongs to exactly one scope.
     for block_type in b.BLOCK_TYPES.values():
@@ -798,16 +801,22 @@ def test_registry_scopes_are_consistent():
 def test_addable_types_filters_by_scope():
     site = b.addable_types('site')
     project = b.addable_types('project')
+    initiative = b.addable_types('initiative')
     assert b.ADDABLE_TYPES == project        # legacy alias
     # Data-bound blocks need a project's approved sources: project-only.
-    for key in ('chart', 'data_chat', 'observation_map', 'terria_map'):
-        assert key in project and key not in site
+    for key in ('chart', 'data_chat', 'observation_map'):
+        assert key in project and key not in site and key not in initiative
+    assert 'terria_map' in project and 'terria_map' in initiative
+    assert 'terria_map' not in site
     # Portable blocks appear in both palettes, in the same relative order.
     for key in ('rich_text', 'media_text', 'stats', 'image', 'video',
-                'content_list', 'datasets_list', 'callout'):
-        assert key in project and key in site
+                'content_list', 'callout'):
+        assert key in project and key in site and key in initiative
+    assert 'datasets_list' in project and 'datasets_list' in site
+    assert 'datasets_list' not in initiative
     # No builtin is ever addable.
     assert not set(site) & set(b.SITE_DEFAULT_BLOCK_TYPES)
+    assert not set(initiative) & set(b.INITIATIVE_DEFAULT_BLOCK_TYPES)
 
 
 def test_default_site_blocks_match_the_pre_block_hub_order():

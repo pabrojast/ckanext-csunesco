@@ -38,7 +38,7 @@ PROJECT_EXTRA_DATE_FIELDS = ('start_date', 'end_date')
 def project_request_schema():
     """Schema for ``csunesco_project_request_create`` / ``_update``.
 
-    ``title`` and ``initiative`` are required; everything else is optional. Note
+    ``title`` is required and ``initiative`` is optional; everything else is optional. Note
     ``countries`` deliberately omits ``unicode_safe`` so a raw list survives to
     ``csunesco_valid_country_list`` (which accepts a list or a JSON string).
 
@@ -57,7 +57,7 @@ def project_request_schema():
         # programme (optional)" and posts `initiative: null` when the author
         # skips it -- and because the key is present-but-null, `not_empty`
         # fired and every programme-less project the app created was rejected.
-        # The web form still marks the field `required` in its own markup.
+        # The web form exposes the empty value as "Not part of an initiative".
         'initiative': [ignore_missing, unicode_safe,
                        v.csunesco_valid_initiative],
         'countries': [ignore_missing, v.csunesco_valid_country_list],

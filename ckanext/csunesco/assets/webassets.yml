@@ -12,6 +12,14 @@ csunesco-js:
   contents:
     - js/csunesco.js
 
+# Registration-only password meter, field validation and reCAPTCHA submit.
+# Kept out of csunesco-js so public landing/admin pages do not download it.
+cs-register-js:
+  filters: rjsmin
+  output: js/cs-register.js
+  contents:
+    - js/cs-register.js
+
 # Standalone project-region map behaviour. No base/main preload: it depends only
 # on Leaflet (loaded via CDN in the landing template) and vanilla DOM APIs.
 cs-map-js:

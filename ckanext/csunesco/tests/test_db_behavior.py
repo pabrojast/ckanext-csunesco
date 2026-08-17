@@ -11,6 +11,7 @@ ORM -- not just that the modules import.
 Import-safe under real CKAN and skips cleanly when CKAN is absent, but it MUST
 actually run and pass inside the ckan-dev container.
 """
+import datetime
 import json
 
 import pytest
@@ -118,12 +119,32 @@ def test_stats_roundtrip_zero_defaults(session):
 def test_citizen_scientist_roundtrip(session):
     profile = db.CsCitizenScientist()
     profile.user_id = 'user-9'
+    profile.date_of_birth = datetime.date(1990, 5, 17)
+    profile.nationality = 'CL'
+    profile.gender = 'female'
+    profile.terms_accepted_at = datetime.datetime(2026, 8, 16, 12, 0)
     session.add(profile)
     session.commit()
 
     got = session.query(db.CsCitizenScientist).filter_by(user_id='user-9').one()
     assert got.id
     assert got.created is not None
+    assert got.date_of_birth == datetime.date(1990, 5, 17)
+    assert got.nationality == 'CL'
+    assert got.gender == 'female'
+    assert got.terms_accepted_at == datetime.datetime(2026, 8, 16, 12, 0)
+
+
+def test_profile_helper_persists_private_registration_fields(session):
+    profile = db.get_or_create_citizen_scientist(
+        'user-profile', country='Chile', date_of_birth=datetime.date(1988, 1, 2),
+        nationality='CL', gender='prefer_not_to_say', terms_accepted=True)
+
+    assert profile.country == 'Chile'
+    assert profile.date_of_birth == datetime.date(1988, 1, 2)
+    assert profile.nationality == 'CL'
+    assert profile.gender == 'prefer_not_to_say'
+    assert profile.terms_accepted_at is not None
 
 
 # ---------------------------------------------------------------------------
@@ -584,6 +605,40 @@ def test_aggregate_stats_zero_when_empty(session):
     }
 
 
+def test_aggregate_stats_can_be_scoped_to_one_initiative(session):
+    projects = []
+    for slug, initiative, country, observations in (
+            ('river', 'riverwatch', 'Chile', 7),
+            ('island', 'islandwatch', 'Fiji', 90)):
+        project = db.CsProject()
+        project.slug = slug
+        project.title = slug.title()
+        project.status = 'approved'
+        project.initiative_group = initiative
+        project.countries = json.dumps([country])
+        session.add(project)
+        session.flush()
+        stats = db.CsProjectStats()
+        stats.project_id = project.id
+        stats.observations = observations
+        stats.sites_monitored = 1
+        member = db.CsProjectMember()
+        member.project_id = project.id
+        member.user_id = 'member-' + slug
+        member.status = 'active'
+        session.add_all([stats, member])
+        projects.append(project)
+    # Profiles outside project membership belong to the global counter only.
+    profile = db.CsCitizenScientist()
+    profile.user_id = 'registered-only'
+    session.add(profile)
+    session.commit()
+
+    scoped = db.aggregate_stats('riverwatch')
+    assert scoped == {'observations': 7, 'sites_monitored': 1,
+                      'citizen_scientists': 1, 'member_states': 1}
+
+
 # ---------------------------------------------------------------------------
 # P2: join audit trail (reviewed_by/reviewed_at) + trusted flag
 # ---------------------------------------------------------------------------
@@ -736,6 +791,17 @@ def test_pending_pages_never_lists_the_site_page(session):
     total, rows = db.pending_pages()
     assert total == 0
     assert rows == []
+    assert db._count_pending_pages() == 0
+
+
+def test_pending_pages_never_lists_an_initiative_page(session):
+    page = db.CsProjectPage()
+    page.project_id = db.initiative_page_id('riverwatch')
+    page.status = 'pending'
+    session.add(page)
+    session.commit()
+
+    assert db.pending_pages() == (0, [])
     assert db._count_pending_pages() == 0
 
 
@@ -930,6 +996,10 @@ def test_auto_heal_covers_the_columns_added_after_each_table_shipped():
         ('cs_content', 'extras'),
         ('cs_project_stats', 'member_states'),
         ('cs_citizen_scientist', 'email_verified'),
+        ('cs_citizen_scientist', 'date_of_birth'),
+        ('cs_citizen_scientist', 'nationality'),
+        ('cs_citizen_scientist', 'gender'),
+        ('cs_citizen_scientist', 'terms_accepted_at'),
     ]:
         assert pair in healed, '%s dejó de auto-curarse' % (pair,)
 

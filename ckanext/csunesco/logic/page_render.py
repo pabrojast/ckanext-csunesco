@@ -43,7 +43,8 @@ BUILTIN_CONTENT_LIMIT = 6
 
 
 def build_context(context, project, blocks, has_region=False,
-                  can_manage=False, preview=False):
+                  can_manage=False, preview=False, scope=None,
+                  initiative=None):
     """Resolve everything ``blocks`` needs into a single dict.
 
     ``preview`` marks a manager previewing their unpublished draft, so snippets
@@ -56,11 +57,13 @@ def build_context(context, project, blocks, has_region=False,
     project-only, so a forged one in stored JSON simply resolves to nothing.
     """
     types = {block.get('type') for block in blocks or []}
-    scope = 'site' if project is None else 'project'
+    scope = scope or ('site' if project is None else 'project')
     ctx = {
         'scope': scope,
         'project': project,
-        'stats': (_aggregate_stats(context) if project is None
+        'initiative': initiative,
+        'stats': (_aggregate_stats(context, initiative) if initiative
+                  else _aggregate_stats(context) if project is None
                   else project.get('stats') or {}),
         'has_region': has_region,
         'can_manage': can_manage,
@@ -69,6 +72,9 @@ def build_context(context, project, blocks, has_region=False,
         'approved_sources': {},
         'news_events': [],
         'recent_projects': [],
+        'initiative_projects': [],
+        'initiative_news': [],
+        'initiative_events': [],
         # Asset gating: a page with no chart must not pay for a 208 KB
         # Chart.js bundle, and one with no gallery must not load the lightbox.
         # The chat draws its answers with the same painter as a chart block, so
@@ -82,7 +88,8 @@ def build_context(context, project, blocks, has_region=False,
                             for block in blocks or []),
         # Where the per-section "Edit" pencil points (managers only, and only
         # outside the preview -- the preview IS the editor's output).
-        'edit_url': _edit_url(project) if can_manage and not preview else None,
+        'edit_url': (_edit_url(project, initiative)
+                     if can_manage and not preview else None),
     }
 
     if project is not None and types & _DATA_BLOCKS:
@@ -104,10 +111,27 @@ def build_context(context, project, blocks, has_region=False,
                      if block.get('type') == 'site_projects'] or [6])
         ctx['recent_projects'] = _recent_projects(context, limit)
 
+    if initiative is not None:
+        project_limit = max(
+            [int(block.get('limit') or 6) for block in blocks or []
+             if block.get('type') == 'initiative_projects'] or [6])
+        ctx['initiative_projects'] = _recent_projects(
+            context, project_limit, initiative['name'])
+        content_limit = max(
+            [int(block.get('limit') or 3) for block in blocks or []
+             if block.get('type') in ('initiative_news',
+                                      'initiative_events')] or [3])
+        ctx['initiative_news'] = _list_initiative_content(
+            context, initiative['name'], content_limit, 'cs-news')
+        ctx['initiative_events'] = _list_initiative_content(
+            context, initiative['name'], content_limit, 'cs-event',
+            upcoming=True)
+
     # Author-configurable listings, resolved ONCE per distinct configuration.
     # Without the memo, four content_list blocks with the same settings would
     # each run their own query on a public page.
-    ctx['content_lists'] = _resolve_content_lists(context, project, blocks)
+    ctx['content_lists'] = _resolve_content_lists(
+        context, project, blocks, initiative=initiative)
     ctx['dataset_lists'] = _resolve_dataset_lists(context, project, blocks,
                                                   ctx['data_sources'])
     return ctx
@@ -119,7 +143,7 @@ def content_list_key(block):
             int(block.get('limit') or 6), bool(block.get('featured_only')))
 
 
-def _resolve_content_lists(context, project, blocks):
+def _resolve_content_lists(context, project, blocks, initiative=None):
     """``{query key: [rows]}`` for every distinct content_list configuration."""
     out = {}
     for block in blocks or []:
@@ -136,8 +160,12 @@ def _resolve_content_lists(context, project, blocks):
         # (project is None) the project/initiative scopes DEGRADE to
         # portal-wide too -- fail-soft: a copied or forged block must render
         # a duller list, never break the page.
-        if scope == 'initiative' and project is not None:
+        if scope == 'initiative' and initiative is not None:
+            data_dict['initiative'] = initiative.get('name')
+        elif scope == 'initiative' and project is not None:
             data_dict['initiative'] = project.get('initiative_group')
+        elif initiative is not None and scope != 'site':
+            data_dict['initiative'] = initiative.get('name')
         elif scope != 'site' and project is not None:
             data_dict['project_id'] = project['id']
         if featured:
@@ -208,9 +236,12 @@ def _search_datasets(query, limit):
         return []
 
 
-def _edit_url(project):
+def _edit_url(project, initiative=None):
     """The editor URL for this page's scope, or None (fail-soft)."""
     try:
+        if initiative is not None:
+            return tk.url_for('csunesco.initiative_page_edit',
+                              name=initiative['name'])
         if project is None:
             return tk.url_for('csunesco.site_page_edit')
         return tk.url_for('csunesco.project_page_edit',
@@ -219,20 +250,24 @@ def _edit_url(project):
         return None
 
 
-def _aggregate_stats(context):
+def _aggregate_stats(context, initiative=None):
     """Portal-wide counters for the hub (fail-soft to zeros)."""
     try:
-        return tk.get_action('csunesco_aggregate_stats')(context, {}) or {}
+        data_dict = {'initiative': initiative['name']} if initiative else {}
+        return tk.get_action('csunesco_aggregate_stats')(
+            context, data_dict) or {}
     except Exception:
         log.warning('csunesco: aggregate stats unavailable')
         return {}
 
 
-def _recent_projects(context, limit):
+def _recent_projects(context, limit, initiative=None):
     """The newest approved projects, decorated with ``initiative_title``."""
     try:
-        listing = tk.get_action('csunesco_project_list')(
-            context, {'limit': limit, 'offset': 0})
+        data_dict = {'limit': limit, 'offset': 0}
+        if initiative:
+            data_dict['initiative'] = initiative
+        listing = tk.get_action('csunesco_project_list')(context, data_dict)
         results = listing.get('results', [])
     except Exception:
         log.warning('csunesco: site page project list unavailable')
@@ -244,6 +279,20 @@ def _recent_projects(context, limit):
         project['initiative_title'] = titles.get(
             project.get('initiative_group'), project.get('initiative_group'))
     return results
+
+
+def _list_initiative_content(context, initiative, limit, content_type,
+                             upcoming=False):
+    data_dict = {'initiative': initiative, 'content_type': content_type,
+                 'limit': limit, 'offset': 0, 'include_project': True}
+    if upcoming:
+        data_dict['upcoming'] = True
+    try:
+        return tk.get_action('csunesco_content_list')(
+            context, data_dict).get('results', [])
+    except Exception:
+        log.warning('csunesco: initiative content unavailable')
+        return []
 
 
 def _list_data_sources(context, project_id):

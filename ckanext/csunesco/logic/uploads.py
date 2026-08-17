@@ -10,9 +10,11 @@ The old file may still be used by the published page (or pasted elsewhere), so
 automatic deletion would make draft editing capable of breaking live pages.
 """
 import os
+from urllib.parse import urlsplit
 
 import ckan.lib.uploader as ckan_uploader
 import ckan.plugins.toolkit as tk
+from PIL import Image, UnidentifiedImageError
 
 
 UPLOAD_TO = 'csunesco'
@@ -29,11 +31,22 @@ class PageImageUploadError(Exception):
 
 
 def uploads_enabled():
-    """Whether CKAN's classic FileStore is ready for a web upload."""
+    """Whether the configured uploader can accept a web upload."""
     configured = tk.config.get('ckan.uploads_enabled')
     if configured is not None and not tk.asbool(configured):
         return False
-    return bool(tk.config.get('ckan.storage_path'))
+    if tk.config.get('ckan.storage_path'):
+        return True
+
+    # External upload plugins (for example ckanext-asset-storage) replace
+    # CKAN's uploader and do not require a local ``ckan.storage_path``.
+    try:
+        uploader = ckan_uploader.get_uploader(UPLOAD_TO)
+    except Exception:
+        return False
+    return bool(
+        getattr(uploader, '_storage', None)
+        or uploader.__class__.__module__ != ckan_uploader.__name__)
 
 
 def max_image_size():
@@ -75,12 +88,50 @@ def _reason_for(error):
     return 'upload_too_large' if 'too large' in text else 'upload_bad_type'
 
 
+def _validate_image(upload):
+    """Inspect actual bytes instead of trusting a filename or MIME header."""
+    stream = getattr(upload, 'stream', upload)
+    if not all(hasattr(stream, method) for method in ('read', 'seek', 'tell')):
+        raise UnidentifiedImageError('The upload has no readable stream')
+    position = stream.tell()
+    try:
+        stream.seek(0)
+        with Image.open(stream) as image:
+            image.verify()
+            if image.format not in ('JPEG', 'PNG', 'WEBP'):
+                raise UnidentifiedImageError('Unsupported image format')
+    finally:
+        stream.seek(position)
+
+
+def _stored_url(value):
+    """Keep backend URLs intact; expand only CKAN's bare local filename."""
+    value = str(value or u'').strip()
+    parsed = urlsplit(value)
+    if parsed.scheme or parsed.netloc or '/' in value or '\\' in value:
+        return value
+    return PUBLIC_PREFIX + value
+
+
+def _asset_reference(uploader):
+    """Return a plugin-storage cleanup tuple when the uploader exposes one."""
+    storage = getattr(uploader, '_storage', None)
+    filename = getattr(uploader, '_filename', None)
+    object_type = getattr(uploader, '_object_type', None)
+    if storage is None or not filename or not hasattr(storage, 'delete'):
+        return None
+    reference = '/'.join(
+        part.strip('/') for part in (object_type, filename) if part)
+    return storage, reference
+
+
 class UploadBatch(object):
     """Prepared uploads plus rollback information for one page POST."""
 
     def __init__(self):
         self._jobs = []
         self._written = []
+        self._stored_assets = []
         self.project_image_url = None
 
     def add_picker(self, target, url_field, upload_field, clear_field,
@@ -103,7 +154,8 @@ class UploadBatch(object):
     def prepare_blocks(self, raw_blocks):
         for block in raw_blocks or []:
             block_type = block.get('type')
-            if block_type in ('site_hero', 'site_about', 'media_text'):
+            if block_type in ('site_hero', 'site_about', 'initiative_hero',
+                              'initiative_about', 'media_text'):
                 self.add_picker(block, 'image_url', 'image_upload',
                                 'image_clear', block=block)
             elif block_type in ('image', 'site_initiatives'):
@@ -153,6 +205,7 @@ class UploadBatch(object):
             # Prepare every job before writing the first file so a bad second
             # picker cannot leave the first one orphaned.
             for job in self._jobs:
+                _validate_image(job['upload'])
                 data = {'url': u'', 'upload': job['upload']}
                 upload = ckan_uploader.get_uploader(UPLOAD_TO)
                 upload.update_data_dict(data, 'url', 'upload', 'clear')
@@ -161,12 +214,23 @@ class UploadBatch(object):
                         {'upload': [tk._('The image could not be uploaded.')]})
                 prepared.append((job, upload, data['url']))
 
-            for job, upload, filename in prepared:
+            for job, upload, stored_value in prepared:
                 upload.upload(max_image_size())
                 filepath = getattr(upload, 'filepath', None)
                 if filepath:
                     self._written.append(filepath)
-                job['target'][job['url_field']] = PUBLIC_PREFIX + filename
+                asset = _asset_reference(upload)
+                if asset:
+                    self._stored_assets.append(asset)
+                job['target'][job['url_field']] = _stored_url(stored_value)
+        except (UnidentifiedImageError, OSError, ValueError):
+            self.rollback()
+            job = job if 'job' in locals() else (self._jobs[0] if self._jobs
+                                                  else {})
+            raise PageImageUploadError([
+                _problem(job.get('block'), job.get('error_field'),
+                         'upload_bad_type', job.get('item'))
+            ])
         except tk.ValidationError as error:
             self.rollback()
             job = job if 'job' in locals() else (self._jobs[0] if self._jobs
@@ -201,6 +265,12 @@ class UploadBatch(object):
             except (OSError, ValueError):
                 pass
         self._written = []
+        for storage_backend, reference in self._stored_assets:
+            try:
+                storage_backend.delete(reference)
+            except Exception:
+                pass
+        self._stored_assets = []
 
 
 def process_page_images(raw_blocks, project_cover=None):

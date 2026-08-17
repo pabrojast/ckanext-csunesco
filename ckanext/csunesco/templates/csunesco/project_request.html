@@ -108,6 +108,7 @@
             enctype="multipart/form-data"
             class="cs-form cs-wizard" id="cs-project-form" novalidate>
         {{ h.csrf_input() }}
+        {% if return_to == 'review' %}<input type="hidden" name="return_to" value="review">{% endif %}
 
         {#
           Hidden until the script runs: with no JS there are no stages to
@@ -151,11 +152,11 @@
           </div>
 
           <div class="cs-field">
-            <label for="cs-f-initiative">{{ _("Initiative") }} <span class="cs-req" aria-hidden="true">*</span></label>
-            <select id="cs-f-initiative" name="initiative" required aria-required="true"
+            <label for="cs-f-initiative">{{ _("Initiative") }}</label>
+            <select id="cs-f-initiative" name="initiative"
                     {% if errors.initiative %}aria-invalid="true"{% endif %}
                     {{- described_by('initiative', false) }}>
-              <option value="">{{ _("Select an initiative") }}</option>
+              <option value="">{{ _("Not part of an initiative") }}</option>
               {% for initiative in initiatives %}
                 <option value="{{ initiative.name }}"
                         {% if initiative.name == data.initiative %}selected{% endif %}>

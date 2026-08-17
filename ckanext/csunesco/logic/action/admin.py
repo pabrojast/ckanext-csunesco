@@ -17,8 +17,9 @@ SAME per-request cached ``pending_counts`` that feeds the header badge, so the
 tab counters and the badge can never disagree (DRY).
 """
 import ckan.plugins.toolkit as tk
+import ckan.model as model
 
-from ckanext.csunesco import db
+from ckanext.csunesco import constants, db
 from ckanext.csunesco.logic import auth
 from ckanext.csunesco.logic.action import current_user_id
 
@@ -184,7 +185,29 @@ def csunesco_admin_pending_list(context, data_dict):
     }
 
 
+@tk.side_effect_free
+def csunesco_project_review_show(context, data_dict):
+    """Return every submitted project field plus its bounded edit audit."""
+    data_dict = data_dict or {}
+    project = db.get_project(data_dict.get('id'))
+    if project is None or project.status != 'pending':
+        raise tk.ObjectNotFound(tk._('No project request is awaiting review'))
+    tk.check_access('csunesco_project_review_show', context,
+                    {'id': project.id})
+    result = db.project_dictize(project)
+    titles = {item['name']: item['title']
+              for item in constants.CS_INITIATIVES}
+    result['initiative_title'] = titles.get(project.initiative_group)
+    creator = model.User.get(project.created_by) if project.created_by else None
+    result['created_by_name'] = (
+        (creator.display_name or creator.name) if creator else u'')
+    history = result.get('edit_history')
+    result['edit_history'] = history if isinstance(history, list) else []
+    return result
+
+
 def get_actions():
     return {
         'csunesco_admin_pending_list': csunesco_admin_pending_list,
+        'csunesco_project_review_show': csunesco_project_review_show,
     }

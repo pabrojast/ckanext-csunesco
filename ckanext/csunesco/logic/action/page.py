@@ -23,7 +23,7 @@ import json
 
 import ckan.plugins.toolkit as tk
 
-from ckanext.csunesco import db
+from ckanext.csunesco import constants, db
 from ckanext.csunesco.logic import auth
 from ckanext.csunesco.logic import blocks as blocks_module
 from ckanext.csunesco.logic import validators
@@ -461,6 +461,88 @@ def csunesco_site_page_publish(context, data_dict):
     return db.page_dictize(page, include_draft=True)
 
 
+def _initiative_name(data_dict):
+    name = (data_dict or {}).get('initiative') or u''
+    canonical = {item['name'] for item in constants.CS_INITIATIVES}
+    if name not in canonical:
+        raise tk.ObjectNotFound(tk._('Initiative not found'))
+    return name
+
+
+@tk.side_effect_free
+def csunesco_initiative_page_show(context, data_dict):
+    tk.check_access('csunesco_initiative_page_show', context, data_dict)
+    name = _initiative_name(data_dict)
+    include_draft = tk.asbool((data_dict or {}).get('include_draft', False))
+    if include_draft:
+        tk.check_access('csunesco_initiative_page_update', context,
+                        {'initiative': name})
+    page_id = db.initiative_page_id(name)
+    page = db.get_project_page(page_id)
+    if page is None:
+        result = {'project_id': page_id, 'initiative': name,
+                  'status': 'draft', 'published_blocks': None}
+        if include_draft:
+            result['draft_blocks'] = None
+        return result
+    result = db.page_dictize(page, include_draft=include_draft)
+    result['initiative'] = name
+    return result
+
+
+def csunesco_initiative_page_update(context, data_dict):
+    data_dict = data_dict or {}
+    name = _initiative_name(data_dict)
+    tk.check_access('csunesco_initiative_page_update', context,
+                    {'initiative': name})
+    raw_blocks = data_dict.get('blocks')
+    if raw_blocks is None:
+        raise tk.ValidationError({'blocks': [tk._('Missing value')]})
+    blocks = (blocks_module.blocks_from_json(raw_blocks)
+              if isinstance(raw_blocks, str)
+              else blocks_module.normalize_blocks(raw_blocks))
+    blocks = blocks_module.ensure_builtins(blocks, scope='initiative')
+    _validate_policy(blocks)
+    if blocks_module.oversized(blocks):
+        raise tk.ValidationError({'blocks': [tk._(
+            'This page is too large. Shorten the text blocks and try again.')]})
+    page = db.get_or_create_project_page(
+        db.initiative_page_id(name), created_by=current_user_id(context))
+    page.draft_json = blocks_module.blocks_to_json(blocks)
+    page.draft_hash = draft_hash(blocks)
+    page.status = u'draft'
+    page.modified = _utcnow()
+    db.Session.add(page)
+    db.Session.commit()
+    return db.page_dictize(page, include_draft=True)
+
+
+def csunesco_initiative_page_publish(context, data_dict):
+    data_dict = data_dict or {}
+    name = _initiative_name(data_dict)
+    tk.check_access('csunesco_initiative_page_publish', context,
+                    {'initiative': name})
+    page = db.get_project_page(db.initiative_page_id(name))
+    if page is None or not page.draft_json:
+        raise tk.ValidationError({'blocks': [tk._(
+            'There is nothing to publish yet')]})
+    blocks = blocks_module.blocks_from_json(page.draft_json)
+    _validate_policy(blocks)
+    now = _utcnow()
+    page.published_json = page.draft_json
+    page.published_at = now
+    page.status = u'approved'
+    page.reviewed_by = current_user_id(context)
+    page.reviewed_at = now
+    page.rejection_reason = None
+    page.modified = now
+    db.Session.add(page)
+    db.Session.commit()
+    result = db.page_dictize(page, include_draft=True)
+    result['initiative'] = name
+    return result
+
+
 def get_actions():
     return {
         'csunesco_project_page_show': csunesco_project_page_show,
@@ -471,4 +553,8 @@ def get_actions():
         'csunesco_site_page_show': csunesco_site_page_show,
         'csunesco_site_page_update': csunesco_site_page_update,
         'csunesco_site_page_publish': csunesco_site_page_publish,
+        'csunesco_initiative_page_show': csunesco_initiative_page_show,
+        'csunesco_initiative_page_update': csunesco_initiative_page_update,
+        'csunesco_initiative_page_publish':
+            csunesco_initiative_page_publish,
     }

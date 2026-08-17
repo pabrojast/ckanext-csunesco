@@ -1,11 +1,12 @@
 # encoding: utf-8
 """Citizen Scientist self-registration view logic.
 
-Increment 2: a blueprint-backed view (parallel to CKAN's ``/user/register``)
-that creates an ACTIVE CKAN account for a Citizen Scientist -- with NO
-organization step (ckanext-colab pattern, org fieldset removed). This module is
-pure HTTP orchestration: it reads the form, validates it, calls the core
-``user_create`` action and marks the new user as a Citizen Scientist profile.
+This blueprint-backed view (parallel to CKAN's ``/user/register``) creates a
+PENDING CKAN account for an individual Citizen Scientist, persists its private
+profile fields and can immediately file a request to join an approved project.
+Email verification remains the activation gate. This module is pure HTTP
+orchestration: it reads and validates the form, calls the core ``user_create``
+action and marks the new user as a Citizen Scientist profile.
 
 Design notes (from advisors, see .mix/plan.md):
   * Do NOT pre-validate username/email uniqueness. Call ``user_create`` inside a
@@ -18,9 +19,15 @@ Design notes (from advisors, see .mix/plan.md):
 """
 import datetime
 import logging
+import math
+import re
 import secrets
+import threading
+import time
+from collections import defaultdict, deque
 
 from flask import request
+from babel import Locale, UnknownLocaleError
 
 import ckan.plugins.toolkit as tk
 import ckan.model as model
@@ -32,10 +39,192 @@ log = logging.getLogger(__name__)
 
 MIN_PASSWORD_LENGTH = 8
 
+GENDER_VALUES = frozenset((
+    'female', 'male', 'non_binary', 'prefer_not_to_say',
+))
+EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+$')
+
+RATE_LIMIT_ENABLED_OPTION = (
+    'ckanext.csunesco.registration_rate_limit_enabled')
+RATE_LIMIT_MAX_OPTION = 'ckanext.csunesco.registration_rate_limit_max'
+RATE_LIMIT_WINDOW_OPTION = 'ckanext.csunesco.registration_rate_limit_window'
+DEFAULT_RATE_LIMIT_MAX = 10
+DEFAULT_RATE_LIMIT_WINDOW = 300
+MAX_REGISTRATION_PROJECTS = 500
+
 # Single generic message for every validation/creation failure. We deliberately
 # never surface per-field internals (e.g. "username already taken") so the form
 # cannot be used to enumerate accounts.
 GENERIC_ERROR = 'Registration data invalid, please review your details.'
+
+
+class _RegistrationLimiter(object):
+    """Small thread-safe, per-worker sliding-window limiter.
+
+    CKAN has no shared rate-limit service available to extensions.  This is a
+    best-effort first line of defence (matching ofform's limiter); reCAPTCHA and
+    the deployment proxy may add stronger/shared controls.  Blocked attempts do
+    not extend the window, so a client is always released after the advertised
+    Retry-After period.
+    """
+
+    def __init__(self):
+        self._events = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def consume(self, key, maximum, window):
+        now = time.monotonic()
+        cutoff = now - window
+        with self._lock:
+            events = self._events[key]
+            while events and events[0] <= cutoff:
+                events.popleft()
+            if len(events) >= maximum:
+                return max(1, int(math.ceil(events[0] + window - now)))
+            events.append(now)
+            # Prevent an unbounded dictionary of one-shot IPs. Empty/old keys
+            # are cheap to identify because each deque is time-ordered.
+            if len(self._events) > 10000:
+                stale = [name for name, values in self._events.items()
+                         if not values or values[-1] <= cutoff]
+                for name in stale:
+                    self._events.pop(name, None)
+            return None
+
+    def clear(self):
+        """Test/support hook; production never needs to reset the limiter."""
+        with self._lock:
+            self._events.clear()
+
+
+registration_limiter = _RegistrationLimiter()
+
+
+def _positive_config_int(name, default):
+    try:
+        value = int(tk.config.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+def _registration_retry_after():
+    """Consume one POST allowance; return retry seconds when limited."""
+    try:
+        enabled = tk.asbool(tk.config.get(RATE_LIMIT_ENABLED_OPTION, True))
+    except (TypeError, ValueError):
+        enabled = True
+    if not enabled:
+        return None
+    maximum = _positive_config_int(
+        RATE_LIMIT_MAX_OPTION, DEFAULT_RATE_LIMIT_MAX)
+    window = _positive_config_int(
+        RATE_LIMIT_WINDOW_OPTION, DEFAULT_RATE_LIMIT_WINDOW)
+    # ``remote_addr`` has already passed through CKAN/Flask's configured proxy
+    # handling. Never trust a caller-supplied X-Forwarded-For header here.
+    key = request.remote_addr or 'unknown'
+    return registration_limiter.consume(key, maximum, window)
+
+
+def _parse_optional_profile(data):
+    """Normalize and validate the optional profile fields.
+
+    Raises the same generic ValidationError used by account creation.  The
+    nationality label is canonical English in storage; the form localizes only
+    its presentation.
+    """
+    raw_dob = data.get('date_of_birth')
+    if isinstance(raw_dob, datetime.datetime):
+        date_of_birth = raw_dob.date()
+    elif isinstance(raw_dob, datetime.date):
+        date_of_birth = raw_dob
+    elif raw_dob:
+        try:
+            date_of_birth = datetime.datetime.strptime(
+                str(raw_dob).strip(), '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            raise ValidationError({'message': GENERIC_ERROR})
+    else:
+        date_of_birth = None
+    if date_of_birth and date_of_birth > datetime.date.today():
+        raise ValidationError({'message': GENERIC_ERROR})
+
+    nationality = (data.get('nationality') or '').strip().upper()
+    if nationality and nationality not in constants.ISO_3166_ALPHA2:
+        raise ValidationError({'message': GENERIC_ERROR})
+
+    gender = (data.get('gender') or '').strip()
+    if gender and gender not in GENDER_VALUES:
+        raise ValidationError({'message': GENERIC_ERROR})
+
+    return date_of_birth, nationality or None, gender or None
+
+
+def _country_name(code, locale='en'):
+    """Canonical/localized country label for an ISO code, with safe fallback."""
+    if not code:
+        return None
+    try:
+        parsed = Locale.parse(locale or 'en', sep='_')
+    except (UnknownLocaleError, ValueError):
+        parsed = Locale.parse('en')
+    return parsed.territories.get(code) or code
+
+
+def _country_options():
+    """Localized nationality options sorted in the request's language."""
+    try:
+        language = tk.h.lang() or 'en'
+    except Exception:
+        language = 'en'
+    rows = [
+        {'code': code, 'label': _country_name(code, language)}
+        for code in constants.ISO_3166_ALPHA2
+    ]
+    return sorted(rows, key=lambda row: row['label'].casefold())
+
+
+def _registration_projects():
+    """All approved projects for sign-up, fail-soft and capped at 500."""
+    projects = []
+    try:
+        offset = 0
+        while offset < MAX_REGISTRATION_PROJECTS:
+            listing = tk.get_action('csunesco_project_list')({
+                'model': model, 'session': model.Session,
+                'user': getattr(tk.g, 'user', None),
+            }, {'limit': 100, 'offset': offset})
+            batch = listing.get('results') or []
+            projects.extend(batch)
+            offset += len(batch)
+            if not batch or offset >= listing.get('count', 0):
+                break
+    except Exception:
+        log.warning('csunesco: registration project list unavailable')
+        return []
+    return sorted(projects[:MAX_REGISTRATION_PROJECTS],
+                  key=lambda row: (row.get('title') or '').casefold())
+
+
+def _selected_project(projects, value):
+    wanted = (value or '').strip()
+    if not wanted:
+        return None
+    for project in projects:
+        if wanted in (str(project.get('id') or ''),
+                      str(project.get('slug') or '')):
+            return project
+    return None
+
+
+def _ofform_register_url():
+    """Configured CS Toolbox registration URL, or None when links are off."""
+    try:
+        from ckanext.csunesco.logic import ofform
+        base = (tk.config.get(ofform.APP_URL_OPTION) or '').strip().rstrip('/')
+    except Exception:
+        return None
+    return (base + '/register-citizen') if base else None
 
 
 def _recaptcha_configured():
@@ -74,9 +263,17 @@ def _verify_recaptcha(token):
 
 
 def _render(extra_vars):
-    """Render the registration template with the reCAPTCHA public key attached."""
+    """Render registration with stable choices and optional integration links."""
     extra_vars.setdefault('recaptcha_publickey',
                           tk.config.get('ckan.recaptcha.publickey'))
+    extra_vars.setdefault('country_options', _country_options())
+    extra_vars.setdefault('projects', _registration_projects())
+    extra_vars.setdefault('ofform_register_url', _ofform_register_url())
+    extra_vars.setdefault('today', datetime.date.today().isoformat())
+    selected_value = (extra_vars.get('data') or {}).get('project')
+    extra_vars.setdefault(
+        'selected_project',
+        _selected_project(extra_vars.get('projects') or [], selected_value))
     return tk.render('csunesco/register_citizen.html', extra_vars=extra_vars)
 
 
@@ -84,7 +281,7 @@ def create_citizen_scientist(context, data, verification_token=None):
     """Core create-user + CS-profile flow, shared by the web view and the API.
 
     ``data`` is a plain dict with keys ``email``, ``username``, ``password`` and
-    (optional) ``fullname`` / ``country``. It creates a CKAN account via the
+    (optional) ``fullname`` / profile fields. It creates a CKAN account via the
     ``user_create`` action (using the passed ``context``) and idempotently
     inserts the ``cs_citizen_scientist`` profile row (persisting ``country``).
 
@@ -105,11 +302,18 @@ def create_citizen_scientist(context, data, verification_token=None):
     fullname = (data.get('fullname') or '').strip()
     password = data.get('password') or ''
     country = (data.get('country') or '').strip()
+    date_of_birth, nationality, gender = _parse_optional_profile(data)
+    if nationality:
+        # Store a stable human compatibility value alongside the ISO code.
+        country = _country_name(nationality, 'en')
+    terms_accepted = bool(data.get('terms_accepted'))
 
     # Server-side minimums (mirror the web form). Any failure -> generic error.
     if not username or not email or not password:
         raise ValidationError({'message': GENERIC_ERROR})
     if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValidationError({'message': GENERIC_ERROR})
+    if not EMAIL_RE.match(email):
         raise ValidationError({'message': GENERIC_ERROR})
 
     # user_create runs its own auth check; NotAuthorized (self-registration
@@ -159,7 +363,11 @@ def create_citizen_scientist(context, data, verification_token=None):
         from ckanext.csunesco import db
         db.get_or_create_citizen_scientist(
             new_user['id'], country=country,
-            verification_token=verification_token)
+            verification_token=verification_token,
+            date_of_birth=date_of_birth,
+            nationality=nationality,
+            gender=gender,
+            terms_accepted=terms_accepted)
     except Exception:
         model.Session.rollback()
         log.warning('csunesco: citizen scientist profile row could not be '
@@ -221,19 +429,27 @@ def _send_verification_email(recipient_name, recipient_email, token):
 
 
 def register_citizen():
-    """GET renders the form; POST creates an active Citizen Scientist account."""
+    """GET renders the form; POST creates a pending Citizen Scientist account."""
     if request.method == 'GET':
-        return _render({'data': {}, 'errors': {}})
+        return _render({
+            'data': {'project': request.args.get('project', '').strip()},
+            'errors': {},
+        })
 
     # --- POST ---------------------------------------------------------------
+    retry_after = _registration_retry_after()
+
     # Read form fields. Username is forced lowercase + stripped (CKAN name
-    # rules). fullname and country are optional.
+    # rules). Profile and project fields are optional.
     email = request.form.get('email', '').strip()
     username = request.form.get('username', '').lower().strip()
     fullname = request.form.get('fullname', '').strip()
     password = request.form.get('password', '')
     confirm_password = request.form.get('confirm_password', '')
-    country = request.form.get('country', '').strip()
+    date_of_birth = request.form.get('date_of_birth', '').strip()
+    nationality = request.form.get('nationality', '').strip().upper()
+    gender = request.form.get('gender', '').strip()
+    project_value = request.form.get('project', '').strip()
     terms = request.form.get('terms')
 
     # Non-sensitive values we echo back on error (NEVER the password).
@@ -241,12 +457,24 @@ def register_citizen():
         'email': email,
         'username': username,
         'fullname': fullname,
-        'country': country,
+        'date_of_birth': date_of_birth,
+        'nationality': nationality,
+        'gender': gender,
+        'project': project_value,
     }
 
-    def _fail():
+    def _fail(status=200, headers=None):
         """Re-render the form with the generic error and the entered values."""
-        return _render({'data': data, 'errors': {'message': GENERIC_ERROR}})
+        rendered = _render({
+            'data': data,
+            'errors': {'message': GENERIC_ERROR},
+        })
+        if status == 200 and not headers:
+            return rendered
+        return rendered, status, (headers or {})
+
+    if retry_after is not None:
+        return _fail(429, {'Retry-After': str(retry_after)})
 
     # Terms acceptance is mandatory (server-side, truthy).
     if not terms:
@@ -256,6 +484,16 @@ def register_citizen():
     if not password or len(password) < MIN_PASSWORD_LENGTH:
         return _fail()
     if password != confirm_password:
+        return _fail()
+
+    # Parse profile values now so invalid dates/codes fail before user_create.
+    try:
+        parsed_dob, parsed_nationality, parsed_gender = _parse_optional_profile({
+            'date_of_birth': date_of_birth,
+            'nationality': nationality,
+            'gender': gender,
+        })
+    except ValidationError:
         return _fail()
 
     # reCAPTCHA only enforced when configured.
@@ -274,12 +512,15 @@ def register_citizen():
     verification_token = secrets.token_urlsafe(32)
 
     try:
-        create_citizen_scientist(context, {
+        new_user = create_citizen_scientist(context, {
             'email': email,
             'username': username,
             'fullname': fullname,
             'password': password,
-            'country': country,
+            'date_of_birth': parsed_dob,
+            'nationality': parsed_nationality,
+            'gender': parsed_gender,
+            'terms_accepted': True,
         }, verification_token=verification_token)
     except NotAuthorized:
         # Self-registration via the web is disabled
@@ -291,14 +532,39 @@ def register_citizen():
         # error inside create_citizen_scientist -> no account-enumeration hint.
         return _fail()
 
+    # Join is deliberately immediate, even though the account remains pending.
+    # The reviewer queue already exposes the verification flag. As in ofform,
+    # a bad/unknown project or a join failure never rolls back account creation.
+    projects = _registration_projects()
+    selected_project = _selected_project(projects, project_value)
+    join_requested = False
+    if selected_project is not None:
+        try:
+            user_obj = model.User.get(new_user['id'])
+            result = tk.get_action('csunesco_join_request_create')({
+                'model': model,
+                'session': model.Session,
+                'user': new_user['name'],
+                'auth_user_obj': user_obj,
+            }, {'project_id': selected_project['id']})
+            join_requested = bool(result)
+        except Exception:
+            model.Session.rollback()
+            log.warning('csunesco: registration join request failed')
+
     # Best-effort activation email (the resend form is the fallback).
     _send_verification_email(fullname or username, email, verification_token)
 
     # Confirmation state: the account is PENDING -> invite the user to check
     # their inbox rather than to log in. A ``pending_verification`` flag keeps the
     # confirmation inside this plugin's template (no separate success endpoint).
-    return _render({'data': {}, 'errors': {},
-                    'pending_verification': True, 'email': email})
+    return _render({
+        'data': {},
+        'errors': {},
+        'pending_verification': True,
+        'email': email,
+        'join_project': selected_project if join_requested else None,
+    })
 
 
 def _render_verify(state):

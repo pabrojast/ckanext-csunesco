@@ -67,12 +67,15 @@ def _not_authorized_response():
 
 def _content_index(content_type):
     page = _positive_int(request.args.get('page'), 1)
+    initiative = (request.args.get('initiative') or '').strip()
     list_template = _TYPE_VIEW[content_type][0]
     data_dict = {
         'content_type': content_type,
         'limit': CONTENT_PER_PAGE,
         'offset': (page - 1) * CONTENT_PER_PAGE,
     }
+    if initiative:
+        data_dict['initiative'] = initiative
     try:
         listing = tk.get_action('csunesco_content_list')(
             _context(), data_dict)
@@ -87,6 +90,7 @@ def _content_index(content_type):
         'count': count,
         'page': page,
         'total_pages': total_pages,
+        'selected_initiative': initiative,
     })
 
 
@@ -135,6 +139,7 @@ def cs_content_index():
     """Combined index of ALL content types, with a type chip filter (?type=)."""
     page = _positive_int(request.args.get('page'), 1)
     selected = (request.args.get('type') or '').strip()
+    initiative = (request.args.get('initiative') or '').strip()
     if selected and selected not in _TYPE_VIEW:
         return tk.abort(404, tk._('Unknown content type'))
     data_dict = {
@@ -144,6 +149,8 @@ def cs_content_index():
     }
     if selected:
         data_dict['content_type'] = selected
+    if initiative:
+        data_dict['initiative'] = initiative
     try:
         listing = tk.get_action('csunesco_content_list')(
             _context(), data_dict)
@@ -160,6 +167,7 @@ def cs_content_index():
         'total_pages': total_pages,
         'selected_type': selected,
         'type_choices': _CONTENT_TYPE_CHOICES,
+        'selected_initiative': initiative,
     })
 
 

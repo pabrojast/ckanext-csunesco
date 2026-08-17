@@ -228,6 +228,392 @@
   text-align: center;
 }
 
+/* Registration redesign: the CS Toolbox blue auth frame adapted to IHP-WINS.
+ * These classes are registration-specific; the older .cs-form-* primitives
+ * above remain shared by project/content/resend forms. */
+.cs-register-page {
+  margin: 0 -15px;
+  padding: 2.5rem 1rem 3rem;
+  background: linear-gradient(155deg, var(--unesco-blue) 0%, #083655 100%);
+  border-radius: 18px;
+}
+
+.cs-register-shell {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 2rem 2.5rem 2.4rem;
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 24px 50px -18px rgba(5, 30, 55, 0.55);
+}
+
+.cs-register-topbar {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.cs-register-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #5a6b7b;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.cs-register-back:hover,
+.cs-register-back:focus {
+  color: var(--unesco-blue-dark);
+}
+
+.cs-register-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.85rem 0 1.4rem;
+}
+
+.cs-register-brand-icon,
+.cs-register-success-icon,
+.cs-register-ofform-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--unesco-blue);
+  background: var(--unesco-blue-pale);
+}
+
+.cs-register-brand-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+}
+
+.cs-register-brand-title,
+.cs-register-brand-subtitle {
+  margin: 0;
+}
+
+.cs-register-brand-title {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.cs-register-brand-subtitle,
+.cs-register-muted {
+  color: #64758a;
+  font-size: 0.85rem;
+}
+
+.cs-register-title {
+  margin: 0 0 0.4rem;
+  color: var(--text-primary);
+  font-size: 1.4rem;
+}
+
+.cs-register-intro {
+  margin: 0 0 1.35rem;
+  color: #64758a;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.cs-register-fieldset {
+  min-width: 0;
+  margin: 0 0 1.1rem;
+  padding: 0.4rem 1rem 1.1rem;
+  border: 1px solid #dfe4ec;
+  border-radius: 14px;
+}
+
+.cs-register-fieldset legend {
+  width: auto;
+  margin: 0;
+  padding: 0 0.45rem;
+  border: 0;
+  color: var(--unesco-blue-dark);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.cs-register-form .cs-field {
+  margin-top: 0.85rem;
+  margin-bottom: 0;
+}
+
+.cs-register-form label,
+.cs-register-join-box > label {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.cs-register-form input[type="email"],
+.cs-register-form input[type="text"],
+.cs-register-form input[type="password"],
+.cs-register-form input[type="date"],
+.cs-register-form select {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #d5dce5;
+  border-radius: 10px;
+  background: #eff3fa;
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.cs-register-form input:focus,
+.cs-register-form select:focus,
+.cs-password-toggle:focus-visible {
+  outline: 2px solid var(--unesco-blue-light);
+  outline-offset: 1px;
+  border-color: var(--unesco-blue);
+}
+
+.cs-register-form [aria-invalid="true"] {
+  border-color: #c0392b !important;
+}
+
+.cs-register-form .cs-hint {
+  display: block;
+}
+
+.cs-register-form .cs-hint.is-error {
+  color: #9b2c20;
+  font-weight: 600;
+}
+
+.cs-password-field {
+  position: relative;
+}
+
+.cs-password-field input {
+  padding-right: 3rem !important;
+}
+
+.cs-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #64758a;
+  cursor: pointer;
+}
+
+.cs-password-toggle:hover,
+.cs-password-toggle.is-visible {
+  background: var(--unesco-blue-pale);
+  color: var(--unesco-blue-dark);
+}
+
+.cs-password-meter {
+  display: flex;
+  gap: 4px;
+  margin-top: 0.45rem;
+}
+
+.cs-password-meter span {
+  height: 4px;
+  flex: 1;
+  border-radius: 3px;
+  background: #dfe4ec;
+}
+
+.cs-password-meter span.is-on {
+  background: var(--unesco-blue-light);
+}
+
+.cs-register-join-box {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border: 1px solid #dfe4ec;
+  border-radius: 12px;
+  background: #f6fafd;
+}
+
+.cs-register-join-box select {
+  margin-top: 0.55rem;
+}
+
+.cs-register-join-badge {
+  display: inline-flex;
+  margin-top: 0.4rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: var(--unesco-blue-pale);
+  color: var(--unesco-blue-dark);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.cs-register-terms {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.cs-register-terms input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  margin: 0.15rem 0 0;
+  accent-color: var(--unesco-blue);
+}
+
+.cs-register-terms label {
+  display: inline;
+  margin: 0;
+  font-weight: 500;
+}
+
+.cs-register-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.cs-register-submit {
+  width: 100%;
+  min-height: 46px;
+  background: linear-gradient(90deg, var(--unesco-blue-light), var(--unesco-blue));
+  box-shadow: 0 14px 26px -12px rgba(0, 105, 180, 0.5);
+}
+
+.cs-register-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.4rem 0 1rem;
+  color: #64758a;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cs-register-divider::before,
+.cs-register-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: #dfe4ec;
+}
+
+.cs-register-ofform-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #dfe4ec;
+  border-radius: 14px;
+  background: #fafbfd;
+}
+
+.cs-register-ofform-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+}
+
+.cs-register-ofform-card p {
+  margin: 0;
+  flex: 1;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.cs-register-ofform-card a {
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--unesco-blue);
+  border-radius: 8px;
+  color: var(--unesco-blue-dark);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.cs-register-footer {
+  margin: 1.2rem 0 0;
+  color: #64758a;
+  text-align: center;
+}
+
+.cs-register-footer a {
+  color: var(--unesco-blue-dark);
+  font-weight: 700;
+}
+
+.cs-register-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: center;
+}
+
+.cs-register-success h1,
+.cs-register-success p {
+  margin: 0;
+}
+
+.cs-register-success-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+}
+
+.cs-register-join-success {
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: var(--unesco-blue-pale);
+  color: var(--unesco-blue-dark);
+}
+
+@media (max-width: 639px) {
+  .cs-register-page {
+    margin: 0 -10px;
+    padding: 1rem 0.6rem 1.5rem;
+    border-radius: 12px;
+  }
+
+  .cs-register-shell {
+    padding: 1.35rem 1rem 1.7rem;
+    border-radius: 16px;
+  }
+
+  .cs-register-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .cs-register-ofform-card {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
 /* ---------------------------------------------------------------------------
  * Public presentation layer (increment 4). Mobile-first, water-family styling.
  * ------------------------------------------------------------------------- */
@@ -3290,6 +3676,37 @@
 .cs-review-details .cs-facts {
   margin-top: 0.6rem;
   font-size: 0.9rem;
+}
+
+.cs-review-cover {
+  display: block;
+  width: min(100%, 760px);
+  max-height: 360px;
+  margin: 1rem 0;
+  border-radius: var(--radius);
+  object-fit: cover;
+}
+
+.cs-review-json {
+  max-height: 22rem;
+  overflow: auto;
+  padding: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f7fafd;
+}
+
+.cs-review-history {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.cs-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

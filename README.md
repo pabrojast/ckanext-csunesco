@@ -102,7 +102,9 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | Method | Path | Purpose | Who can access |
 | --- | --- | --- | --- |
 | GET | `/citizen-science/` | Citizen Science hub | public |
-| GET | `/citizen-science/initiative/<name>` | Single initiative + its approved projects | public |
+| GET | `/citizen-science/initiative/<name>` | Editable initiative page with pooled projects, news and events | public |
+| GET·POST | `/citizen-science/initiative/<name>/page` | Initiative-page editor and direct publish | that initiative's ADM or sysadmin |
+| GET | `/citizen-science/initiative/<name>/page/preview` | Preview an initiative draft | same as editor |
 | GET | `/citizen-science/projects` | Filterable project listing | public |
 | GET | `/citizen-science/project/<slug>` | Project landing page | public (approved) |
 | GET | `/citizen-science/project/<slug>/geojson` | Async region GeoJSON for the map | public |
@@ -113,7 +115,7 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | GET | `/citizen-science/maps` · `/maps/<slug>` | Maps index / detail (Terria embed) | public (approved) |
 | GET | `/citizen-science/data/<id>.csv` · `.geojson` | Live data proxy for an **approved** data source (fetches ofform's public endpoints, TTL-cached) | public |
 | POST | `/citizen-science/data/<id>/chat` | One plain-language question about an **approved** data source (JSON in/out, never cached, per-user daily quota) | authenticated |
-| GET·POST | `/citizen-science/register-citizen` | Citizen Scientist self-registration (account created **pending** until email is verified) | public — gated by `ckan.auth.create_user_via_web`; reuses core `user_create` auth |
+| GET·POST | `/citizen-science/register-citizen` | Citizen Scientist self-registration (optional `?project=<id-or-slug>`; account created **pending**, selected join filed immediately) | public — gated by `ckan.auth.create_user_via_web`; reuses core `user_create` auth |
 | GET | `/citizen-science/verify/<token>` | Activate a pending account via its emailed link | public (single-use token) |
 | GET·POST | `/citizen-science/verify/resend` | Request a fresh verification link | public (generic response) |
 | GET·POST | `/citizen-science/project/new` | Propose a project (**five-stage form**) | authenticated |
@@ -128,6 +130,7 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | GET·POST | `/citizen-science/project/<slug>/data/connect` | Connect a CS Toolbox form's data (request, lands pending) | sysadmin, initiative admin **or** that project's admin |
 | GET | `/citizen-science/admin` | Approval panel (pending projects/joins/content/data) | sysadmin, any initiative admin **or** any project admin |
 | POST | `/citizen-science/admin/project/<id>/approve` · `/reject` | Moderate a project request | sysadmin **or** the project's initiative admin |
+| GET | `/citizen-science/admin/project/<id>/review` | Full request, GeoJSON and edit audit | sysadmin **or** the project's initiative admin |
 | POST | `/citizen-science/admin/join/<project_id>/<user_id>/approve` · `/reject` | Moderate a join request | sysadmin, initiative admin **or** project admin |
 | POST | `/citizen-science/admin/content/<id>/approve` · `/reject` | Moderate a content item | sysadmin **or** the content's initiative admin |
 | POST | `/citizen-science/admin/data/<id>/approve` · `/reject` | Moderate a data source (approve creates the CKAN dataset) | sysadmin **or** the source's initiative admin (org override is sysadmin-only) |
@@ -200,6 +203,15 @@ Server-side checks (the browser form is progressive-enhancement only — it carr
 - **email**, **username**, **password** required; username lower-cased + stripped.
 - **password** ≥ 8 chars and must equal **confirm password** (web form).
 - **terms** checkbox must be accepted (web form).
+- Optional **date of birth** cannot be in the future; **nationality** must be an
+  official ISO-3166 alpha-2 code; **gender** is allowlisted. These private fields
+  and the terms-acceptance timestamp live only on the CS profile.
+- An approved project may be selected by id or slug. Its join request is filed
+  immediately under the new account; an unknown project or a join failure never
+  rolls back registration and never reveals whether a hidden project exists.
+- Every POST (successful or not) counts toward the per-worker, per-IP default of
+  10 attempts per 300 seconds. A limited request returns HTTP 429 with
+  `Retry-After` and the same generic error.
 - **reCAPTCHA v3** verified server-side (score > 0.5) **only when both
   `ckan.recaptcha.publickey` and `ckan.recaptcha.privatekey` are set**; skipped
   otherwise.
@@ -213,10 +225,11 @@ custom authenticator gate on `user.is_active`) until the user opens the emailed
 `/citizen-science/verify/<token>` link, which flips the account to `active`.
 Tokens are single-use and expire after `VERIFICATION_TOKEN_TTL_HOURS` (48h);
 `/citizen-science/verify/resend` re-issues one (generic response, no enumeration).
-The declared **country** is persisted on the CS profile. Requires a working SMTP
-config (`smtp.*`). The server-to-server `csunesco_register_citizen_scientist`
-action is unaffected — trusted (sysadmin) callers still create active,
-already-verified accounts.
+The canonical **country** plus private date/nationality/gender/terms fields are
+persisted on the CS profile. Requires a working SMTP config (`smtp.*`). The
+server-to-server `csunesco_register_citizen_scientist` action remains backwards
+compatible and may accept the same optional profile fields; trusted (sysadmin)
+callers still create active, already-verified accounts.
 
 ## Configuration
 
@@ -228,7 +241,10 @@ config reload). Features gated on an option **fail closed** when it is unset.
 | `ckanext.csunesco.terria_base_url` | *(unset — maps disabled)* | Space-separated allowlist of Terria base URLs a `cs-map` may embed (e.g. `https://ihp-wins.unesco.org/terria`). Unset ⇒ the `cs-map` validator rejects every URL and stored maps render as plain links. List every host if Terria lives on several. |
 | `ckanext.csunesco.ofform_base_url` | *(unset — data pipeline disabled)* | The **only** origin the data proxy will fetch (the CS Toolbox API base, e.g. `https://ofform-api.aquedra.com`). Anti-SSRF: form ids are int-coerced into a fixed path under this base. |
 | `ckanext.csunesco.ofform_cache_ttl` | `60` | Seconds a proxied response (CSV / dashboard JSON) is cached per form. |
-| `ckanext.csunesco.ofform_app_url` | *(unset — links hidden)* | The CS Toolbox **frontend** base (e.g. `https://ofform.aquedra.com`). Used only to render "Open in the app" links in the review panel. |
+| `ckanext.csunesco.ofform_app_url` | *(unset — links hidden)* | The CS Toolbox **frontend** base (e.g. `https://ofform.aquedra.com`). Renders review-panel links and the alternative registration card. |
+| `ckanext.csunesco.registration_rate_limit_enabled` | `true` | Enables the best-effort, per-worker registration throttle. Keep a shared proxy/WAF limit for multi-worker deployments. |
+| `ckanext.csunesco.registration_rate_limit_max` | `10` | Allowed registration POSTs per client IP in one window, including successful attempts. |
+| `ckanext.csunesco.registration_rate_limit_window` | `300` | Registration throttle window in seconds. |
 | `ckanext.csunesco.dataset_owner_org` | *(unset)* | **Fallback** organization for datasets created on data-source approval. The actual owner is resolved in priority order: the sysadmin's choice in the approval form → the org suggested by the app (`owner_org` in the request; ofform keeps its orgs synchronized with the portal via `ckan_slug`) → `cs_project.organization_id` → this option. A suggestion that does not exist on the portal falls back to this default. |
 | `ckanext.csunesco.dataset_defaults` | `{}` | Optional JSON object merged into `package_create` — use it to satisfy portal-schema (e.g. schemingdcat) required fields, licences, etc. |
 | `ckanext.csunesco.llm_api_key` | *(unset — the data chat is disabled)* | API key for the chat-completions provider that powers the **Ask the data** block. Unset ⇒ the block renders with a "not switched on" notice; nothing else on the page changes. This is the extension's only outbound credential. |

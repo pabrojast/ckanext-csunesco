@@ -148,6 +148,47 @@ def test_partial_update_leaves_other_extras_alone(actions, session):
     assert out['start_date'] == '2026-07-16'
 
 
+def test_update_records_actor_time_and_changed_fields(actions, session):
+    created = _create(actions)
+    actions.csunesco_project_update(
+        _ctx(), {'id': created['id'], 'title': 'Renamed',
+                 'contact_person': 'A. Silva'})
+    history = json.loads(_row(created['id']).extras)['edit_history']
+    assert len(history) == 1
+    assert history[0]['user_id'] == 'pm-1'
+    assert history[0]['user_name'] == 'pm-1'
+    assert history[0]['timestamp'].endswith('Z')
+    assert history[0]['fields'] == ['contact_person', 'title']
+
+
+def test_noop_update_does_not_add_audit_noise(actions, session):
+    created = _create(actions)
+    actions.csunesco_project_update(
+        _ctx(), {'id': created['id'], 'title': created['title']})
+    assert 'edit_history' not in json.loads(_row(created['id']).extras)
+
+
+def test_initiative_change_cascades_to_project_content(actions, session):
+    created = _create(actions)
+    content = db.CsContent()
+    content.id = 'content-1'
+    content.slug = 'content-1'
+    content.content_type = 'cs-news'
+    content.project_id = created['id']
+    content.initiative_group = 'riverwatch'
+    content.title = 'Update'
+    content.status = 'approved'
+    content.extras = '{}'
+    session.add(content)
+    session.commit()
+
+    actions.csunesco_project_update(
+        _ctx(), {'id': created['id'], 'initiative': 'islandwatch'})
+
+    session.expire_all()
+    assert db.get_content('content-1').initiative_group == 'islandwatch'
+
+
 def test_update_can_clear_an_extra(actions, session):
     created = _create(actions)
     actions.csunesco_project_update(

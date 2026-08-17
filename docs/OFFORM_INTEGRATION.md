@@ -136,6 +136,13 @@ CKAN is the identity authority. `POST /cs/register` is public, synchronous and
 3. In dev with no token, it creates only the local user and returns
    `ckan_synced=false` (not an error — the token-less dev mode).
 
+The current ofform payload remains the legacy compatible set
+(`username/email/password/fullname/country`). The CKAN action also accepts
+optional `date_of_birth`, ISO `nationality`, allowlisted `gender` and
+`terms_accepted`, but ofform keeps those values in its local shadow profile.
+Conversely, a person using CKAN's own web form creates the CKAN account/profile
+only; that route does not call back into ofform.
+
 CS **projects** are mirrored as ofform `Programme` rows (`kind='cs_project'`), so
 join = `MembershipRequest(scope_type=programme)` and the project admin =
 `Membership(scope=programme, role=owner)`; `can_decide_request` already authorises

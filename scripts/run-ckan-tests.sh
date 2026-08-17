@@ -7,8 +7,9 @@
 #   1. a plugin-LOAD smoke check -- instantiate CsunescoPlugin and assert its
 #      IActions / ITemplateHelpers / IValidators registries are non-empty and
 #      that get_blueprint() imports and builds (a broken blueprint module
-#      crashes every CKAN worker at boot),
-#   2. the BEHAVIORAL pytest files (test_db_behavior.py + test_pure_logic.py).
+#      crashes every CKAN worker at boot), and parse the registration template
+#      with CKAN's Jinja asset extension,
+#   2. the BEHAVIORAL pytest suite, including registration contracts.
 #
 # Prints a clear PASS/FAIL summary and exits non-zero on the first failure.
 #
@@ -40,8 +41,11 @@ fi
 echo "-- plugin-load smoke check (CsunescoPlugin hooks)"
 if ! docker run --rm -i "${IMAGE}" python - <<'PY'
 import sys
+from pathlib import Path
 
 from ckanext.csunesco.plugin import CsunescoPlugin
+from ckan.lib.jinja_extensions import _get_extensions
+from jinja2 import Environment
 
 plugin = CsunescoPlugin()
 
@@ -61,14 +65,20 @@ for name in ("csunesco_project_request_create", "csunesco_join_approve",
              "csunesco_project_show", "csunesco_content_list",
              "csunesco_content_withdraw", "csunesco_content_delete",
              "csunesco_project_update", "csunesco_member_state_list",
-             "csunesco_project_resubmit"):
+             "csunesco_project_resubmit", "csunesco_project_review_show",
+             "csunesco_initiative_page_show",
+             "csunesco_initiative_page_update",
+             "csunesco_initiative_page_publish"):
     assert name in actions, "missing action %r" % name
 
 # An action registered WITHOUT an auth entry is a latent
 # "Authorization function not found" -> 500 at the first call, which no unit
 # test reaches. Cheapest possible guard for the newest two.
 for name in ("csunesco_project_update", "csunesco_member_state_list",
-             "csunesco_project_resubmit"):
+             "csunesco_project_resubmit", "csunesco_project_review_show",
+             "csunesco_initiative_page_show",
+             "csunesco_initiative_page_update",
+             "csunesco_initiative_page_publish"):
     assert name in auth, "action %r has no auth function" % name
 
 # IBlueprint: the module import happens inside get_blueprint(), so a NameError
@@ -79,6 +89,13 @@ assert blueprints and all(bp is not None for bp in blueprints), \
     "get_blueprint() returned nothing"
 assert any(bp.deferred_functions for bp in blueprints), \
     "blueprint has no registered routes"
+
+# Parse every plugin template with CKAN's full custom tag set. This catches
+# invalid snippets/assets/ckan_extends before a visitor reaches a route.
+template_root = Path("/plugin/ckanext/csunesco/templates")
+environment = Environment(extensions=_get_extensions())
+for template_path in template_root.rglob("*.html"):
+    environment.parse(template_path.read_text(encoding="utf-8"))
 
 print("actions=%d helpers=%d validators=%d auth=%d blueprints=%d"
       % (len(actions), len(helpers), len(validators), len(auth),
@@ -95,9 +112,9 @@ fi
 # 3. Behavioral pytest files (real CKAN code, plugin DB helpers + pure logic). #
 #    -p no:ckan keeps the CKAN pytest plugin from demanding a configured site. #
 # --------------------------------------------------------------------------- #
-echo "-- behavioral pytest (db_behavior + pure_logic + initiative_admin + blocks + aggregate + chat + data_chat + admin_bulk + member_states + project_update + join_requests + ofform_contract)"
+echo "-- behavioral pytest (db_behavior + registration + pure_logic + initiative_admin + blocks + aggregate + chat + data_chat + admin_bulk + member_states + project_update + join_requests + ofform_contract)"
 if ! docker run --rm "${IMAGE}" bash -lc \
-  'cd /plugin && python -m pytest ckanext/csunesco/tests/test_db_behavior.py ckanext/csunesco/tests/test_pure_logic.py ckanext/csunesco/tests/test_initiative_admin.py ckanext/csunesco/tests/test_blocks.py ckanext/csunesco/tests/test_uploads.py ckanext/csunesco/tests/test_aggregate.py ckanext/csunesco/tests/test_chat.py ckanext/csunesco/tests/test_data_chat.py ckanext/csunesco/tests/test_admin_bulk.py ckanext/csunesco/tests/test_content_lifecycle.py ckanext/csunesco/tests/test_content_list_filters.py ckanext/csunesco/tests/test_member_states.py ckanext/csunesco/tests/test_project_update.py ckanext/csunesco/tests/test_join_requests.py ckanext/csunesco/tests/test_ofform_contract.py ckanext/csunesco/tests/test_scaffold.py -q -p no:ckan'
+  'cd /plugin && python -m pytest ckanext/csunesco/tests/test_db_behavior.py ckanext/csunesco/tests/test_registration.py ckanext/csunesco/tests/test_pure_logic.py ckanext/csunesco/tests/test_initiative_admin.py ckanext/csunesco/tests/test_initiative_pages.py ckanext/csunesco/tests/test_blocks.py ckanext/csunesco/tests/test_uploads.py ckanext/csunesco/tests/test_aggregate.py ckanext/csunesco/tests/test_chat.py ckanext/csunesco/tests/test_data_chat.py ckanext/csunesco/tests/test_admin_bulk.py ckanext/csunesco/tests/test_content_lifecycle.py ckanext/csunesco/tests/test_content_list_filters.py ckanext/csunesco/tests/test_member_states.py ckanext/csunesco/tests/test_project_update.py ckanext/csunesco/tests/test_join_requests.py ckanext/csunesco/tests/test_ofform_contract.py ckanext/csunesco/tests/test_scaffold.py -q -p no:ckan'
 then
   echo "FAIL: behavioral pytest failed"
   exit 1

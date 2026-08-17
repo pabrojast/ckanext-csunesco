@@ -228,8 +228,10 @@
                                  project=p, compact=true %}
                     </details>
                   </td>
-                  <td data-label="{{ _('Initiative') }}">{{ p.initiative_title or p.initiative_group or '—' }}</td>
+                  <td data-label="{{ _('Initiative') }}">{{ p.initiative_title or p.initiative_group or _("Not part of an initiative") }}</td>
                   <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
+                    <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                       href="{{ h.url_for('csunesco.project_review', id=p.id) }}">{{ _("Review") }}</a>
                     <form method="post"
                           action="{{ h.url_for('csunesco.project_approve', id=p.id) }}"
                           data-confirm="{{ _('Approve this project?') }}">

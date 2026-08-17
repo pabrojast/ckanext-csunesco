@@ -1,0 +1,12 @@
+<section class="cs-section" id="block-{{ block.id }}" aria-labelledby="title-{{ block.id }}">
+  <div class="cs-section-header">
+    <h2 id="title-{{ block.id }}" class="cs-section-title">{{ block.title or _("Upcoming events") }}</h2>
+    <a class="cs-link" href="{{ h.url_for('csunesco.cs_events_index', initiative=ctx.initiative.name) }}">{{ _("All events") }} &rarr;</a>
+  </div>
+  {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
+  <div class="cs-content-grid">
+    {% for item in (ctx.initiative_events or [])[:block.limit] %}
+      {% snippet "csunesco/snippets/content_card.html", item=item %}
+    {% else %}<p class="cs-empty">{{ _("No upcoming events have been published yet.") }}</p>{% endfor %}
+  </div>
+</section>

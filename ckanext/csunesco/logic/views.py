@@ -156,41 +156,44 @@ def _fallback_site_ctx():
 
 
 def initiative_index(name):
-    """Initiative page: header + the approved projects filed under it."""
+    """Block-driven initiative page with live projects, news and events."""
+    from ckanext.csunesco.logic import blocks as blocks_module
     initiative = next(
         (i for i in constants.CS_INITIATIVES if i['name'] == name), None)
     if initiative is None:
         return tk.abort(404, tk._('Initiative not found'))
 
+    can_manage = False
     try:
-        listing = tk.get_action('csunesco_project_list')(
-            _context(), {'initiative': name, 'limit': 50, 'offset': 0})
+        tk.check_access('csunesco_initiative_page_update', _context(),
+                        {'initiative': name})
+        can_manage = True
     except Exception:
-        log.warning('csunesco: initiative project list unavailable')
-        listing = {'results': [], 'count': 0}
+        pass
 
-    # The initiative's own pulse (fail-soft; the action pins anonymous
-    # visitors to approved + public rows): latest news + upcoming events.
-    news = []
-    events = []
     try:
-        news = tk.get_action('csunesco_content_list')(
-            _context(), {'initiative': name, 'content_type': 'cs-news',
-                         'limit': 3, 'include_project': True}
-        ).get('results', [])
-        events = tk.get_action('csunesco_content_list')(
-            _context(), {'initiative': name, 'upcoming': True,
-                         'limit': 3, 'include_project': True}
-        ).get('results', [])
+        page = tk.get_action('csunesco_initiative_page_show')(
+            _context(), {'initiative': name})
+        published = page.get('published_blocks')
+        blocks = (published if published is not None
+                  else blocks_module.default_initiative_blocks())
+        blocks = page_render.visible_blocks(blocks, scope='initiative')
+        ctx = page_render.build_context(
+            _context(), None, blocks, can_manage=can_manage,
+            scope='initiative', initiative=initiative)
     except Exception:
-        log.warning('csunesco: initiative content unavailable')
+        log.warning('csunesco: initiative page unavailable; using defaults')
+        blocks = page_render.visible_blocks(
+            blocks_module.default_initiative_blocks(), scope='initiative')
+        ctx = page_render.build_context(
+            _context(), None, blocks, scope='initiative',
+            initiative=initiative)
 
     return tk.render('csunesco/initiative.html', extra_vars={
         'initiative': initiative,
-        'projects': _decorate_projects(listing.get('results', [])),
-        'project_count': listing.get('count', 0),
-        'news': news,
-        'events': events,
+        'blocks': blocks,
+        'ctx': ctx,
+        'is_draft_preview': False,
     })
 
 
@@ -338,7 +341,7 @@ def _first_error_step(errors):
 
 
 def _render_project_form(data, errors, success=False, mode='new',
-                         project=None):
+                         project=None, return_to=None):
     """Render the staged project form, for BOTH create and edit.
 
     One template, one ``mode`` flag -- the shape ``views_content`` already uses
@@ -356,6 +359,7 @@ def _render_project_form(data, errors, success=False, mode='new',
         'member_states_available': states_available,
         'steps': constants.PROJECT_FORM_STEPS,
         'open_step': _first_error_step(errors),
+        'return_to': return_to if return_to == 'review' else None,
     })
 
 
@@ -514,16 +518,21 @@ def project_edit(slug):
     if not tk.h.csunesco_can_edit_project(project):
         return _not_authorized_response()
 
+    return_to = ('review' if request.values.get('return_to') == 'review'
+                 else None)
+
     if request.method == 'GET':
         return _render_project_form(_project_to_form(project), {},
-                                    mode='edit', project=project)
+                                    mode='edit', project=project,
+                                    return_to=return_to)
 
     # --- POST ---------------------------------------------------------------
     data_dict = _read_project_form()
     batch, problems = _resolve_cover(request.form, request.files)
     if problems:
         return _render_project_form(data_dict, {'image_url': [UPLOAD_ERROR]},
-                                    mode='edit', project=project)
+                                    mode='edit', project=project,
+                                    return_to=return_to)
     data_dict['image_url'] = batch.project_image_url
     data_dict['id'] = project['id']
     try:
@@ -534,14 +543,18 @@ def project_edit(slug):
     except tk.ValidationError as error:
         batch.rollback()
         return _render_project_form(data_dict, error.error_dict or {},
-                                    mode='edit', project=project)
+                                    mode='edit', project=project,
+                                    return_to=return_to)
     except Exception:
         batch.rollback()
         log.warning('csunesco: project could not be updated')
         return _render_project_form(data_dict, {'message': GENERIC_ERROR},
-                                    mode='edit', project=project)
+                                    mode='edit', project=project,
+                                    return_to=return_to)
 
     tk.h.flash_success(tk._('Your project details have been saved.'))
+    if return_to == 'review':
+        return tk.redirect_to('csunesco.project_review', id=project['id'])
     return tk.redirect_to('csunesco.project_landing', slug=project['slug'])
 
 

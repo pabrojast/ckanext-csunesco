@@ -1,0 +1,7 @@
+<section class="cs-hero cs-project-hero" id="block-{{ block.id }}"
+         aria-labelledby="title-{{ block.id }}"
+         {%- if block.image_url %} style="--cs-project-hero-img: url('{{ block.image_url }}')"{% endif %}>
+  <p class="cs-project-hero-initiative">{{ _("Citizen Science initiative") }}</p>
+  <h1 id="title-{{ block.id }}">{{ block.heading or ctx.initiative.title }}</h1>
+  <p>{{ block.tagline or _("Community projects contributing to the %(name)s initiative.", name=ctx.initiative.title) }}</p>
+</section>

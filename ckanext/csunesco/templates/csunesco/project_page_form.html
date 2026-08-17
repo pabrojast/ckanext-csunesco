@@ -35,8 +35,9 @@
 #}
 
 {% set is_site = (scope | default('project')) == 'site' %}
+{% set is_initiative = (scope | default('project')) == 'initiative' %}
 {% set can_add = blocks | length < max_blocks %}
-{% set page_title = _("Citizen Science home page") if is_site else project.title %}
+{% set page_title = _("Citizen Science home page") if is_site else initiative.title if is_initiative else project.title %}
 
 {% block subtitle %}{{ _("Edit page") }} - {{ page_title }}{% endblock %}
 
@@ -44,7 +45,7 @@
 
 {% block cs_content %}
   <header class="cs-wb-header">
-    <p class="cs-wb-eyebrow">{{ _("Citizen Science") }} · {{ _("Home page") if is_site else _("Project page") }}</p>
+    <p class="cs-wb-eyebrow">{{ _("Citizen Science") }} · {{ _("Home page") if is_site else _("Initiative page") if is_initiative else _("Project page") }}</p>
     <h1 class="cs-wb-title" id="cs-pb-title">{{ page_title }}</h1>
     {% if page.status == 'pending' %}
       <span class="cs-wb-chip cs-wb-chip-work">{{ h.csunesco_icon('alert', 14) }} {{ _("In review") }}</span>
@@ -66,6 +67,9 @@
            href="{{ h.url_for('csunesco.index') }}">
           {{ _("Back to the page") }}
         </a>
+      {% elif is_initiative %}
+        <a class="cs-btn cs-btn-secondary cs-btn-sm"
+           href="{{ h.url_for('csunesco.initiative_index', name=initiative.name) }}">{{ _("Back to the page") }}</a>
       {% else %}
         <a class="cs-btn cs-btn-secondary cs-btn-sm"
            href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
@@ -76,6 +80,8 @@
     <p class="cs-wb-sub">
       {% if is_site %}
         {{ _("The standard sections below show live portal content and keep themselves up to date — rename them, add an intro, reorder or hide them, add your own, then publish.") }}
+      {% elif is_initiative %}
+        {{ _("The standard sections show live projects, news and events for this initiative. Reorder, rename or enrich them, then publish.") }}
       {% elif page.status == 'pending' %}
         {{ _("This page is waiting for a reviewer. Editing it now takes it back out of the queue.") }}
       {% elif page.get('published_blocks') is not none %}
@@ -186,7 +192,7 @@
   #}
   <form method="post" enctype="multipart/form-data"
         class="cs-pb-form" id="cs-page-form" novalidate
-        action="{{ h.url_for('csunesco.site_page_edit') if is_site else h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
+        action="{{ h.url_for('csunesco.site_page_edit') if is_site else h.url_for('csunesco.initiative_page_edit', name=initiative.name) if is_initiative else h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
     {{ h.csrf_input() }}
     {#
       Where a JS-enhanced submit writes the operation before submitting, because
@@ -210,7 +216,7 @@
       {{ _("Save draft") }}
     </button>
 
-    {% if not is_site %}
+    {% if not is_site and not is_initiative %}
       <section class="cs-project-cover-editor" aria-labelledby="cs-project-cover-title">
         <h2 id="cs-project-cover-title" class="cs-wb-palette-title">
           {{ _("Project cover") }}
@@ -315,7 +321,7 @@
                   the field-less ones).
                 #}
                 <p class="cs-pb-auto-note">
-                  {% if is_site %}
+                  {% if is_site or is_initiative %}
                     {{ _("This section fills itself from live portal content — nothing to maintain. Yours to shape: rename it, add an intro, move it, or hide it.") }}
                   {% else %}
                     {{ _("This section fills itself from your project's data — nothing to maintain. Yours to shape: rename it, add an intro, move it, or hide it.") }}
@@ -344,7 +350,7 @@
                              drops=drops_by_block.get(block.id, {}) %}
                 {% endif %}
                 {% if spec.deprecated %}
-                  {% if project.landing_content %}
+                  {% if project and project.landing_content %}
                     <div class="cs-pb-legacy">
                       <p class="cs-hint">
                         {{ _("This text was written before this editor existed, so it cannot be edited here:") }}
@@ -420,8 +426,8 @@
       #}
       {% set needs_review = h.csunesco_blocks_need_review(blocks) %}
       <p class="cs-hint cs-pb-publish-hint">
-        {% if is_site %}
-          {{ _("Publishing puts the new home page live immediately.") }}
+        {% if is_site or is_initiative %}
+          {{ _("Publishing puts the new page live immediately.") }}
         {% elif project.trusted and not needs_review %}
           {{ _("This project is trusted, so the page goes live immediately.") }}
         {% elif needs_review %}

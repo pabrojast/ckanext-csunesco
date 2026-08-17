@@ -99,7 +99,8 @@ def _initial_blocks(page):
 
 
 def _render_editor(project, page, blocks, errors=None, notice=None,
-                   drops=None, scope='project', project_image_url=None):
+                   drops=None, scope='project', project_image_url=None,
+                   initiative=None):
     """Render the editor (shared by the project pages and the site page).
 
     ``drops`` is what normalization threw away on the last save, indexed by
@@ -129,6 +130,7 @@ def _render_editor(project, page, blocks, errors=None, notice=None,
             'draft_project_image_url', (project or {}).get('image_url') or '')
     return tk.render('csunesco/project_page_form.html', extra_vars={
         'project': project,
+        'initiative': initiative,
         'scope': scope,
         'page': page or {},
         'blocks': blocks,
@@ -491,5 +493,145 @@ def site_page_preview():
     return tk.render('csunesco/citizen-science.html', extra_vars={
         'blocks': blocks,
         'ctx': ctx,
+        'is_draft_preview': True,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Initiative page builder -- same workbench, initiative-scoped direct publish
+# ---------------------------------------------------------------------------
+
+def _initiative(name):
+    from ckanext.csunesco import constants
+    return next((item for item in constants.CS_INITIATIVES
+                 if item['name'] == name), None)
+
+
+def _load_initiative_page(name):
+    try:
+        return tk.get_action('csunesco_initiative_page_show')(
+            _context(), {'initiative': name, 'include_draft': True})
+    except Exception:
+        log.warning('csunesco: initiative page draft could not be loaded')
+        return None
+
+
+def _initial_initiative_blocks(page):
+    draft = (page or {}).get('draft_blocks')
+    if draft:
+        return blocks_module.ensure_builtins(draft, scope='initiative')
+    published = (page or {}).get('published_blocks')
+    if published:
+        return blocks_module.ensure_builtins(published, scope='initiative')
+    return blocks_module.default_initiative_blocks()
+
+
+def initiative_page_edit(name):
+    initiative = _initiative(name)
+    if initiative is None:
+        return tk.abort(404, tk._('Initiative not found'))
+    if not tk.g.user:
+        return _not_authorized_response()
+    try:
+        tk.check_access('csunesco_initiative_page_update', _context(),
+                        {'initiative': name})
+    except tk.NotAuthorized:
+        return _not_authorized_response()
+
+    page_id = db.initiative_page_id(name)
+    page = _load_initiative_page(name)
+    if request.method == 'GET':
+        return _render_editor(
+            None, page, _initial_initiative_blocks(page),
+            drops=_take_drops(page_id), scope='initiative',
+            initiative=initiative)
+
+    raw_op = blocks_module.choose_op(request.form.get('op'),
+                                     request.form.get('op_js'))
+    report = blocks_module.DropReport()
+    raw_blocks = blocks_module.raw_blocks_from_form(
+        request.form.items(multi=True), request.files.items(multi=True))
+    try:
+        upload_batch = uploads.process_page_images(raw_blocks)
+    except uploads.PageImageUploadError as error:
+        page_blocks = blocks_module.ensure_builtins(
+            blocks_module.normalize_blocks(raw_blocks, report=report),
+            scope='initiative')
+        return _render_editor(
+            None, page, page_blocks,
+            errors={'uploads': [tk._('One or more images could not be saved.')]},
+            drops=report.drops + error.problems, scope='initiative',
+            initiative=initiative)
+
+    page_blocks = blocks_module.ensure_builtins(
+        blocks_module.normalize_blocks(raw_blocks, report=report),
+        scope='initiative')
+    op_name, _argument = blocks_module.parse_op(raw_op)
+    page_blocks, anchor = blocks_module.apply_op(
+        page_blocks, raw_op, scope='initiative')
+    alive = {block['id'] for block in page_blocks}
+    drops = [drop for drop in report.drops if drop['block'] in alive]
+    try:
+        tk.get_action('csunesco_initiative_page_update')(
+            _context(), {'initiative': name, 'blocks': page_blocks})
+    except tk.NotAuthorized:
+        upload_batch.rollback()
+        return _not_authorized_response()
+    except tk.ValidationError as error:
+        upload_batch.rollback()
+        return _render_editor(
+            None, page, page_blocks, errors=error.error_dict or {},
+            drops=drops, scope='initiative', initiative=initiative)
+    except Exception:
+        upload_batch.rollback()
+        log.warning('csunesco: initiative page draft could not be saved')
+        return _render_editor(
+            None, page, page_blocks, errors={'message': GENERIC_ERROR},
+            drops=drops, scope='initiative', initiative=initiative)
+
+    if op_name == 'submit':
+        try:
+            tk.get_action('csunesco_initiative_page_publish')(
+                _context(), {'initiative': name})
+        except (tk.NotAuthorized, tk.ValidationError) as error:
+            if isinstance(error, tk.NotAuthorized):
+                return _not_authorized_response()
+            return _render_editor(
+                None, page, page_blocks, errors=error.error_dict or {},
+                drops=drops, scope='initiative', initiative=initiative)
+        tk.h.flash_success(tk._('The initiative page is live.'))
+        return tk.redirect_to('csunesco.initiative_index', name=name)
+
+    _stash_drops(page_id, drops)
+    if op_name == 'preview':
+        return tk.redirect_to('csunesco.initiative_page_preview', name=name)
+    tk.h.flash_success(tk._('Draft saved.'))
+    return tk.redirect_to(
+        tk.url_for('csunesco.initiative_page_edit', name=name,
+                   **({'open': anchor} if anchor else {}))
+        + ('#block-%s' % anchor if anchor else ''))
+
+
+def initiative_page_preview(name):
+    initiative = _initiative(name)
+    if initiative is None:
+        return tk.abort(404, tk._('Initiative not found'))
+    if not tk.g.user:
+        return _not_authorized_response()
+    try:
+        tk.check_access('csunesco_initiative_page_update', _context(),
+                        {'initiative': name})
+    except tk.NotAuthorized:
+        return _not_authorized_response()
+    page = _load_initiative_page(name)
+    blocks = [block for block in _initial_initiative_blocks(page)
+              if block.get('type') in blocks_module.BLOCK_TYPES
+              and 'initiative' in
+              blocks_module.BLOCK_TYPES[block['type']].scopes]
+    ctx = page_render.build_context(
+        _context(), None, blocks, can_manage=True, preview=True,
+        scope='initiative', initiative=initiative)
+    return tk.render('csunesco/initiative.html', extra_vars={
+        'initiative': initiative, 'blocks': blocks, 'ctx': ctx,
         'is_draft_preview': True,
     })
