@@ -34,6 +34,13 @@ def test_optional_profile_normalizes_and_rejects_invalid_values():
     assert nationality == 'CL'
     assert gender == 'non_binary'
 
+    # The two intentional-refusal sentinels (2026 mandatory-field rules).
+    _dob, nationality, _gender = registration._parse_optional_profile(
+        {'nationality': 'PREFER_NOT_TO_SAY'})
+    assert nationality == 'PREFER_NOT_TO_SAY'
+    assert registration._country_name('PREFER_NOT_TO_SAY') == \
+        'Prefer not to say'
+
     tomorrow = datetime.date.today() + datetime.timedelta(days=1)
     with pytest.raises(tk.ValidationError):
         registration._parse_optional_profile({
@@ -212,7 +219,9 @@ def test_create_citizen_scientist_generates_a_username_when_blank(monkeypatch):
 # Web form required-ness (view-only strictness; the API action stays lenient) #
 # --------------------------------------------------------------------------- #
 
-def test_web_registration_requires_fullname_dob_and_gender(app, monkeypatch):
+def test_web_registration_requires_the_demographic_block(app, monkeypatch):
+    """fullname, DOB, gender AND nationality (2026 reporting rules: the
+    Member-State disaggregation made nationality mandatory too)."""
     monkeypatch.setattr(registration, '_registration_retry_after', lambda: None)
     monkeypatch.setattr(registration, '_recaptcha_configured', lambda: False)
     monkeypatch.setattr(registration, '_render', lambda values: values)
@@ -228,8 +237,9 @@ def test_web_registration_requires_fullname_dob_and_gender(app, monkeypatch):
         'fullname': 'Maria Example',
         'date_of_birth': '1990-05-17',
         'gender': 'female',
+        'nationality': 'PREFER_NOT_TO_SAY',
     }
-    for missing in ('fullname', 'date_of_birth', 'gender'):
+    for missing in ('fullname', 'date_of_birth', 'gender', 'nationality'):
         data = dict(complete)
         data[missing] = ''
         with app.test_request_context('/register', method='POST', data=data):
@@ -249,6 +259,7 @@ _MANAGER_FORM = {
     'fullname': 'Paula Manager',
     'date_of_birth': '1985-02-03',
     'gender': 'female',
+    'nationality': 'CL',
     'org_type': 'university',
     'org_name': '__new__',
     'new_org_name': 'Hydrology Lab',
@@ -308,7 +319,7 @@ def test_manager_registration_existing_org_derives_editor(app, monkeypatch):
 def test_manager_registration_requires_the_org_block(app, monkeypatch):
     for missing, value in (('org_type', ''), ('org_name', ''),
                            ('org_title', ''), ('responsibilities', ''),
-                           ('new_org_name', '')):
+                           ('new_org_name', ''), ('nationality', '')):
         out, captured = _manager_post(app, monkeypatch, {missing: value})
         assert out['errors']['message'] == registration.GENERIC_ERROR, missing
         assert 'created' not in captured, missing

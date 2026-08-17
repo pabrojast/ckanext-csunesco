@@ -32,6 +32,8 @@
       hint: hintFor("cs-date-of-birth"), valid: filled },
     { input: document.getElementById("cs-gender"),
       hint: hintFor("cs-gender"), valid: filled },
+    { input: document.getElementById("cs-nationality"),
+      hint: hintFor("cs-nationality"), valid: filled },
     { input: document.getElementById("cs-org-type"),
       hint: hintFor("cs-org-type"), valid: filled },
     { input: document.getElementById("cs-org-name"),

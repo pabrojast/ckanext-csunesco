@@ -3889,3 +3889,16 @@
   margin: 0 0 0.25rem;
   font-size: 1.05rem;
 }
+
+/* --- "Why is this information requested" disclosure ---------------------- */
+.cs-why-demographics {
+  margin-top: 0.5rem;
+}
+.cs-why-demographics summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--cs-link, #0b6cbd);
+}
+.cs-why-demographics[open] summary {
+  margin-bottom: 0.25rem;
+}

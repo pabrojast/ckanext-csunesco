@@ -151,10 +151,13 @@ def _parse_optional_profile(data):
         raise ValidationError({'message': GENERIC_ERROR})
 
     nationality = (data.get('nationality') or '').strip().upper()
-    # 'OTHER' is the spec's escape hatch for nationalities the ISO list cannot
-    # express (stateless, unrecognized territories). Stored as the sentinel
-    # itself so profiles remain comparable.
-    if (nationality and nationality != 'OTHER'
+    # Two non-ISO sentinels, stored as themselves so profiles stay
+    # comparable: 'OTHER' for nationalities the ISO list cannot express
+    # (stateless, unrecognized territories) and 'PREFER_NOT_TO_SAY' -- the
+    # 2026 reporting rules make the field mandatory, so declining to answer
+    # must be an explicit choice rather than a skipped input.
+    if (nationality
+            and nationality not in ('OTHER', 'PREFER_NOT_TO_SAY')
             and nationality not in constants.ISO_3166_ALPHA2):
         raise ValidationError({'message': GENERIC_ERROR})
 
@@ -200,6 +203,8 @@ def _country_name(code, locale='en'):
         # The non-ISO sentinel the form offers; Babel knows no territory for
         # it, and 'OTHER' as a stored country label would read as shouting.
         return 'Other'
+    if code == 'PREFER_NOT_TO_SAY':
+        return 'Prefer not to say'
     try:
         parsed = Locale.parse(locale or 'en', sep='_')
     except (UnknownLocaleError, ValueError):
@@ -523,10 +528,13 @@ def register_citizen():
     if not terms:
         return _fail()
 
-    # Spec-required identity/demographics -- enforced in the WEB form only.
-    # The API action (ofform's frozen payload) stays lenient on purpose; the
-    # per-caller strictness split lives here in the view.
-    if not fullname or not date_of_birth or not gender:
+    # Required identity/demographics -- enforced in the WEB form only (the
+    # API action, ofform's frozen payload, stays lenient on purpose; the
+    # per-caller strictness split lives here in the view). Nationality joined
+    # the list with the 2026 reporting rules: beneficiaries must be
+    # disaggregated by gender, age class and Member State, and an optional
+    # field yields ~30% completion (the OpenLearning experience).
+    if not fullname or not date_of_birth or not gender or not nationality:
         return _fail()
 
     # Password: required, min length, must match confirmation.
@@ -702,8 +710,10 @@ def register_manager():
     if not responsibilities:
         return _fail()
 
-    # Spec-required fields: identity, demographics and the whole org block.
-    if not fullname or not date_of_birth or not gender:
+    # Required fields: identity, demographics (incl. nationality -- the 2026
+    # Member-State reporting rule, same as the citizen form) and the whole
+    # org block.
+    if not fullname or not date_of_birth or not gender or not nationality:
         return _fail()
     if org_type not in {row['name'] for row in constants.ORG_TYPES}:
         return _fail()

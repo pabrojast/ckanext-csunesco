@@ -218,8 +218,10 @@
               </div>
 
               <div class="cs-field">
-                <label for="cs-nationality">{{ _("Nationality") }} <span class="cs-hint-inline">{{ _("(optional)") }}</span></label>
-                <select id="cs-nationality" name="nationality">
+                <label for="cs-nationality">{{ _("Nationality") }}</label>
+                <select id="cs-nationality" name="nationality"
+                        required aria-required="true"
+                        aria-describedby="cs-nationality-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
                   <option value="">{{ _("Select…") }}</option>
                   {% for option in country_options %}
                     <option value="{{ option.code }}"
@@ -231,9 +233,17 @@
                     {% if data.nationality == 'OTHER' %}selected{% endif %}>
                     {{ _("Other") }}
                   </option>
+                  <option value="PREFER_NOT_TO_SAY"
+                    {% if data.nationality == 'PREFER_NOT_TO_SAY' %}selected{% endif %}>
+                    {{ _("Prefer not to say") }}
+                  </option>
                 </select>
+                <p id="cs-nationality-hint" class="cs-hint cs-field-message"
+                   data-default="" data-error="{{ _('Select an option.') }}"></p>
               </div>
             </div>
+
+            {% snippet "csunesco/snippets/why_demographics.html" %}
           </fieldset>
 
           {% if recaptcha_publickey %}
