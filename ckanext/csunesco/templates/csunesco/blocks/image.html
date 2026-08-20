@@ -13,6 +13,7 @@
            aria-labelledby="title-{{ block.id }}">
     {% snippet "csunesco/blocks/_heading.html", block=block %}
     <div class="cs-gallery cs-gallery-{{ block.layout }}"
+         {% if block.layout == 'carousel' %}data-carousel aria-roledescription="carousel"{% endif %}
          {% if block.lightbox %}data-lightbox
          data-label-close="{{ _('Close') }}"
          data-label-open="{{ _('View image') }}"{% endif %}>
@@ -34,6 +35,13 @@
           {% endif %}
         </figure>
       {% endfor %}
+      {% if block.layout == 'carousel' and block['items'] | length > 1 %}
+        <div class="cs-carousel-controls">
+          <button type="button" class="cs-btn cs-btn-secondary cs-btn-sm" data-carousel-prev aria-label="{{ _('Previous image') }}">&larr;</button>
+          <span data-carousel-status aria-live="polite"></span>
+          <button type="button" class="cs-btn cs-btn-secondary cs-btn-sm" data-carousel-next aria-label="{{ _('Next image') }}">&rarr;</button>
+        </div>
+      {% endif %}
     </div>
   </section>
 {% endif %}

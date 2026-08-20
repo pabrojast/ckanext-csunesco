@@ -20,6 +20,7 @@ import ckan.model as model
 
 from ckanext.csunesco.logic import views
 from ckanext.csunesco.logic.sanitize import sanitize_html
+from ckanext.csunesco import constants
 
 log = logging.getLogger(__name__)
 
@@ -212,6 +213,30 @@ def admin_dashboard():
         else:
             project['page_state'] = 'draft'
 
+    # A separate management inventory avoids conflating "created by me" with
+    # the wider scope an initiative reviewer or portal administrator owns.
+    # This is intentionally action-backed so the dashboard follows the same
+    # visibility rules as every other interface.
+    managed_projects = []
+    try:
+        if is_sysadmin:
+            managed_projects = tk.get_action('csunesco_project_list')(
+                context, {'limit': 100, 'offset': 0}).get('results') or []
+        elif admin_initiatives:
+            seen = set()
+            for initiative in admin_initiatives:
+                rows = tk.get_action('csunesco_project_list')(
+                    context, {'initiative': initiative, 'limit': 100,
+                              'offset': 0}).get('results') or []
+                for row in rows:
+                    if row.get('id') not in seen:
+                        seen.add(row.get('id'))
+                        managed_projects.append(row)
+            managed_projects.sort(key=lambda row: row.get('title') or '')
+    except Exception:
+        log.warning('csunesco: management project inventory unavailable')
+        managed_projects = []
+
 
     # The review table printed the raw group slug ("be-resilient"). Decorate
     # the rows here, the same way the public listing does, rather than reaching
@@ -246,6 +271,7 @@ def admin_dashboard():
     return tk.render('csunesco/cs-admin-dashboard.html', extra_vars={
         'pending_managers': pending_managers,
         'my_projects': my_projects,
+        'managed_projects': views._decorate_projects(managed_projects),
         'admin_initiatives': admin_initiatives,
         'is_sysadmin': is_sysadmin,
         'can_review_projects': can_review_initiative,
@@ -278,8 +304,17 @@ def project_review(id):
     except Exception:
         log.warning('csunesco: project review could not be loaded')
         return tk.abort(404, tk._('No project request is awaiting review'))
+    if project.get('organization_id'):
+        try:
+            organization = tk.get_action('organization_show')(
+                _context(), {'id': project['organization_id']})
+            project['organization_title'] = (
+                organization.get('title') or organization.get('name'))
+        except Exception:
+            log.warning('csunesco: project review organization unavailable')
     return tk.render('csunesco/project_review.html', extra_vars={
         'project': project,
+        'project_steps': constants.PROJECT_FORM_STEPS,
     })
 
 

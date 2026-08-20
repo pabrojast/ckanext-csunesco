@@ -1021,6 +1021,8 @@ def project_dictize(project):
         'region_geojson': project.region_geojson,
         'project_document_url': project.project_document_url,
         'image_url': getattr(project, 'image_url', None),
+        'logo_url': getattr(project, 'logo_url', None),
+        'heading_image_url': getattr(project, 'heading_image_url', None),
         'landing_content': project.landing_content,
         'organization_id': project.organization_id,
         'status': project.status,

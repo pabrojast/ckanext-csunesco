@@ -86,6 +86,9 @@ def build_context(context, project, blocks, has_region=False,
         'has_lightbox': any(block.get('type') == 'image'
                             and block.get('lightbox')
                             for block in blocks or []),
+        'has_carousel': any(block.get('type') == 'image'
+                            and block.get('layout') == 'carousel'
+                            for block in blocks or []),
         # Where the per-section "Edit" pencil points (managers only, and only
         # outside the preview -- the preview IS the editor's output).
         'edit_url': (_edit_url(project, initiative)
@@ -153,7 +156,7 @@ def _resolve_content_lists(context, project, blocks, initiative=None):
         if key in out:
             continue
         content_type, scope, limit, featured = key
-        data_dict = {'limit': limit, 'offset': 0}
+        data_dict = {'limit': limit, 'offset': 0, 'status': 'approved'}
         if content_type != 'all':
             data_dict['content_type'] = content_type
         # 'site' means portal-wide (no scope filter). On the hub page
@@ -284,6 +287,7 @@ def _recent_projects(context, limit, initiative=None):
 def _list_initiative_content(context, initiative, limit, content_type,
                              upcoming=False):
     data_dict = {'initiative': initiative, 'content_type': content_type,
+                 'status': 'approved',
                  'limit': limit, 'offset': 0, 'include_project': True}
     if upcoming:
         data_dict['upcoming'] = True
@@ -311,7 +315,8 @@ def _list_data_sources(context, project_id):
 def _list_content(context, project_id, limit=BUILTIN_CONTENT_LIMIT,
                   content_type=None):
     """Summarized content rows for a project (approved only for the public)."""
-    data_dict = {'project_id': project_id, 'limit': limit, 'offset': 0}
+    data_dict = {'project_id': project_id, 'status': 'approved',
+                 'limit': limit, 'offset': 0}
     if content_type:
         data_dict['content_type'] = content_type
     try:

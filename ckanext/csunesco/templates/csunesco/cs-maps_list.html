@@ -13,6 +13,7 @@
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
+  {% snippet "csunesco/snippets/context_nav.html", url=h.url_for('csunesco.index'), label=_("Citizen Science home") %}
   <section class="cs-hero" aria-labelledby="cs-maps-title">
     <h1 id="cs-maps-title">{{ _("Citizen Science Maps") }}</h1>
     <p>{{ _("Interactive map scenes combining citizen science datasets on IHP-WINS.") }}</p>

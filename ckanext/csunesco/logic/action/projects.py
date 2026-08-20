@@ -26,7 +26,10 @@ MAX_LIST_LIMIT = 100
 
 # HTML allowlist for the sanitized ``short_description`` (bleach). Anything else
 # is stripped so we never store active or structural markup.
-_ALLOWED_TAGS = ['p', 'br', 'strong', 'em', 'b', 'i', 'ul', 'ol', 'li', 'a']
+_ALLOWED_TAGS = [
+    'p', 'br', 'strong', 'em', 'b', 'i', 'ul', 'ol', 'li', 'a',
+    'h3', 'h4', 'blockquote',
+]
 _ALLOWED_ATTRS = {'a': ['href', 'title', 'rel']}
 
 
@@ -118,6 +121,22 @@ def _resolve_lead_organisation(data):
     if group is not None and getattr(group, 'is_organization', False):
         return group.id
     return None
+
+
+def _resolve_organization(data):
+    """Resolve an explicit CKAN organization id/name to an active org row."""
+    key = (data.get('organization_id') or '').strip()
+    if not key:
+        return None
+    try:
+        group = model.Group.get(key)
+    except Exception:
+        group = None
+    if (group is None or not getattr(group, 'is_organization', False)
+            or getattr(group, 'state', 'active') != 'active'):
+        raise tk.ValidationError({'organization_id': [tk._(
+            'Select an active CKAN organization')]})
+    return group
 
 
 def _sync_editor_members(project_id, editors, now):
@@ -264,7 +283,12 @@ def _can_view_unapproved(context, project):
 
 
 def csunesco_project_request_create(context, data_dict):
-    """Create a PENDING CS project request (any authenticated user)."""
+    """Create a project request under an authorized CKAN organization.
+
+    The sysadmin service token used by Toolbox remains compatible with its
+    legacy payload, which has no organization_id. Human portal callers must
+    supply an organization where they have create_dataset permission.
+    """
     if not context.get('user'):
         raise tk.NotAuthorized(
             tk._('You must be logged in to request a project'))
@@ -280,6 +304,12 @@ def csunesco_project_request_create(context, data_dict):
         raise tk.ValidationError(errors)
     _sync_participation(data)
     _apply_point_radius(data)
+
+    organization = _resolve_organization(data)
+    if (organization is not None and not auth._is_sysadmin(context)
+            and not auth._is_org_editor(context, organization.id)):
+        raise tk.NotAuthorized(tk._(
+            'Only an organization admin or editor can propose a project'))
 
     slug_base = data.get('slug') or data['title']
     slug = db.unique_slug(slug_base)
@@ -298,7 +328,8 @@ def csunesco_project_request_create(context, data_dict):
     project.image_url = data.get('image_url')
     project.logo_url = data.get('logo_url')
     project.heading_image_url = data.get('heading_image_url')
-    project.organization_id = _resolve_lead_organisation(data)
+    project.organization_id = (organization.id if organization is not None
+                               else _resolve_lead_organisation(data))
     # The staged form's extra detail fields. No migration: they ride in the
     # existing JSON column and project_dictize merges them back on read.
     project.extras = json.dumps(_project_extras(data))
@@ -322,9 +353,8 @@ def csunesco_project_request_create(context, data_dict):
 
 # Form field -> ``cs_project`` column for the fields an edit may change.
 # Deliberately EXCLUDES slug (URL stability), status, trusted, created_by and
-# the whole moderation audit trail. ``organization_id`` is not here either:
-# it is DERIVED from ``lead_organisation`` (see ``_resolve_lead_organisation``),
-# never written directly.
+# the whole moderation audit trail. ``organization_id`` is handled separately
+# after its target and the acting user's organization role have been checked.
 PROJECT_EDITABLE_COLUMNS = (
     ('title', 'title'),
     ('initiative', 'initiative_group'),
@@ -392,6 +422,14 @@ def csunesco_project_update(context, data_dict):
     _sync_participation(data)
     _apply_point_radius(data)
 
+    organization = None
+    if 'organization_id' in data:
+        organization = _resolve_organization(data)
+        if (organization is not None and not auth._is_sysadmin(context)
+                and not auth._is_org_editor(context, organization.id)):
+            raise tk.NotAuthorized(tk._(
+                'You cannot move this project to that organization'))
+
     old_values = db.project_dictize(project)
     previous_initiative = project.initiative_group
     for field, column in PROJECT_EDITABLE_COLUMNS:
@@ -437,7 +475,12 @@ def csunesco_project_update(context, data_dict):
          .filter(db.CsContent.project_id == project.id)
          .update({'initiative_group': project.initiative_group},
                  synchronize_session=False))
-    if 'lead_organisation' in data:
+    if 'organization_id' in data:
+        project.organization_id = organization.id if organization else None
+    elif 'lead_organisation' in data and not project.organization_id:
+        # Compatibility for legacy/Toolbox projects that predate explicit
+        # ownership. Never overwrite an already selected canonical org from a
+        # free-text display field.
         project.organization_id = _resolve_lead_organisation(data)
     if 'editors' in data:
         _sync_editor_members(project.id, data.get('editors') or [], _utcnow())
@@ -498,6 +541,83 @@ def csunesco_project_resubmit(context, data_dict):
     project.reviewed_by = None
     project.reviewed_at = None
     project.modified = now
+    model.Session.commit()
+    return db.project_dictize(project)
+
+
+def _project_for_state_change(context, data_dict, action):
+    data_dict = data_dict or {}
+    project = db.get_project(data_dict.get('id') or data_dict.get('project_id')
+                             or data_dict.get('slug'))
+    if project is None:
+        raise tk.ObjectNotFound(tk._('Project not found'))
+    tk.check_access(action, context, dict(data_dict, id=project.id,
+                                          project_id=project.id))
+    return project
+
+
+def csunesco_project_delete(context, data_dict):
+    """Permanently remove an unapproved proposal and its private dependants."""
+    project = _project_for_state_change(
+        context, data_dict, 'csunesco_project_delete')
+    if project.status not in ('draft', 'pending', 'rejected'):
+        raise tk.ValidationError({'status': [tk._(
+            'Published projects must be archived instead of deleted')]})
+    project_id = project.id
+    # A proposal normally has none of these rows.  Deleting defensively keeps
+    # an interrupted/demo workflow from leaving unreachable records behind.
+    for cls in (db.CsProjectMember, db.CsContent, db.CsDataSource):
+        (model.Session.query(cls)
+         .filter(cls.project_id == project_id)
+         .delete(synchronize_session=False))
+    (model.Session.query(db.CsProjectStats)
+     .filter(db.CsProjectStats.project_id == project_id)
+     .delete(synchronize_session=False))
+    (model.Session.query(db.CsProjectPage)
+     .filter(db.CsProjectPage.project_id == project_id)
+     .delete(synchronize_session=False))
+    model.Session.delete(project)
+    model.Session.commit()
+    return {'id': project_id, 'deleted': True}
+
+
+def _archive_audit(project, context, reason=None, restored=False):
+    extras = db._load_json(project.extras, {})
+    extras = dict(extras) if isinstance(extras, dict) else {}
+    prefix = 'restored' if restored else 'archived'
+    extras[prefix + '_by'] = current_user_id(context)
+    extras[prefix + '_at'] = _utcnow().replace(microsecond=0).isoformat() + 'Z'
+    if reason and not restored:
+        extras['archive_reason'] = str(reason).strip()[:1000]
+    if restored:
+        extras.pop('archive_reason', None)
+    project.extras = json.dumps(extras)
+
+
+def csunesco_project_archive(context, data_dict):
+    """Hide a published project without destroying its related records."""
+    project = _project_for_state_change(
+        context, data_dict, 'csunesco_project_archive')
+    if project.status != 'approved':
+        raise tk.ValidationError({'status': [tk._(
+            'Only approved projects can be archived')]})
+    _archive_audit(project, context, (data_dict or {}).get('reason'))
+    project.status = 'archived'
+    project.modified = _utcnow()
+    model.Session.commit()
+    return db.project_dictize(project)
+
+
+def csunesco_project_restore(context, data_dict):
+    """Restore an archived project to its previous public approved state."""
+    project = _project_for_state_change(
+        context, data_dict, 'csunesco_project_restore')
+    if project.status != 'archived':
+        raise tk.ValidationError({'status': [tk._(
+            'Only archived projects can be restored')]})
+    _archive_audit(project, context, restored=True)
+    project.status = 'approved'
+    project.modified = _utcnow()
     model.Session.commit()
     return db.project_dictize(project)
 
@@ -847,6 +967,9 @@ def get_actions():
         'csunesco_project_request_create': csunesco_project_request_create,
         'csunesco_project_update': csunesco_project_update,
         'csunesco_project_resubmit': csunesco_project_resubmit,
+        'csunesco_project_delete': csunesco_project_delete,
+        'csunesco_project_archive': csunesco_project_archive,
+        'csunesco_project_restore': csunesco_project_restore,
         'csunesco_project_approve': csunesco_project_approve,
         'csunesco_project_reject': csunesco_project_reject,
         'csunesco_project_trusted_set': csunesco_project_trusted_set,

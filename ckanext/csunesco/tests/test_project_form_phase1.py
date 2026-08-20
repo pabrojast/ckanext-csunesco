@@ -85,7 +85,7 @@ def actions(session, monkeypatch):
 # --------------------------------------------------------------------------- #
 
 STRICT_REQUIRED = (
-    'title', 'short_description', 'keywords', 'water_type',
+    'title', 'organization_id', 'short_description', 'keywords', 'water_type',
     'water_data_type', 'geographic_extent', 'countries',
     'participation_mode', 'activity_status', 'lead_partner_type',
     'lead_organisation',

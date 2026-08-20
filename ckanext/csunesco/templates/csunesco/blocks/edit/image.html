@@ -11,7 +11,8 @@
 <div class="cs-field">
   <label for="b{{ index }}-layout">{{ _("Layout") }}</label>
   <select id="b{{ index }}-layout" name="blocks[{{ index }}][layout]">
-    {% for value, label in [('grid', _('Grid')), ('single', _('One large image')),
+    {% for value, label in [('grid', _('Grid')), ('carousel', _('Carousel')),
+                            ('single', _('One large image')),
                             ('wide', _('Full-width banner'))] %}
       <option value="{{ value }}" {% if block.layout == value %}selected{% endif %}>{{ label }}</option>
     {% endfor %}
@@ -20,10 +21,20 @@
 
 {% set items = block['items'] or [] %}
 {% set slots = [items | length + 2, 12] | min %}
-<div class="cs-pb-items" id="b{{ index }}-items">
+{% if h.csunesco_uploads_enabled() and items | length < 12 %}
+  <div class="cs-field cs-gallery-batch" data-gallery-batch>
+    <label for="b{{ index }}-batch">{{ _("Add several images") }}</label>
+    <input type="file" id="b{{ index }}-batch"
+           name="blocks[{{ index }}][batch_upload]" multiple
+           accept="image/jpeg,image/png,image/webp" data-gallery-batch-input>
+    <p class="cs-hint">{{ _("Select several files at once. They are added in the selected order, up to 12 images total.") }}</p>
+    <div class="cs-gallery-batch-preview" data-gallery-batch-preview></div>
+  </div>
+{% endif %}
+<div class="cs-pb-items" id="b{{ index }}-items" data-gallery-items>
   {% for slot in range(slots) %}
     {% set item = items[slot] if slot < items | length else {} %}
-    <fieldset class="cs-pb-item cs-pb-item-inline">
+    <fieldset class="cs-pb-item cs-pb-item-inline" data-gallery-item>
       <legend>{{ _("Image %(n)s", n=slot + 1) }}</legend>
       {% snippet "csunesco/blocks/edit/_image_picker.html",
                  input_id='b%s-i%s-image' | format(index, slot),
@@ -45,6 +56,12 @@
                name="blocks[{{ index }}][items][{{ slot }}][caption]"
                value="{{ item.caption or '' }}">
       </span>
+      {% if item.url %}
+        <span class="cs-gallery-order-actions">
+          <button type="button" class="cs-btn cs-btn-secondary cs-btn-sm" data-gallery-up aria-label="{{ _('Move image up') }}">↑</button>
+          <button type="button" class="cs-btn cs-btn-secondary cs-btn-sm" data-gallery-down aria-label="{{ _('Move image down') }}">↓</button>
+        </span>
+      {% endif %}
     </fieldset>
   {% endfor %}
 </div>

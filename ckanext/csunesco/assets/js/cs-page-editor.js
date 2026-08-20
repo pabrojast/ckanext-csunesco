@@ -316,64 +316,58 @@
     });
   }
 
-  /** Immediate thumbnail feedback for the URL + upload controls. */
-  function initImagePickers(form) {
-    var pickers = form.querySelectorAll("[data-image-picker]");
-    Array.prototype.forEach.call(pickers, function (picker) {
-      var preview = picker.querySelector("[data-image-preview]");
-      var empty = picker.querySelector("[data-image-empty]");
-      var file = picker.querySelector("[data-image-file]");
-      var url = picker.querySelector("[data-image-url]");
-      var clear = picker.querySelector("[data-image-clear]");
-      var objectUrl = null;
-
-      function show(src) {
-        if (!preview || !empty) { return; }
-        if (src) {
-          preview.src = src;
-          preview.hidden = false;
-          empty.hidden = true;
-        } else {
-          preview.removeAttribute("src");
-          preview.hidden = true;
-          empty.hidden = false;
+  function initGalleryEditors(form) {
+    Array.prototype.forEach.call(form.querySelectorAll("[data-gallery-items]"),
+      function (container) {
+        function reindex() {
+          var items = Array.prototype.slice.call(
+            container.querySelectorAll("[data-gallery-item]"));
+          items.forEach(function (item, index) {
+            var legend = item.querySelector("legend");
+            if (legend) { legend.textContent = "Image " + (index + 1); }
+            Array.prototype.forEach.call(item.querySelectorAll("[name]"), function (field) {
+              field.name = field.name.replace(/(\[items\]\[)\d+(\])/, "$1" + index + "$2");
+            });
+            var up = item.querySelector("[data-gallery-up]");
+            var down = item.querySelector("[data-gallery-down]");
+            if (up) { up.disabled = index === 0; }
+            if (down) { down.disabled = index === items.length - 1; }
+          });
         }
-      }
+        container.addEventListener("click", function (event) {
+          var button = event.target.closest("[data-gallery-up], [data-gallery-down]");
+          if (!button) { return; }
+          var item = button.closest("[data-gallery-item]");
+          if (button.hasAttribute("data-gallery-up") && item.previousElementSibling) {
+            container.insertBefore(item, item.previousElementSibling);
+          } else if (button.hasAttribute("data-gallery-down") && item.nextElementSibling) {
+            container.insertBefore(item.nextElementSibling, item);
+          }
+          reindex();
+        });
+        reindex();
+      });
 
-      if (file) {
-        file.addEventListener("change", function () {
-          if (objectUrl) { window.URL.revokeObjectURL(objectUrl); }
-          objectUrl = null;
-          if (file.files && file.files[0]) {
-            objectUrl = window.URL.createObjectURL(file.files[0]);
-            if (clear) { clear.checked = false; }
-            show(objectUrl);
-          }
+    Array.prototype.forEach.call(form.querySelectorAll("[data-gallery-batch]"),
+      function (batch) {
+        var input = batch.querySelector("[data-gallery-batch-input]");
+        var preview = batch.querySelector("[data-gallery-batch-preview]");
+        if (!input || !preview) { return; }
+        input.addEventListener("change", function () {
+          preview.innerHTML = "";
+          Array.prototype.forEach.call(input.files || [], function (file, index) {
+            var figure = document.createElement("figure");
+            figure.className = "cs-gallery-batch-item";
+            var image = document.createElement("img");
+            image.src = URL.createObjectURL(file);
+            image.alt = "";
+            var caption = document.createElement("figcaption");
+            caption.textContent = (index + 1) + ". " + file.name;
+            figure.appendChild(image); figure.appendChild(caption);
+            preview.appendChild(figure);
+          });
         });
-      }
-      if (url) {
-        url.addEventListener("input", function () {
-          if (file) { file.value = ""; }
-          if (objectUrl) { window.URL.revokeObjectURL(objectUrl); }
-          objectUrl = null;
-          if (clear) { clear.checked = false; }
-          show(url.value.trim() || picker.getAttribute("data-image-fallback"));
-        });
-      }
-      if (clear) {
-        clear.addEventListener("change", function () {
-          if (clear.checked) {
-            if (file) { file.value = ""; }
-            if (objectUrl) { window.URL.revokeObjectURL(objectUrl); }
-            objectUrl = null;
-            show(picker.getAttribute("data-image-fallback"));
-          } else {
-            show((url && url.value.trim()) ||
-                 picker.getAttribute("data-image-fallback"));
-          }
-        });
-      }
-    });
+      });
   }
 
   function init() {
@@ -385,7 +379,7 @@
     initUnsavedGuard(form);
     initToggleAll(form);
     initSpineSpy();
-    initImagePickers(form);
+    initGalleryEditors(form);
   }
 
   if (document.readyState === "loading") {

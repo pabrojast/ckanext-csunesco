@@ -77,6 +77,134 @@
     });
   }
 
+  // Shared image/focal picker used by project details and every page editor.
+  function initImagePickers() {
+    Array.prototype.forEach.call(
+      document.querySelectorAll("[data-image-picker]"), function (picker) {
+        var image = picker.querySelector("[data-image-preview]");
+        var empty = picker.querySelector("[data-image-empty]");
+        var url = picker.querySelector("[data-image-url]");
+        var file = picker.querySelector("[data-image-file]");
+        var clear = picker.querySelector("[data-image-clear]");
+        var fallback = picker.getAttribute("data-image-fallback") || "";
+        function show(src) {
+          if (!image || !empty) { return; }
+          if (src) {
+            image.src = src; image.hidden = false; empty.hidden = true;
+          } else {
+            image.removeAttribute("src"); image.hidden = true; empty.hidden = false;
+          }
+        }
+        if (url) { url.addEventListener("input", function () { show(url.value || fallback); }); }
+        if (file) {
+          file.addEventListener("change", function () {
+            if (file.files && file.files[0]) { show(URL.createObjectURL(file.files[0])); }
+          });
+        }
+        if (clear) { clear.addEventListener("change", function () {
+          if (clear.checked) { show(fallback); }
+        }); }
+      });
+
+    Array.prototype.forEach.call(
+      document.querySelectorAll("[data-focal-picker]"), function (picker) {
+        var preview = picker.querySelector("[data-focal-preview]");
+        var marker = picker.querySelector("[data-focal-marker]");
+        var x = picker.querySelector("[data-focal-x]");
+        var y = picker.querySelector("[data-focal-y]");
+        var url = document.getElementById(picker.getAttribute("data-image-url-id"));
+        var file = document.getElementById(picker.getAttribute("data-image-file-id"));
+        if (!preview || !marker || !x || !y) { return; }
+        function sync() {
+          marker.style.left = x.value + "%";
+          marker.style.top = y.value + "%";
+          preview.style.backgroundPosition = x.value + "% " + y.value + "%";
+        }
+        function position(clientX, clientY) {
+          var box = preview.getBoundingClientRect();
+          x.value = Math.max(0, Math.min(100, Math.round((clientX - box.left) * 100 / box.width)));
+          y.value = Math.max(0, Math.min(100, Math.round((clientY - box.top) * 100 / box.height)));
+          sync();
+        }
+        x.addEventListener("input", sync); y.addEventListener("input", sync);
+        preview.addEventListener("pointerdown", function (event) {
+          position(event.clientX, event.clientY);
+          preview.setPointerCapture(event.pointerId);
+        });
+        preview.addEventListener("pointermove", function (event) {
+          if (preview.hasPointerCapture(event.pointerId)) { position(event.clientX, event.clientY); }
+        });
+        preview.addEventListener("keydown", function (event) {
+          var changed = true;
+          if (event.key === "ArrowLeft") { x.value = Math.max(0, Number(x.value) - 1); }
+          else if (event.key === "ArrowRight") { x.value = Math.min(100, Number(x.value) + 1); }
+          else if (event.key === "ArrowUp") { y.value = Math.max(0, Number(y.value) - 1); }
+          else if (event.key === "ArrowDown") { y.value = Math.min(100, Number(y.value) + 1); }
+          else { changed = false; }
+          if (changed) { event.preventDefault(); sync(); }
+        });
+        if (url) { url.addEventListener("input", function () {
+          preview.style.backgroundImage = url.value ? "url(\"" + url.value.replace(/\"/g, "") + "\")" : "";
+        }); }
+        if (file) { file.addEventListener("change", function () {
+          if (file.files && file.files[0]) {
+            preview.style.backgroundImage = "url(\"" + URL.createObjectURL(file.files[0]) + "\")";
+          }
+        }); }
+        sync();
+      });
+  }
+
+  function initRichEditors() {
+    var tools = [
+      ["B", "bold", null, "Bold"], ["I", "italic", null, "Italic"],
+      ["¶", "formatBlock", "<p>", "Paragraph"],
+      ["H3", "formatBlock", "<h3>", "Heading"],
+      ["• List", "insertUnorderedList", null, "Bulleted list"],
+      ["1. List", "insertOrderedList", null, "Numbered list"],
+      ["Quote", "formatBlock", "<blockquote>", "Quote"],
+      ["Link", "createLink", null, "Add link"],
+      ["Unlink", "unlink", null, "Remove link"],
+      ["Undo", "undo", null, "Undo"], ["Redo", "redo", null, "Redo"]
+    ];
+    Array.prototype.forEach.call(
+      document.querySelectorAll("textarea[data-rich-editor]"), function (source) {
+        var area = document.createElement("div");
+        area.className = "cs-rt-area";
+        area.contentEditable = "true";
+        area.setAttribute("role", "textbox");
+        area.setAttribute("aria-multiline", "true");
+        area.innerHTML = source.value;
+        var toolbar = document.createElement("div");
+        toolbar.className = "cs-rt-toolbar";
+        toolbar.setAttribute("role", "toolbar");
+        function sync() {
+          source.value = area.innerHTML;
+          source.dispatchEvent(new Event("input", {bubbles: true}));
+        }
+        tools.forEach(function (tool) {
+          var button = document.createElement("button");
+          button.type = "button"; button.className = "cs-rt-btn";
+          button.textContent = tool[0]; button.setAttribute("aria-label", tool[3]);
+          button.addEventListener("click", function () {
+            area.focus(); var argument = tool[2];
+            if (tool[1] === "createLink") {
+              argument = window.prompt("https://", "https://");
+              if (!argument) { return; }
+            }
+            try { document.execCommand(tool[1], false, argument); } catch (error) {}
+            sync();
+          });
+          toolbar.appendChild(button);
+        });
+        area.addEventListener("input", sync);
+        source.hidden = true;
+        source.parentNode.insertBefore(toolbar, source);
+        source.parentNode.insertBefore(area, source);
+        if (source.form) { source.form.addEventListener("submit", sync); }
+      });
+  }
+
   // -------------------------------------------------------------------------
   // Content editor: end-date toggle, live preview, add-media, disable-on-submit.
   // -------------------------------------------------------------------------
@@ -109,6 +237,7 @@
     var endField = document.getElementById("cs-enddate-field");
     var terriaField = document.getElementById("cs-terria-field");
     var publicationFields = document.getElementById("cs-publication-fields");
+    var newsFields = document.getElementById("cs-news-fields");
     var mediaLabel = document.getElementById("cs-media-label");
     var mediaHint = document.getElementById("cs-media-hint");
     var body = document.getElementById("cs-content-body");
@@ -127,6 +256,7 @@
       if (publicationFields) {
         publicationFields.hidden = type !== "cs-publication";
       }
+      if (newsFields) { newsFields.hidden = type !== "cs-news"; }
       var isPublication = type === "cs-publication";
       if (mediaLabel) {
         mediaLabel.textContent = isPublication
@@ -185,6 +315,8 @@
   function init() {
     initTabs();
     initConfirms();
+    initImagePickers();
+    initRichEditors();
     initEditor();
   }
 

@@ -11,7 +11,7 @@
 <section class="section-title" aria-labelledby="cs-title"
          id="block-{{ block.id }}"
          {%- if block.image_url %}
-         style="--cs-site-hero-img: url('{{ block.image_url }}')"
+         style="--cs-site-hero-img: url('{{ block.image_url }}'); --cs-hero-x: {{ block.focal_x or 50 }}%; --cs-hero-y: {{ block.focal_y or 50 }}%"
          {%- endif %}>
   <div class="section-title-overlay" aria-hidden="true"></div>
   <div class="section-title-content">

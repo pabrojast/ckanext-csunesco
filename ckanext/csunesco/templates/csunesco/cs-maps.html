@@ -19,6 +19,7 @@
 
 {% block cs_content %}
   {% set can_manage = h.csunesco_can_manage_project(content.project_id) %}
+  {% snippet "csunesco/snippets/context_nav.html", url=h.url_for('csunesco.cs_maps_index'), label=_("All maps") %}
   {% set embed = h.csunesco_terria_embed_url(content.terria_url) %}
   <article class="cs-article">
     <header class="cs-article-header">

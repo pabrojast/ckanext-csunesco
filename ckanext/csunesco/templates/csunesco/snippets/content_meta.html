@@ -18,9 +18,16 @@
   {% if content.visibility == 'private' %}
     <span class="cs-status-badge cs-status-pending">{{ _("Private") }}</span>
   {% endif %}
-  {% if content.app_author %}
+  {% if content.author or content.app_author %}
     <span class="cs-muted">
-      {{ _("By %(name)s via the CS Toolbox app", name=content.app_author | striptags) }}
+      {% if content.author %}
+        {{ _("By %(name)s", name=content.author | striptags) }}
+      {% else %}
+        {{ _("By %(name)s via the CS Toolbox app", name=content.app_author | striptags) }}
+      {% endif %}
     </span>
+  {% endif %}
+  {% if content.source_url %}
+    <a class="cs-link" href="{{ content.source_url }}" rel="noopener noreferrer">{{ _("Original source") }}</a>
   {% endif %}
 </p>

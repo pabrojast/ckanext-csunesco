@@ -113,6 +113,59 @@ def test_app_contract_payload_still_queues(actions, session, monkeypatch):
     assert out['reviewed_by'] is None
 
 
+def test_wins_news_fields_round_trip_and_are_sanitized(actions, session,
+                                                       monkeypatch):
+    _approved_project(session)
+    monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: True)
+    out = actions.csunesco_content_create(_ctx('root'), {
+        'project_slug': 'river-x', 'content_type': 'cs-news',
+        'title': 'A complete WINS story',
+        'body': '<h3>Heading</h3><script>bad()</script><p>Body</p>',
+        'excerpt': 'A short summary', 'author': 'Water team',
+        'source_url': 'https://example.org/source',
+        'header_image_url': 'https://example.org/header.jpg',
+        'header_image_alt': 'People sampling a river',
+        'header_focal_x': 25, 'header_focal_y': 70,
+        'gallery': [
+            {'url': 'https://example.org/one.jpg', 'alt': 'First',
+             'caption': 'At the river'},
+        ],
+        'related_links': [
+            {'url': 'https://example.org/method', 'label': 'Method'},
+        ],
+        'attachment_url': '/uploads/csunesco/report.pdf',
+        'attachment_label': 'Download the report',
+    })
+    assert out['excerpt'] == 'A short summary'
+    assert out['author'] == 'Water team'
+    assert out['header_focal_x'] == 25
+    assert out['gallery'][0]['caption'] == 'At the river'
+    assert out['related_links'][0]['label'] == 'Method'
+    assert out['attachment_url'] == '/uploads/csunesco/report.pdf'
+    assert '<script' not in out['body'] and '<h3>Heading</h3>' in out['body']
+
+
+def test_changing_news_to_event_removes_news_only_fields(actions, session,
+                                                         monkeypatch):
+    _approved_project(session)
+    monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: True)
+    created = actions.csunesco_content_create(_ctx('root'), {
+        'project_slug': 'river-x', 'content_type': 'cs-news',
+        'title': 'Story becoming event', 'body': '<p>News</p>',
+        'author': 'Newsroom',
+        'header_image_url': 'https://example.org/header.jpg',
+        'gallery': [{'url': 'https://example.org/one.jpg'}],
+    })
+    updated = actions.csunesco_content_update(_ctx('root'), {
+        'id': created['id'], 'content_type': 'cs-event',
+        'title': 'Story becoming event', 'body': '<p>Event</p>',
+        'publish_date': '2026-08-22T10:00',
+    })
+    for key in ('author', 'header_image_url', 'gallery', 'related_links',
+                'attachment_url'):
+        assert key not in updated
+
+
 def test_withdraw_only_approved_and_stamps_audit(actions, session, monkeypatch):
     _approved_project(session)
     monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: True)

@@ -19,6 +19,7 @@ Key guarantees (advisor refinements, see .mix/plan.md):
 import datetime
 import json
 import re
+from urllib.parse import urlparse
 
 import ckan.plugins.toolkit as tk
 import ckan.model as model
@@ -193,10 +194,21 @@ def _validated_content(context, data_dict, content_type):
     """Run the content schema, returning validated data (raises on errors)."""
     schema = cs_schema.content_schema(content_type)
     incoming = {k: data_dict.get(k) for k in schema if k in data_dict}
+    # NAVL flattens a list of dictionaries into ``__junk`` unless the schema
+    # describes every nested key. These fields are validated structurally by
+    # _gallery/_related_links below, so carry them through NAVL as JSON scalars
+    # and restore the caller-friendly list shape afterwards.
+    structured = {}
+    for field in ('gallery', 'related_links'):
+        if field in incoming:
+            structured[field] = incoming[field]
+            if not isinstance(incoming[field], str):
+                incoming[field] = json.dumps(incoming[field])
     incoming['content_type'] = content_type
     data, errors = tk.navl_validate(incoming, schema, context)
     if errors:
         raise tk.ValidationError(errors)
+    data.update(structured)
     return data
 
 
@@ -253,13 +265,73 @@ def _resolve_source(data_dict):
     return source
 
 
-def _type_extras(data):
+def _plain(value, limit):
+    return _WS_RE.sub(' ', _TAG_RE.sub('', str(value or ''))).strip()[:limit]
+
+
+def _http_url(value, image=False, allow_internal=False, field='url'):
+    value = str(value or '').strip()
+    if not value:
+        return None
+    if allow_internal and value.startswith('/') and not value.startswith('//'):
+        return value
+    parsed = urlparse(value)
+    if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+        raise tk.ValidationError({field: [tk._(
+            'URL must use http or https')]})
+    if image and parsed.scheme != 'https':
+        raise tk.ValidationError({field: [tk._(
+            'Image URL must use https')]})
+    return value
+
+
+def _as_list(value, field):
+    if value in (None, ''):
+        return []
+    if isinstance(value, list):
+        return value
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        raise tk.ValidationError({field: [tk._('Invalid structured list')]})
+    if not isinstance(parsed, list):
+        raise tk.ValidationError({field: [tk._('Invalid structured list')]})
+    return parsed
+
+
+def _gallery(value):
+    result = []
+    for item in _as_list(value, 'gallery')[:12]:
+        if not isinstance(item, dict):
+            continue
+        url = _http_url(item.get('url'), image=True, allow_internal=True,
+                        field='gallery')
+        if url:
+            result.append({'url': url, 'alt': _plain(item.get('alt'), 160),
+                           'caption': _plain(item.get('caption'), 240)})
+    return result
+
+
+def _related_links(value):
+    result = []
+    for item in _as_list(value, 'related_links')[:20]:
+        if not isinstance(item, dict):
+            continue
+        url = _http_url(item.get('url'), field='related_links')
+        if url:
+            result.append({'url': url,
+                           'label': _plain(item.get('label'), 160) or url})
+    return result
+
+
+def _type_extras(data, body=None):
     """Type-specific extras: only the keys that belong to the content type.
 
     Values are ``None`` for non-applicable keys so ``_merge_extras`` drops stale
     values after a type switch on update.
     """
     content_type = data.get('content_type')
+    is_news = content_type == 'cs-news'
     return {
         'terria_url': (data.get('terria_url') or None
                        if content_type == 'cs-map' else None),
@@ -267,6 +339,31 @@ def _type_extras(data):
                 if content_type == 'cs-publication' else None),
         'authors': (data.get('authors') or None
                     if content_type == 'cs-publication' else None),
+        'excerpt': ((_plain(data.get('excerpt'), 500) or _excerpt(body))
+                    if is_news else _excerpt(body)),
+        'author': (_plain(data.get('author'), 200) or None
+                   if is_news else None),
+        'source_url': (_http_url(data.get('source_url'), field='source_url')
+                       if is_news else None),
+        'header_image_url': (_http_url(data.get('header_image_url'),
+                                      image=True, allow_internal=True,
+                                      field='header_image_url')
+                             if is_news else None),
+        'header_image_alt': (_plain(data.get('header_image_alt'), 160) or None
+                             if is_news else None),
+        'header_focal_x': (data.get('header_focal_x')
+                           if is_news and data.get('header_image_url') else None),
+        'header_focal_y': (data.get('header_focal_y')
+                           if is_news and data.get('header_image_url') else None),
+        'gallery': (_gallery(data.get('gallery')) if is_news else None),
+        'related_links': (_related_links(data.get('related_links'))
+                          if is_news else None),
+        'attachment_url': (_http_url(data.get('attachment_url'),
+                                     allow_internal=True,
+                                     field='attachment_url')
+                           if is_news else None),
+        'attachment_label': (_plain(data.get('attachment_label'), 200) or None
+                             if is_news else None),
     }
 
 
@@ -334,8 +431,8 @@ def csunesco_content_create(context, data_dict):
         is_sysadmin, source, data['content_type'],
         bool(getattr(project, 'trusted', False)) if project is not None
         else False)
-    extras = {'excerpt': _excerpt(body)}
-    extras.update({k: v for k, v in _type_extras(data).items() if v})
+    extras = {k: v for k, v in _type_extras(data, body=body).items()
+              if v is not None}
     if source == 'app':
         extras['source'] = 'app'
         app_author = sanitize_html((data_dict.get('author') or '').strip())
@@ -402,7 +499,7 @@ def csunesco_content_update(context, data_dict):
             False, 'ckan', data['content_type'],
             bool(getattr(parent, 'trusted', False)))
     content.extras = json.dumps(_merge_extras(
-        content, excerpt=_excerpt(body), **_type_extras(data)))
+        content, **_type_extras(data, body=body)))
     content.modified = _utcnow()
     model.Session.commit()
     return db.content_dictize(content)

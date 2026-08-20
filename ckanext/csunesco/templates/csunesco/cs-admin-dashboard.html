@@ -42,6 +42,42 @@
     <p class="cs-wb-sub">{{ _("Review and decide on the items awaiting your approval.") }}</p>
   </header>
 
+  {% if is_sysadmin or admin_initiatives %}
+    <section class="cs-card cs-management-center" aria-labelledby="cs-management-title">
+      <h2 id="cs-management-title" class="cs-form-heading">{{ _("Portal management") }}</h2>
+      <p class="cs-muted">{{ _("Edit the public pages and project records from one place. Project identity, participation, contacts and descriptions are maintained in this portal; the synchronized project structure, workplan, connected form questions and observations remain managed in the CS Toolbox app.") }}</p>
+      <div class="cs-management-links">
+        {% if is_sysadmin %}
+          <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.site_page_edit') }}">{{ _("Edit landing page") }}</a>
+        {% endif %}
+        {% for initiative in h.csunesco_initiatives() %}
+          {% if is_sysadmin or initiative.name in admin_initiatives %}
+            <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.initiative_page_edit', name=initiative.name) }}">
+              {{ _("Edit %(title)s page", title=_(initiative.title)) }}
+            </a>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% if managed_projects %}
+        <h3 class="cs-admin-subtitle">{{ _("Projects in your management scope") }}</h3>
+        <ul class="cs-management-projects">
+          {% for project in managed_projects %}
+            <li>
+              <span><strong>{{ project.title }}</strong>{% if project.status != 'approved' %} · {{ project.status }}{% endif %}</span>
+              <span class="cs-management-project-actions">
+                <a class="cs-link" href="{{ h.url_for('csunesco.project_edit', slug=project.slug) }}">{{ _("Edit details") }}</a>
+                {% if project.status == 'approved' %}
+                  <a class="cs-link" href="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">{{ _("Edit sections") }}</a>
+                  <a class="cs-link" href="{{ h.url_for('csunesco.content_new', slug=project.slug) }}">{{ _("Add content") }}</a>
+                {% endif %}
+              </span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </section>
+  {% endif %}
+
   {#
     "Your projects" -- not a review queue, so it sits ABOVE the tabs.
 
@@ -121,6 +157,27 @@
                     {{ _("Edit details") }}
                   </a>
                 {% endif %}
+                {% if project.status in ('draft', 'pending', 'rejected') and h.check_access('csunesco_project_delete', {'id': project.id}) %}
+                  <form method="post" class="cs-inline-form"
+                        action="{{ h.url_for('csunesco.project_delete', slug=project.slug) }}"
+                        data-confirm="{{ _('Permanently delete this proposal? This cannot be undone.') }}">
+                    {{ h.csrf_input() }}
+                    <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Delete proposal") }}</button>
+                  </form>
+                {% elif project.status == 'approved' and h.check_access('csunesco_project_archive', {'id': project.id}) %}
+                  <form method="post" class="cs-inline-form"
+                        action="{{ h.url_for('csunesco.project_archive', slug=project.slug) }}"
+                        data-confirm="{{ _('Archive this published project?') }}">
+                    {{ h.csrf_input() }}
+                    <button type="submit" class="cs-btn cs-btn-secondary cs-btn-sm">{{ _("Archive") }}</button>
+                  </form>
+                {% elif project.status == 'archived' and h.check_access('csunesco_project_restore', {'id': project.id}) %}
+                  <form method="post" class="cs-inline-form"
+                        action="{{ h.url_for('csunesco.project_restore', slug=project.slug) }}">
+                    {{ h.csrf_input() }}
+                    <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Restore") }}</button>
+                  </form>
+                {% endif %}
               </p>
             </li>
           {% endfor %}
@@ -128,7 +185,9 @@
       {% elif not is_sysadmin %}
         <p class="cs-empty">
           {{ _("You do not administer any project yet.") }}
-          <a class="cs-link" href="{{ h.url_for('csunesco.project_new') }}">{{ _("Propose one") }}</a>
+          {% if h.csunesco_can_propose_project() %}
+            <a class="cs-link" href="{{ h.url_for('csunesco.project_new') }}">{{ _("Propose one") }}</a>
+          {% endif %}
         </p>
       {% endif %}
 

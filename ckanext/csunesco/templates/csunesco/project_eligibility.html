@@ -1,0 +1,20 @@
+{% extends "csunesco/base.html" %}
+
+{% block subtitle %}{{ _("Project proposal requirements") }}{% endblock %}
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  <nav class="cs-context-nav" aria-label="{{ _('Back') }}">
+    <a class="cs-link" href="{{ h.url_for('csunesco.index') }}">&larr; {{ _("Back to Citizen Science") }}</a>
+  </nav>
+  <section class="cs-card cs-form-card" aria-labelledby="cs-eligibility-title">
+    <h1 id="cs-eligibility-title">{{ _("Who can propose a project?") }}</h1>
+    <p>{{ _("Project proposals can be submitted after your Project Manager account is approved and you are an administrator or editor of a CKAN organization.") }}</p>
+    <div class="cs-form-actions">
+      {% if not logged_in %}
+        <a class="cs-btn cs-btn-primary" href="{{ h.url_for('user.login', came_from=h.url_for('csunesco.project_new')) }}">{{ _("Log in") }}</a>
+      {% endif %}
+      <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.register_manager') }}">{{ _("Register as a Project Manager") }}</a>
+    </div>
+  </section>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% set x = focal_x if focal_x is defined and focal_x is not none else 50 %}
+{% set y = focal_y if focal_y is defined and focal_y is not none else 50 %}
+<div class="cs-focal-picker" data-focal-picker
+     data-image-url-id="{{ input_id }}-url"
+     data-image-file-id="{{ input_id }}-upload">
+  <p class="cs-field-legend">{{ label or _("Visible image area") }}</p>
+  <div class="cs-focal-preview" data-focal-preview tabindex="0"
+       role="application" aria-label="{{ _('Choose the image focal point') }}"
+       {% if image_url %}style="background-image:url('{{ image_url }}');background-position:{{ x }}% {{ y }}%"{% endif %}>
+    <span class="cs-focal-marker" data-focal-marker style="left:{{ x }}%;top:{{ y }}%"></span>
+  </div>
+  <div class="cs-focal-controls">
+    <label>{{ _("Horizontal") }}
+      <input type="range" min="0" max="100" step="1" name="{{ x_name }}" value="{{ x }}" data-focal-x>
+    </label>
+    <label>{{ _("Vertical") }}
+      <input type="range" min="0" max="100" step="1" name="{{ y_name }}" value="{{ y }}" data-focal-y>
+    </label>
+  </div>
+  <p class="cs-hint">{{ _("Click or drag the marker to choose which part remains visible when the image is cropped.") }}</p>
+</div>

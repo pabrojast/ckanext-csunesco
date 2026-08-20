@@ -1,0 +1,9 @@
+<nav class="cs-context-nav" aria-label="{{ _('Context navigation') }}">
+  {% if items %}
+    {% for item in items if item and item.url %}
+      <a class="cs-link" href="{{ item.url }}">&larr; {{ item.label }}</a>
+    {% endfor %}
+  {% elif url %}
+    <a class="cs-link" href="{{ url }}">&larr; {{ label }}</a>
+  {% endif %}
+</nav>

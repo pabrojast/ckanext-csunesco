@@ -45,6 +45,12 @@ PROJECT_EXTRA_FIELDS = (
     'funding_body',
     'funding_programme',
     'international_frameworks',
+    # Editorial crop positions.  The files retain their aspect ratio; CSS
+    # applies these coordinates when a cover/header needs to fill a viewport.
+    'image_focal_x',
+    'image_focal_y',
+    'heading_focal_x',
+    'heading_focal_y',
 )
 
 # The subset of the above that is free text typed by a user, and therefore has
@@ -97,6 +103,9 @@ def project_request_schema():
             ignore_missing, unicode_safe, v.csunesco_valid_image_url],
         'heading_image_url': [
             ignore_missing, unicode_safe, v.csunesco_valid_image_url],
+        # Optional for the Toolbox service payload, required by the portal
+        # view for ordinary users so every human proposal has a CKAN owner.
+        'organization_id': [ignore_missing, unicode_safe],
 
         # --- stored in ``extras`` ------------------------------------------
         'how_to_participate': [ignore_missing, unicode_safe],
@@ -155,6 +164,10 @@ def project_request_schema():
         'international_frameworks': [
             ignore_missing, v.csunesco_valid_string_list,
             v.csunesco_choice_list(constants.INTL_FRAMEWORKS)],
+        'image_focal_x': [ignore_missing, v.csunesco_valid_focal_point],
+        'image_focal_y': [ignore_missing, v.csunesco_valid_focal_point],
+        'heading_focal_x': [ignore_missing, v.csunesco_valid_focal_point],
+        'heading_focal_y': [ignore_missing, v.csunesco_valid_focal_point],
     }
 
 
@@ -169,6 +182,7 @@ def project_request_form_schema():
     not_empty = tk.get_validator('not_empty')
     schema = project_request_schema()
     require = {
+        'organization_id': [not_empty] + schema['organization_id'][1:],
         'short_description': [not_empty] + schema['short_description'],
         # Spec B: 2-3 keywords.
         'keywords': [not_empty, v.csunesco_valid_string_list,
@@ -241,6 +255,19 @@ def content_schema(content_type):
             ignore_missing, unicode_safe, v.csunesco_valid_terria_url],
         'doi': [ignore_missing, unicode_safe],
         'authors': [ignore_missing, unicode_safe],
+        # WINS-compatible editorial fields. Structured lists are normalized
+        # by the content action because API callers may send JSON or lists.
+        'excerpt': [ignore_missing, unicode_safe],
+        'author': [ignore_missing, unicode_safe],
+        'source_url': [ignore_missing, unicode_safe],
+        'header_image_url': [ignore_missing, unicode_safe],
+        'header_image_alt': [ignore_missing, unicode_safe],
+        'header_focal_x': [ignore_missing, v.csunesco_valid_focal_point],
+        'header_focal_y': [ignore_missing, v.csunesco_valid_focal_point],
+        'gallery': [ignore_missing],
+        'related_links': [ignore_missing],
+        'attachment_url': [ignore_missing, unicode_safe],
+        'attachment_label': [ignore_missing, unicode_safe],
     }
     if content_type == 'cs-event':
         # An event needs a start. The END is optional and MAY equal the start:

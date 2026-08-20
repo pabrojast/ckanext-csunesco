@@ -133,15 +133,18 @@ persistent storage:
 ckan.uploads_enabled = true
 ckan.storage_path = /var/lib/ckan/default
 ckan.max_image_size = 2
-ckan.upload.csunesco.types = image
-ckan.upload.csunesco.mimetypes = image/jpeg image/png image/webp
+ckanext.csunesco.max_attachment_size = 20
+ckan.upload.csunesco.types = image application
+ckan.upload.csunesco.mimetypes = image/jpeg image/png image/webp application/pdf application/msword application/vnd.openxmlformats-officedocument.wordprocessingml.document application/zip application/x-ole-storage application/octet-stream
 ```
 
 The CKAN process must be able to create and write
-`storage/uploads/csunesco/` below that path. When an uploader plugin such as
+`storage/uploads/csunesco/` below that path. News attachments accept PDF, DOC
+and DOCX files and are limited separately by
+`ckanext.csunesco.max_attachment_size`. When an uploader plugin such as
 `ckanext-asset-storage` is configured, its canonical URL is stored instead and
 `ckan.storage_path` is not required. In either case the actual JPEG/PNG/WebP
-bytes are validated before writing. Uploaded images are public and
+or document signature is validated before writing. Uploaded files are public and
 receive unique filenames; replacing an image changes the page reference but
 does not delete the older file because a published page may still use it.
 

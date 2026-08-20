@@ -61,7 +61,7 @@
   padding: calc(var(--space-unit) * 2.5) calc(var(--space-unit) * 1.5);
   background: var(--unesco-blue-dark)
     var(--cs-project-hero-img, url('/csunesco/images/project-hero.png'))
-    center / cover no-repeat;
+    var(--cs-hero-x, 50%) var(--cs-hero-y, 50%) / cover no-repeat;
 }
 
 .cs-project-hero::before {
@@ -661,7 +661,7 @@
   overflow: hidden;
   border-radius: var(--radius);
   box-shadow: 0 10px 30px rgba(0, 42, 90, 0.22);
-  min-height: 320px;
+  min-height: clamp(200px, 20vw, 260px);
   display: flex;
   align-items: center;
   margin-bottom: calc(var(--space-unit) * 2);
@@ -671,7 +671,7 @@
      (set inline by its template from a charset-restricted URL). */
   background: var(--unesco-blue-dark)
     var(--cs-site-hero-img, url('/csunesco/images/cs-hero.png'))
-    center / cover no-repeat;
+    var(--cs-hero-x, 50%) var(--cs-hero-y, 50%) / cover no-repeat;
 }
 
 .section-title-overlay {
@@ -1481,6 +1481,69 @@
   margin: var(--space-unit) 0;
 }
 
+.cs-article-hero {
+  margin: 0 0 calc(var(--space-unit) * 1.5);
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--unesco-blue-pale);
+}
+
+.cs-article-hero img {
+  display: block;
+  width: 100%;
+  height: clamp(220px, 42vw, 440px);
+  object-fit: cover;
+}
+
+.cs-article-download {
+  margin-top: calc(var(--space-unit) * 1.5);
+}
+
+.cs-management-links,
+.cs-management-project-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+}
+
+.cs-management-links {
+  margin: var(--space-unit) 0;
+}
+
+.cs-management-projects {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid #e2e8f0;
+}
+
+.cs-management-projects li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-unit);
+  padding: 0.8rem 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.cs-review-step + .cs-review-step {
+  margin-top: calc(var(--space-unit) * 1.5);
+  padding-top: var(--space-unit);
+  border-top: 1px solid #e2e8f0;
+}
+
+.cs-review-cover--field {
+  width: min(100%, 420px);
+  max-height: 220px;
+  object-fit: contain;
+  background: #f8fafc;
+}
+
+@media (max-width: 640px) {
+  .cs-management-projects li {
+    flex-direction: column;
+  }
+}
+
 .cs-media-list {
   padding-left: 1.2rem;
   word-break: break-word;
@@ -1558,8 +1621,9 @@
   display: block;
   width: 100%;
   aspect-ratio: 16 / 10;
-  object-fit: cover;
-  background: var(--unesco-blue-dark);
+  object-fit: contain;
+  padding: 1rem;
+  background: #fff;
 }
 
 .cs-initiative-card-text {
@@ -1642,7 +1706,7 @@
 }
 
 .cs-initiative-card-img {
-  background: linear-gradient(160deg, var(--unesco-blue-dark), #0a2748);
+  background: #fff;
 }
 
 .cs-initiative-card-text {
@@ -1739,10 +1803,9 @@
 }
 
 /* ---- Per-section edit affordance (managers only) ------------------------
-   The pencil sits at the section's top-right and appears on hover or
-   keyboard focus; on touch (no hover) it is simply always there. The dashed
-   outline answers "which part of the page does this edit?" without
-   repainting the section itself. */
+   The edit control follows the section in normal flow, avoiding collisions
+   with the section's own buttons. The dashed outline answers "which part of
+   the page does this edit?" without repainting the section itself. */
 .cs-block-managed {
   position: relative;
 }
@@ -1755,10 +1818,7 @@
 }
 
 .cs-block-edit-pencil {
-  position: absolute;
-  top: 0.4rem;
-  right: 0.4rem;
-  z-index: 5;
+  position: static;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -1771,8 +1831,13 @@
   font-size: 0.8rem;
   font-weight: 600;
   text-decoration: none;
-  opacity: 0;
-  transition: opacity 0.15s ease;
+  opacity: 1;
+}
+
+.cs-block-edit-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
 }
 
 .cs-block-managed:hover .cs-block-edit-pencil,
@@ -1792,6 +1857,75 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cs-block-edit-pencil { transition: none; }
+}
+
+.cs-context-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.cs-focal-picker {
+  margin-top: 0.75rem;
+}
+
+.cs-focal-preview {
+  position: relative;
+  min-height: 180px;
+  border: 1px solid #b8c8d8;
+  border-radius: var(--radius);
+  background-color: #eef4f9;
+  background-size: cover;
+  background-position: 50% 50%;
+  cursor: crosshair;
+  overflow: hidden;
+}
+
+.cs-focal-marker {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--unesco-blue);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.7);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.cs-focal-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.cs-focal-controls label,
+.cs-focal-controls input {
+  display: block;
+  width: 100%;
+}
+
+.cs-content-type-fields {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid #d7e2ec;
+  border-radius: var(--radius);
+}
+
+.cs-content-type-fields > legend {
+  width: auto;
+  padding: 0 0.4rem;
+  color: var(--unesco-blue-dark);
+  font-weight: 700;
+}
+
+.cs-repeat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 /* ---- Callout ----------------------------------------------------------- */
@@ -1829,6 +1963,28 @@
 
 .cs-gallery-single,
 .cs-gallery-wide { grid-template-columns: 1fr; }
+
+.cs-gallery-carousel { grid-template-columns: 1fr; }
+.cs-gallery-carousel.is-enhanced .cs-gallery-item[hidden] { display: none; }
+.cs-gallery-carousel .cs-gallery-item img { height: auto; max-height: 620px; object-fit: contain; }
+.cs-carousel-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+}
+
+.cs-gallery-batch-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.cs-gallery-batch-item { margin: 0; }
+.cs-gallery-batch-item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; }
+.cs-gallery-batch-item figcaption { overflow-wrap: anywhere; font-size: 0.78rem; }
+.cs-gallery-order-actions { display: inline-flex; gap: 0.35rem; align-items: end; }
 
 .cs-gallery-item {
   margin: 0;

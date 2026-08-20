@@ -13,6 +13,9 @@
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
+  {% snippet "csunesco/snippets/context_nav.html", items=[
+    {'url': h.url_for('csunesco.index'), 'label': _("Citizen Science home")}
+  ] %}
   <section class="cs-hero" aria-labelledby="cs-news-title">
     <h1 id="cs-news-title">{{ _("Citizen Science News") }}</h1>
     <p>{{ _("Updates from community-led water monitoring projects across UNESCO initiatives.") }}</p>

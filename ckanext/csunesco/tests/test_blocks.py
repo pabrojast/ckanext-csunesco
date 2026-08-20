@@ -572,12 +572,11 @@ def test_a_browser_post_applies_the_pressed_op_not_the_hidden_field():
     assert anchor and any(block['id'] == anchor for block in blocks)
 
 
-def test_a_new_block_lands_above_the_standard_sections():
-    """Appending would drop every new section below "Join this project" and
-    cost one full page reload per position to move it up."""
+def test_a_new_block_lands_below_the_standard_sections():
+    """New sections follow the page's visual order and start at the bottom."""
     blocks = b.default_blocks()
     blocks, _anchor = b.apply_op(blocks, 'add:rich_text')
-    assert blocks[0]['type'] == 'rich_text'
+    assert blocks[-1]['type'] == 'rich_text'
     # With no built-ins present it simply appends.
     plain = b.normalize_blocks([{'type': 'callout'}])
     plain, _ = b.apply_op(plain, 'add:rich_text')
@@ -849,7 +848,7 @@ def test_apply_op_add_respects_scope():
     # A legitimate add works in both scopes.
     out, anchor = b.apply_op(blocks, 'add:media_text', scope='site')
     assert anchor is not None
-    assert out[0]['type'] == 'media_text'     # inserted before the builtins
+    assert out[-1]['type'] == 'media_text'    # appended after the builtins
 
 
 def test_apply_op_delete_refuses_site_builtins():
@@ -947,6 +946,23 @@ def test_gallery_accepts_uploaded_internal_paths_without_narrowing_https():
         '/uploads/csunesco/one.webp',
         'https://example.test/a(1).jpg?size=wide',
     ]
+
+
+def test_legacy_multi_image_single_layout_becomes_a_carousel():
+    out = b.normalize_block({'type': 'image', 'layout': 'single', 'items': [
+        {'url': 'https://example.test/one.jpg'},
+        {'url': 'https://example.test/two.jpg'},
+    ]})
+    assert out['layout'] == 'carousel'
+
+
+def test_site_hero_focal_point_is_bounded_and_defaults_to_center():
+    out = b.normalize_block({'type': 'site_hero', 'focal_x': 120,
+                             'focal_y': -5})
+    assert out['focal_x'] == 100
+    assert out['focal_y'] == 0
+    centered = b.normalize_block({'type': 'site_hero'})
+    assert (centered['focal_x'], centered['focal_y']) == (50, 50)
 
 
 def test_site_initiative_images_are_canonical_optional_overrides():

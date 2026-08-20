@@ -40,7 +40,8 @@ PROJECT_FORM_STEPS = [
      'hint': u'What the project is called, how it introduces itself, and its '
              u'images.',
      'fields': ('title', 'slug', 'short_description', 'image_url',
-                'logo_url', 'heading_image_url')},
+                'image_focal_x', 'image_focal_y', 'logo_url',
+                'heading_image_url', 'heading_focal_x', 'heading_focal_y')},
     {'step': 2, 'key': 'classification', 'title': u'Classification',
      'hint': u'Keywords, the water bodies and data involved, and the '
              u'initiative if it belongs to one.',
@@ -59,7 +60,7 @@ PROJECT_FORM_STEPS = [
     {'step': 5, 'key': 'leadership', 'title': u'Leadership and contact',
      'hint': u'The institutions behind the project and who to reach.',
      'fields': ('lead_partner_type', 'lead_organisation',
-                'other_organisations', 'editors', 'contact_person',
+                'organization_id', 'other_organisations', 'editors', 'contact_person',
                 'contact_email')},
     {'step': 6, 'key': 'funding', 'title': u'Funding and references',
      'hint': u'Who funds the project and where to read more.',

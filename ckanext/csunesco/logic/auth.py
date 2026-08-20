@@ -10,7 +10,8 @@ Three privileged levels (matriz CST: CS / PM / ADM):
     INITIATIVE, plus everything a project admin can do within it.
   * project admin (PM)        -> join approve/reject + content/data create for
     THEIR project.
-  * project/join request      -> any authenticated (non-anonymous) user.
+  * project proposal          -> sysadmin or an organization admin/editor.
+  * project join request      -> any authenticated (non-anonymous) user.
   * side-effect-free reads    -> public (allow anonymous); the fine-grained
     filtering (e.g. hiding unapproved projects) happens in the action itself.
 
@@ -139,6 +140,40 @@ def _is_org_editor(context, org_id):
     try:
         return bool(authz.has_user_permission_for_group_or_org(
             org_id, user_obj.name, 'create_dataset'))
+    except Exception:
+        return False
+
+
+def _is_org_admin(context, org_id):
+    """True only for CKAN organization admins (editors do not pass)."""
+    if not org_id:
+        return False
+    user_obj = _user_obj(context)
+    if user_obj is None:
+        return False
+    import ckan.authz as authz
+    try:
+        return authz.users_role_for_group_or_org(
+            org_id, user_obj.name) == 'admin'
+    except Exception:
+        return False
+
+
+def can_propose_project(context, organization_id=None):
+    """Portal eligibility: sysadmin or admin/editor of a CKAN organization."""
+    if _is_sysadmin(context):
+        return True
+    if organization_id:
+        return _is_org_editor(context, organization_id)
+    user_obj = _user_obj(context)
+    if user_obj is None:
+        return False
+    try:
+        organizations = (model.Session.query(model.Group.id)
+                         .filter(model.Group.is_organization.is_(True))
+                         .filter(model.Group.state == 'active').all())
+        return any(_is_org_editor(context, org_id)
+                   for (org_id,) in organizations)
     except Exception:
         return False
 
@@ -366,11 +401,52 @@ def csunesco_project_trusted_set(context, data_dict):
 
 
 def csunesco_project_request_create(context, data_dict):
-    # Any authenticated user may request a project; anonymous is denied.
-    if context.get('user'):
+    # The Toolbox service is sysadmin. Human callers must name an organization
+    # where they are an editor/admin; the action re-checks the resolved scope.
+    if _is_sysadmin(context):
+        return {'success': True}
+    organization_id = (data_dict or {}).get('organization_id')
+    if (context.get('user') and organization_id
+            and _is_org_editor(context, organization_id)):
         return {'success': True}
     return {'success': False,
-            'msg': tk._('You must be logged in to request a project')}
+            'msg': tk._('Only an organization admin or editor can propose a project')}
+
+
+def _project_for_auth(data_dict):
+    from ckanext.csunesco import db
+    data_dict = data_dict or {}
+    return db.get_project(data_dict.get('id') or data_dict.get('project_id')
+                          or data_dict.get('slug'))
+
+
+def csunesco_project_delete(context, data_dict):
+    project = _project_for_auth(data_dict)
+    if project is None:
+        return {'success': False, 'msg': tk._('Project not found')}
+    user_obj = _user_obj(context)
+    if (_is_sysadmin(context)
+            or _is_project_initiative_admin(context, project.id)
+            or _is_org_admin(context, project.organization_id)
+            or (user_obj is not None and project.created_by == user_obj.id)):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only the proposer or a scoped administrator can delete this proposal')}
+
+
+def csunesco_project_archive(context, data_dict):
+    project = _project_for_auth(data_dict)
+    if project is not None and (_is_sysadmin(context)
+            or _is_project_admin(context, project.id)
+            or _is_project_initiative_admin(context, project.id)
+            or _is_org_admin(context, project.organization_id)):
+        return {'success': True}
+    return {'success': False,
+            'msg': tk._('Only a scoped administrator can archive this project')}
+
+
+def csunesco_project_restore(context, data_dict):
+    return csunesco_project_archive(context, data_dict)
 
 
 def csunesco_join_request_create(context, data_dict):
@@ -825,6 +901,9 @@ def get_auth_functions():
         'csunesco_project_manager_set': csunesco_project_manager_set,
         'csunesco_project_trusted_set': csunesco_project_trusted_set,
         'csunesco_project_request_create': csunesco_project_request_create,
+        'csunesco_project_delete': csunesco_project_delete,
+        'csunesco_project_archive': csunesco_project_archive,
+        'csunesco_project_restore': csunesco_project_restore,
         'csunesco_join_request_create': csunesco_join_request_create,
         'csunesco_project_list': csunesco_project_list,
         'csunesco_project_show': csunesco_project_show,

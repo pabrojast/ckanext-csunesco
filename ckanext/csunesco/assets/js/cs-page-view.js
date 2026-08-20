@@ -96,6 +96,36 @@
         });
       });
     });
+
+    Array.prototype.forEach.call(
+      document.querySelectorAll("[data-carousel]"), function (carousel) {
+        var items = Array.prototype.slice.call(
+          carousel.querySelectorAll(".cs-gallery-item"));
+        if (items.length < 2) { return; }
+        var previous = carousel.querySelector("[data-carousel-prev]");
+        var next = carousel.querySelector("[data-carousel-next]");
+        var status = carousel.querySelector("[data-carousel-status]");
+        var index = 0;
+        carousel.classList.add("is-enhanced");
+        function paint() {
+          items.forEach(function (item, itemIndex) {
+            item.hidden = itemIndex !== index;
+            item.setAttribute("aria-hidden", itemIndex === index ? "false" : "true");
+          });
+          if (status) { status.textContent = (index + 1) + " / " + items.length; }
+        }
+        function move(delta) {
+          index = (index + delta + items.length) % items.length;
+          paint();
+        }
+        if (previous) { previous.addEventListener("click", function () { move(-1); }); }
+        if (next) { next.addEventListener("click", function () { move(1); }); }
+        carousel.addEventListener("keydown", function (event) {
+          if (event.key === "ArrowLeft") { event.preventDefault(); move(-1); }
+          if (event.key === "ArrowRight") { event.preventDefault(); move(1); }
+        });
+        paint();
+      });
   }
 
   if (document.readyState === "loading") {

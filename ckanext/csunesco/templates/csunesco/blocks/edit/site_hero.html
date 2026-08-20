@@ -20,3 +20,7 @@
            label=_("Background image URL"),
            clear_label=_("Restore the standard background image"),
            drops=drops, url_field='image_url', upload_field='image_upload' %}
+{% snippet "csunesco/blocks/edit/_focal_picker.html",
+           input_id='b%s-hero-image' | format(index), image_url=block.image_url or '/csunesco/images/cs-hero.png',
+           x_name='blocks[%s][focal_x]' | format(index), y_name='blocks[%s][focal_y]' | format(index),
+           focal_x=block.focal_x, focal_y=block.focal_y %}

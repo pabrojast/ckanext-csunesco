@@ -26,25 +26,23 @@
     </p>
   {% endif %}
 
-  {% if ctx.can_manage and not is_draft_preview %}
-    <p class="cs-page-edit-bar">
-      <a class="cs-btn cs-btn-secondary cs-btn-sm"
-         href="{{ h.url_for('csunesco.site_page_edit') }}">
-        {{ _("Edit this page") }}
-      </a>
-    </p>
-  {% endif %}
-
   {% for block in blocks %}
     {% snippet "csunesco/snippets/block_render.html", block=block, ctx=ctx %}
   {% endfor %}
+
+  {% if ctx.can_manage and not is_draft_preview %}
+    <p class="cs-page-edit-bar">
+      <a class="cs-btn cs-btn-secondary cs-btn-sm"
+         href="{{ h.url_for('csunesco.site_page_edit') }}">{{ _("Edit this page") }}</a>
+    </p>
+  {% endif %}
 {% endblock %}
 
 {% block scripts %}
   {{ super() }}
   {# Same conditional gating as the project landing -- but no Leaflet or
      Chart.js here: the data-bound block types are project-only. #}
-  {% if ctx.has_lightbox %}
+  {% if ctx.has_lightbox or ctx.has_carousel %}
     {% asset 'csunesco/cs-page-view-js' %}
   {% endif %}
 {% endblock %}

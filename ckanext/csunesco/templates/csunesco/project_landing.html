@@ -24,6 +24,9 @@
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
+  {% set parent_url = h.url_for('csunesco.initiative_index', name=project.initiative_group) if project.initiative_group else h.url_for('csunesco.project_list') %}
+  {% set parent_label = _("Back to %(name)s", name=project.initiative_title) if project.initiative_title else _("Back to projects") %}
+  {% snippet "csunesco/snippets/context_nav.html", url=parent_url, label=parent_label %}
   {% if is_draft_preview %}
     <p class="cs-preview-banner" role="status">
       <strong>{{ _("Draft preview.") }}</strong>
@@ -35,11 +38,14 @@
     </p>
   {% endif %}
 
-  {# image_url is charset-restricted by csunesco_valid_image_url (no quotes/
+  {# Image URLs are charset-restricted by csunesco_valid_image_url (no quotes/
      parens/whitespace), so it is safe inside the CSS url('...') below. #}
+  {% set hero_image = project.heading_image_url or project.image_url %}
+  {% set hero_x = project.heading_focal_x if project.heading_image_url else project.image_focal_x %}
+  {% set hero_y = project.heading_focal_y if project.heading_image_url else project.image_focal_y %}
   <section class="cs-hero cs-project-hero" aria-labelledby="cs-project-title"
-           {%- if project.image_url %}
-           style="--cs-project-hero-img: url('{{ project.image_url }}')"
+           {%- if hero_image %}
+           style="--cs-project-hero-img: url('{{ hero_image }}'); --cs-hero-x: {{ hero_x or 50 }}%; --cs-hero-y: {{ hero_y or 50 }}%"
            {%- endif %}>
     {% if project.initiative_title %}
       <p class="cs-project-hero-initiative">{{ project.initiative_title }}</p>
@@ -89,34 +95,21 @@
     </section>
   {% endif %}
 
-  {% if ctx.can_manage and not is_draft_preview %}
-    <p class="cs-page-edit-bar">
-      <a class="cs-btn cs-btn-secondary cs-btn-sm"
-         href="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
-        {{ _("Edit this page") }}
-      </a>
-      {# The page editor composes the BODY; this one fixes the project's own
-         details (title, countries, contact...), which used to be unchangeable
-         once the request had been submitted.
-
-         Its own predicate, not ctx.can_manage: that one is membership-based,
-         so the author of a request still awaiting review could edit it from
-         the approval panel but not from the project's own page. #}
-      {% if h.csunesco_can_edit_project(project) %}
-        <a class="cs-btn cs-btn-secondary cs-btn-sm"
-           href="{{ h.url_for('csunesco.project_edit', slug=project.slug) }}">
-          {{ _("Edit details") }}
-        </a>
-      {% endif %}
-    </p>
-  {% endif %}
-
   {# ---- The project's blocks ------------------------------------------
         Managers see hidden blocks too when previewing their draft; the
         public render skips them (logic/page_render.visible_blocks). ----- #}
   {% for block in blocks %}
     {% snippet "csunesco/snippets/block_render.html", block=block, ctx=ctx %}
   {% endfor %}
+
+  {% if ctx.can_manage and not is_draft_preview %}
+    <p class="cs-page-edit-bar">
+      <a class="cs-btn cs-btn-secondary cs-btn-sm" href="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">{{ _("Edit page sections") }}</a>
+      {% if h.csunesco_can_edit_project(project) %}
+        <a class="cs-btn cs-btn-secondary cs-btn-sm" href="{{ h.url_for('csunesco.project_edit', slug=project.slug) }}">{{ _("Edit project details") }}</a>
+      {% endif %}
+    </p>
+  {% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -141,7 +134,7 @@
   {% if ctx.has_chat %}
     {% asset 'csunesco/cs-data-chat-js' %}
   {% endif %}
-  {% if ctx.has_lightbox %}
+  {% if ctx.has_lightbox or ctx.has_carousel %}
     {% asset 'csunesco/cs-page-view-js' %}
   {% endif %}
 {% endblock %}

@@ -17,6 +17,7 @@
 
 {% block cs_content %}
   {% set can_manage = h.csunesco_can_manage_project(content.project_id) %}
+  {% snippet "csunesco/snippets/context_nav.html", url=h.url_for('csunesco.cs_events_index'), label=_("All events") %}
   <article class="cs-article">
     <header class="cs-article-header">
       <p class="cs-content-type-label cs-content-type-label--event">{{ _("Event") }}</p>

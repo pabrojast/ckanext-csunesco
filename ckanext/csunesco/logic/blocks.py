@@ -406,8 +406,14 @@ def _n_image(raw, report=None):
             'link': _kept(report, 'link', _link_url, item.get('link'),
                           'bad_link', item=index),
         })
+    layout = _enum(raw.get('layout'), ('grid', 'single', 'wide', 'carousel'),
+                   'grid')
+    # The old "One large image" layout rendered every item as a huge vertical
+    # list. Treat multi-image legacy blocks as the carousel authors expected.
+    if layout == 'single' and len(items) > 1:
+        layout = 'carousel'
     return {
-        'layout': _enum(raw.get('layout'), ('grid', 'single', 'wide'), 'grid'),
+        'layout': layout,
         'items': items,
         'lightbox': _bool(raw.get('lightbox')),
     }
@@ -551,6 +557,13 @@ def _n_builtin(raw, report=None):
     return {'intro': _plain(raw.get('intro'), MAX_SECTION_INTRO)}
 
 
+def _n_builtin_about(raw, report=None):
+    """Page-owned long project description with a legacy render fallback."""
+    payload = _n_builtin(raw, report)
+    payload['html'] = _rich(raw.get('html'), MAX_RICH_TEXT)
+    return payload
+
+
 # --- site (hub) builtins ---------------------------------------------------
 # Every field is an OPTIONAL override: while empty, the block template falls
 # back to the hub's original hardcoded markup, `_()`-translated -- which is
@@ -563,6 +576,8 @@ def _n_site_hero(raw, report=None):
         'tagline': _plain(raw.get('tagline'), 300),
         'image_url': _kept(report, 'image_url', _image_url,
                            raw.get('image_url'), 'bad_image_url'),
+        'focal_x': _int(raw.get('focal_x'), 50, 0, 100),
+        'focal_y': _int(raw.get('focal_y'), 50, 0, 100),
     }
 
 
@@ -754,10 +769,9 @@ _TYPES = [
               _n_builtin, u'The region map (hidden when no region is set).',
               builtin=True, addable=False),
     BlockType('builtin_about', u'About this project', u'doc',
-              _n_builtin,
-              u'Description text from before this editor existed. It cannot be '
-              u'edited here - move it into a text block to change it.',
-              builtin=True, addable=False, deprecated=True),
+              _n_builtin_about,
+              u'The editable long description shown in the project page.',
+              builtin=True, addable=False, has_editor=True),
     BlockType('builtin_data', u'Data', u'layers', _n_builtin,
               u'Every set of app data on this project, with its map and '
               u'download links.', builtin=True, addable=False),
@@ -1039,7 +1053,10 @@ def raw_blocks_from_form(pairs, file_pairs=None):
         index, field, sub_index, sub_field = match.groups()
         block = by_index.setdefault(int(index), {})
         if sub_index is None:
-            block[field] = value
+            if field == 'batch_upload':
+                block.setdefault(field, []).append(value)
+            else:
+                block[field] = value
         else:
             items = block.setdefault(field, {})
             if not isinstance(items, dict):
@@ -1125,12 +1142,9 @@ def apply_op(blocks, raw_op, convert_html=None, scope='project'):
         if len(blocks) >= MAX_BLOCKS:
             return blocks, None
         block = normalize_block({'type': argument})
-        # Insert BEFORE the first standard section rather than appending: the
-        # six built-ins already sit in the list, so appending would drop every
-        # new section below "Join this project" and cost the author one full
-        # page reload per position to move it up.
-        at = _first_builtin_index(blocks)
-        blocks.insert(at, block)
+        # Predictable bottom-up composition: append, then move upward if the
+        # author wants the new section earlier in the page.
+        blocks.append(block)
         return blocks, block['id']
 
     # Strict: a non-numeric argument is NOT index 0. Coercing garbage to 0

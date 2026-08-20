@@ -75,6 +75,7 @@
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
+  {% snippet "csunesco/snippets/context_nav.html", url=h.url_for('csunesco.admin_dashboard') if not is_new else h.url_for('csunesco.index'), label=_("Administration") if not is_new else _("Citizen Science home") %}
   {% if success %}
     <section class="cs-hero" aria-labelledby="cs-req-success-title">
       <h1 id="cs-req-success-title">{{ _("Request submitted") }}</h1>
@@ -195,7 +196,7 @@
 
           <div class="cs-field">
             <label for="cs-f-short_description">{{ _("Short description") }} <span class="cs-req" aria-hidden="true">*</span></label>
-            <textarea id="cs-f-short_description" name="short_description" rows="4"
+            <textarea id="cs-f-short_description" name="short_description" rows="4" data-rich-editor
                       maxlength="2000" required aria-required="true"
                       {% if errors.short_description %}aria-invalid="true"{% endif %}
                       {{- described_by('short_description', true) }}>{{ data.short_description or '' }}</textarea>
@@ -215,8 +216,10 @@
                        clear_label=_("Remove the current cover image"),
                        url_field="image_url",
                        upload_field="image_upload" %}
-            <p class="cs-hint">{{ _("Optional. Resized to 600×400. Shown as the project's banner and card cover.") }}</p>
+            <p class="cs-hint">{{ _("Optional. Reduced to fit within 1200×1200 without cropping. The focal point controls its crop on project cards.") }}</p>
             {{ field_error('image_url') }}
+            {% snippet "csunesco/blocks/edit/_focal_picker.html", input_id="cs-f-image", image_url=data.image_url,
+                       x_name="image_focal_x", y_name="image_focal_y", focal_x=data.image_focal_x, focal_y=data.image_focal_y %}
           </div>
 
           <div class="cs-field">
@@ -231,7 +234,7 @@
                        clear_label=_("Remove the current logo"),
                        url_field="logo_url",
                        upload_field="logo_upload" %}
-            <p class="cs-hint">{{ _("Optional. Resized to 600×400.") }}</p>
+            <p class="cs-hint">{{ _("Optional. Reduced to fit within 1200×1200 without cropping; logos are displayed with their full proportions.") }}</p>
             {{ field_error('logo_url') }}
           </div>
 
@@ -247,8 +250,10 @@
                        clear_label=_("Remove the current heading image"),
                        url_field="heading_image_url",
                        upload_field="heading_upload" %}
-            <p class="cs-hint">{{ _("Optional. Resized to 1100×400. Shown across the top of the project profile.") }}</p>
+            <p class="cs-hint">{{ _("Optional. Reduced to fit within 2000×1200 without cropping. Choose the focal point used by the wide profile banner.") }}</p>
             {{ field_error('heading_image_url') }}
+            {% snippet "csunesco/blocks/edit/_focal_picker.html", input_id="cs-f-heading", image_url=data.heading_image_url,
+                       x_name="heading_focal_x", y_name="heading_focal_y", focal_x=data.heading_focal_x, focal_y=data.heading_focal_y %}
           </div>
 
           <div class="cs-wizard-nav" hidden>
@@ -516,7 +521,7 @@
 
           <div class="cs-field">
             <label for="cs-f-how_to_participate">{{ _("How to take part") }}</label>
-            <textarea id="cs-f-how_to_participate" name="how_to_participate" rows="4"
+            <textarea id="cs-f-how_to_participate" name="how_to_participate" rows="4" data-rich-editor
                       maxlength="4000"
                       {% if errors.how_to_participate %}aria-invalid="true"{% endif %}
                       {{- described_by('how_to_participate', true) }}>{{ data.how_to_participate or '' }}</textarea>
@@ -526,7 +531,7 @@
 
           <div class="cs-field">
             <label for="cs-f-target_group">{{ _("Who it is for") }}</label>
-            <textarea id="cs-f-target_group" name="target_group" rows="3"
+            <textarea id="cs-f-target_group" name="target_group" rows="3" data-rich-editor
                       maxlength="4000"
                       {% if errors.target_group %}aria-invalid="true"{% endif %}
                       {{- described_by('target_group', true) }}>{{ data.target_group or '' }}</textarea>
@@ -563,6 +568,21 @@
             </select>
             <p id="cs-f-lead_partner_type-hint" class="cs-hint">{{ _("The type of institution coordinating the project.") }}</p>
             {{ field_error('lead_partner_type') }}
+          </div>
+
+          <div class="cs-field">
+            <label for="cs-f-organization_id">{{ _("Proposing organization") }} <span class="cs-req" aria-hidden="true">*</span></label>
+            <select id="cs-f-organization_id" name="organization_id" required aria-required="true"
+                    {% if errors.organization_id %}aria-invalid="true"{% endif %}
+                    {{- described_by('organization_id', true) }}>
+              <option value="">{{ _("Select an organization") }}</option>
+              {% for org in organizations %}
+                <option value="{{ org.id or org.name }}"
+                        {% if (org.id or org.name) == data.organization_id %}selected{% endif %}>{{ org.title }}</option>
+              {% endfor %}
+            </select>
+            <p id="cs-f-organization_id-hint" class="cs-hint">{{ _("You must be an administrator or editor of this CKAN organization.") }}</p>
+            {{ field_error('organization_id') }}
           </div>
 
           <div class="cs-field">

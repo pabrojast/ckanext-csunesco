@@ -1,12 +1,16 @@
 version: 1
 groups:
-  - annotation: Citizen Science image uploads
+  - annotation: Citizen Science media uploads
     options:
       - key: ckan.upload.csunesco.types
         type: list
-        default: image
-        description: Broad MIME families accepted by the Citizen Science page editor.
+        default: image application
+        description: Broad MIME families accepted by Citizen Science image and news-attachment editors.
       - key: ckan.upload.csunesco.mimetypes
         type: list
-        default: image/jpeg image/png image/webp
-        description: Exact image MIME types accepted by the Citizen Science page editor.
+        default: image/jpeg image/png image/webp application/pdf application/msword application/vnd.openxmlformats-officedocument.wordprocessingml.document application/zip application/x-ole-storage application/octet-stream
+        description: Exact image and PDF, DOC or DOCX MIME types accepted by Citizen Science editors; file signatures are checked separately before storage.
+      - key: ckanext.csunesco.max_attachment_size
+        type: int
+        default: 20
+        description: Maximum size in MiB for a news PDF, DOC or DOCX attachment.

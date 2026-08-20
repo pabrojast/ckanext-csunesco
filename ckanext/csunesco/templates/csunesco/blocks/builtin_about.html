@@ -1,20 +1,16 @@
 {#
-  Built-in block: the legacy "About this project" description.
-
-  DEPRECATED. cs_project.landing_content has no writer -- no schema field, no
-  action, no form ever sets it -- so this renders only for rows that predate the
-  page builder. New prose belongs in a rich_text block; the editor offers a
-  one-click conversion.
-
-  landing_content was sanitized server-side BEFORE storage, which is what makes
-  the `| safe` here legitimate.
+  Built-in block: the page-owned full project description. New edits live in
+  block.html; legacy landing_content remains a sanitized fallback so older
+  projects keep their copy until a manager saves this section. Both values are
+  sanitized server-side before the `| safe` render.
 
   Vars: block, ctx.
 #}
-{% if ctx.project.landing_content %}
+{% set about_html = block.html or ctx.project.landing_content %}
+{% if about_html %}
   <section class="cs-section cs-project-description" aria-labelledby="cs-desc-title">
     <h2 id="cs-desc-title" class="cs-section-title">{{ block.title or _("About this project") }}</h2>
     {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
-    <div class="cs-rich-text">{{ ctx.project.landing_content | safe }}</div>
+    <div class="cs-rich-text">{{ about_html | safe }}</div>
   </section>
 {% endif %}

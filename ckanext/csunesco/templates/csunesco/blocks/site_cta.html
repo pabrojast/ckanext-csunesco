@@ -8,8 +8,16 @@
 <section class="cs-section cs-cta-band" id="block-{{ block.id }}"
          aria-label="{{ block.title or _('Propose a project') }}">
   <p>{{ block.text or _("Leading a community water-monitoring effort?") }}</p>
-  <a class="cs-btn cs-btn-primary"
-     href="{{ block.cta_url or h.url_for('csunesco.project_new') }}">
-    {{ block.cta_label or _("Propose a project") }}
-  </a>
+  {% if h.csunesco_can_propose_project() %}
+    <a class="cs-btn cs-btn-primary"
+       href="{{ block.cta_url or h.url_for('csunesco.project_new') }}">
+      {{ block.cta_label or _("Propose a project") }}
+    </a>
+  {% else %}
+    <p class="cs-hint">{{ _("Project proposals are available to approved administrators or editors of a CKAN organization.") }}</p>
+    {% if not g.user %}
+      <a class="cs-link" href="{{ h.url_for('user.login') }}">{{ _("Log in") }}</a>
+    {% endif %}
+    <a class="cs-link" href="{{ h.url_for('csunesco.register_manager') }}">{{ _("Register as a Project Manager") }}</a>
+  {% endif %}
 </section>

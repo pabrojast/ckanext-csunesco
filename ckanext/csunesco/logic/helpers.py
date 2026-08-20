@@ -63,7 +63,8 @@ def csunesco_recent_news(limit=3):
     """
     try:
         result = tk.get_action('csunesco_content_list')(
-            {}, {'content_type': 'cs-news', 'limit': limit})
+            {}, {'content_type': 'cs-news', 'status': 'approved',
+                 'limit': limit})
         return result.get('results', [])
     except Exception:
         log.warning('csunesco: recent news could not be listed')
@@ -164,6 +165,20 @@ def csunesco_can_edit_project(project):
         return auth.can_edit_project_details(context, project)
     except Exception:
         log.warning('csunesco: project edit permission could not be resolved')
+        return False
+
+
+def csunesco_can_propose_project():
+    """Whether the acting user may create a project for any organization."""
+    if not tk.g.user:
+        return False
+    try:
+        import ckan.model as model
+        from ckanext.csunesco.logic import auth
+        return auth.can_propose_project(
+            {'model': model, 'session': model.Session, 'user': tk.g.user})
+    except Exception:
+        log.warning('csunesco: project proposal eligibility unavailable')
         return False
 
 

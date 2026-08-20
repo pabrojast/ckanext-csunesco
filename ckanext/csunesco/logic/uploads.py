@@ -21,13 +21,14 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 UPLOAD_TO = 'csunesco'
 PUBLIC_PREFIX = '/uploads/{0}/'.format(UPLOAD_TO)
 MAX_UPLOADS_PER_REQUEST = 12
+MAX_CONTENT_UPLOADS_PER_REQUEST = 14
 
-# Spec section 6.A: normalized sizes for the three project images. Uploads are
-# center-cropped to the target aspect and resized server-side.
+# Bounding boxes for project images. Aspect ratio is preserved; the public
+# viewport applies a non-destructive crop using the stored focal point.
 PROJECT_IMAGE_SIZES = {
-    'image_url': (600, 400),          # cover / thumbnail
-    'logo_url': (600, 400),           # project logo
-    'heading_image_url': (1100, 400),  # profile heading image
+    'image_url': (1200, 1200),
+    'logo_url': (1200, 1200),
+    'heading_image_url': (2000, 1200),
 }
 
 
@@ -64,6 +65,15 @@ def max_image_size():
         return int(tk.config.get('ckan.max_image_size') or 2)
     except (TypeError, ValueError):
         return 2
+
+
+def max_attachment_size():
+    """Configured content attachment limit in MiB (WINS default: 20)."""
+    try:
+        return int(tk.config.get(
+            'ckanext.csunesco.max_attachment_size') or 20)
+    except (TypeError, ValueError):
+        return 20
 
 
 def _truthy(value):
@@ -113,26 +123,40 @@ def _validate_image(upload):
         stream.seek(position)
 
 
-def _resized_upload(upload, size):
-    """A new in-memory upload holding the image fitted to ``size``.
+def _validate_document(upload):
+    """Validate PDF, legacy DOC or DOCX by extension and file signature."""
+    filename = str(getattr(upload, 'filename', '') or '').lower()
+    extension = os.path.splitext(filename)[1]
+    if extension not in ('.pdf', '.doc', '.docx'):
+        raise ValueError('Unsupported attachment extension')
+    stream = getattr(upload, 'stream', upload)
+    position = stream.tell()
+    try:
+        stream.seek(0)
+        magic = stream.read(8)
+    finally:
+        stream.seek(position)
+    valid = ((extension == '.pdf' and magic.startswith(b'%PDF-'))
+             or (extension == '.doc' and magic.startswith(b'\xd0\xcf\x11\xe0'))
+             or (extension == '.docx' and magic.startswith(b'PK\x03\x04')))
+    if not valid:
+        raise ValueError('Attachment signature does not match extension')
 
-    ``ImageOps.fit`` center-crops to the target aspect then resizes, which is
-    the spec's "resized automatically". The original format survives (JPEG
-    stays JPEG); JPEG cannot carry alpha, so it is flattened to RGB. Runs
-    AFTER ``_validate_image``, so the bytes are known-good.
-    """
+
+def _resized_upload(upload, size):
+    """A bounded in-memory upload that preserves the original aspect ratio."""
     from werkzeug.datastructures import FileStorage
 
     stream = getattr(upload, 'stream', upload)
     stream.seek(0)
     with Image.open(stream) as image:
         fmt = image.format
-        if image.size == size:
+        if image.width <= size[0] and image.height <= size[1]:
             stream.seek(0)
             return upload
         mode = 'RGB' if fmt == 'JPEG' else 'RGBA'
-        fitted = ImageOps.fit(image.convert(mode), size,
-                              method=Image.LANCZOS)
+        fitted = ImageOps.contain(image.convert(mode), size,
+                                  method=Image.LANCZOS)
     buffer = BytesIO()
     fitted.save(buffer, format=fmt)
     buffer.seek(0)
@@ -166,17 +190,18 @@ def _asset_reference(uploader):
 class UploadBatch(object):
     """Prepared uploads plus rollback information for one page POST."""
 
-    def __init__(self):
+    def __init__(self, max_uploads=MAX_UPLOADS_PER_REQUEST):
         self._jobs = []
         self._written = []
         self._stored_assets = []
         self._project_holders = {}
         self.project_image_url = None
         self.project_image_urls = {}
+        self.max_uploads = max_uploads
 
     def add_picker(self, target, url_field, upload_field, clear_field,
                    block=None, item=None, error_field='image_upload',
-                   resize_to=None):
+                   resize_to=None, kind='image', max_size=None):
         """Apply clear semantics or stage one non-empty file input."""
         upload = target.pop(upload_field, None)
         clear = target.pop(clear_field, None)
@@ -189,6 +214,8 @@ class UploadBatch(object):
                 'item': item,
                 'error_field': error_field,
                 'resize_to': resize_to,
+                'kind': kind,
+                'max_size': max_size or max_image_size(),
             })
         elif _truthy(clear):
             target[url_field] = u''
@@ -210,6 +237,11 @@ class UploadBatch(object):
                     ordered = []
                 url_field = ('url' if block_type == 'image'
                              else 'image_url')
+                if block_type == 'image':
+                    batch_uploads = block.pop('batch_upload', []) or []
+                    for upload in batch_uploads:
+                        if _has_file(upload) and len(ordered) < 12:
+                            ordered.append({'url': u'', 'upload': upload})
                 for index, item in enumerate(ordered):
                     if isinstance(item, dict):
                         self.add_picker(item, url_field, 'upload', 'clear',
@@ -232,8 +264,14 @@ class UploadBatch(object):
         # Back-compat spelling of prepare_project_image('image_url', ...).
         self.prepare_project_image('image_url', url, upload, clear)
 
+    def prepare_document(self, holder, url_field='url', upload_field='upload',
+                         clear_field='clear'):
+        self.add_picker(holder, url_field, upload_field, clear_field,
+                        error_field='attachment_upload', kind='document',
+                        max_size=max_attachment_size())
+
     def write(self):
-        if len(self._jobs) > MAX_UPLOADS_PER_REQUEST:
+        if len(self._jobs) > self.max_uploads:
             raise PageImageUploadError([
                 _problem(job.get('block'), job.get('error_field'),
                          'too_many_uploads', job.get('item'))
@@ -252,8 +290,11 @@ class UploadBatch(object):
             # Prepare every job before writing the first file so a bad second
             # picker cannot leave the first one orphaned.
             for job in self._jobs:
-                _validate_image(job['upload'])
-                if job.get('resize_to'):
+                if job.get('kind') == 'document':
+                    _validate_document(job['upload'])
+                else:
+                    _validate_image(job['upload'])
+                if job.get('resize_to') and job.get('kind') == 'image':
                     job['upload'] = _resized_upload(job['upload'],
                                                     job['resize_to'])
                 data = {'url': u'', 'upload': job['upload']}
@@ -265,7 +306,7 @@ class UploadBatch(object):
                 prepared.append((job, upload, data['url']))
 
             for job, upload, stored_value in prepared:
-                upload.upload(max_image_size())
+                upload.upload(job.get('max_size') or max_image_size())
                 filepath = getattr(upload, 'filepath', None)
                 if filepath:
                     self._written.append(filepath)
@@ -345,4 +386,18 @@ def process_page_images(raw_blocks, project_cover=None, project_images=None):
         batch.prepare_project_image(
             field, picker.get('url'), picker.get('upload'),
             picker.get('clear'))
+    return batch.write()
+
+
+def process_content_files(header=None, gallery=None, attachment=None):
+    """Resolve a news header, multiple gallery images and one document."""
+    batch = UploadBatch(max_uploads=MAX_CONTENT_UPLOADS_PER_REQUEST)
+    if header is not None:
+        batch.add_picker(header, 'url', 'upload', 'clear',
+                         error_field='header_image_upload')
+    for index, holder in enumerate((gallery or [])[:12]):
+        batch.add_picker(holder, 'url', 'upload', 'clear', item=index,
+                         error_field='gallery_upload')
+    if attachment is not None:
+        batch.prepare_document(attachment)
     return batch.write()

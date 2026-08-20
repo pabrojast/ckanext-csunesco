@@ -138,6 +138,30 @@ def test_create_still_accepts_a_payload_with_no_extras(actions, session):
     assert json.loads(_row(created['id']).extras) == {}
 
 
+def test_unapproved_proposal_can_be_permanently_deleted(actions, session):
+    created = _create(actions, {'title': 'Disposable demo'})
+    out = actions.csunesco_project_delete(_ctx(), {'id': created['id']})
+    assert out == {'id': created['id'], 'deleted': True}
+    assert db.get_project(created['id']) is None
+
+
+def test_published_project_archives_and_restores_without_data_loss(
+        actions, session):
+    created = _create(actions, {'title': 'Long-lived project'})
+    row = db.get_project(created['id'])
+    row.status = 'approved'
+    session.commit()
+    archived = actions.csunesco_project_archive(
+        _ctx(), {'id': created['id'], 'reason': 'Season complete'})
+    assert archived['status'] == 'archived'
+    assert archived['archive_reason'] == 'Season complete'
+    restored = actions.csunesco_project_restore(
+        _ctx(), {'id': created['id']})
+    assert restored['status'] == 'approved'
+    assert 'archive_reason' not in restored
+    assert restored['title'] == 'Long-lived project'
+
+
 def test_partial_update_leaves_other_extras_alone(actions, session):
     created = _create(actions)
     actions.csunesco_project_update(

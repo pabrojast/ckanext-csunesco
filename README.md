@@ -118,9 +118,11 @@ self-registration page is `/citizen-science/register-citizen`, **not**
 | GET·POST | `/citizen-science/register-citizen` | Citizen Scientist self-registration (optional `?project=<id-or-slug>`; account created **pending**, selected join filed immediately) | public — gated by `ckan.auth.create_user_via_web`; reuses core `user_create` auth |
 | GET | `/citizen-science/verify/<token>` | Activate a pending account via its emailed link | public (single-use token) |
 | GET·POST | `/citizen-science/verify/resend` | Request a fresh verification link | public (generic response) |
-| GET·POST | `/citizen-science/project/new` | Propose a project (**five-stage form**) | authenticated |
+| GET·POST | `/citizen-science/project/new` | Propose a project (**six-stage form**) | sysadmin or an editor/admin of the selected organization |
 | GET·POST | `/citizen-science/project/<slug>/edit` | Correct a project's own details (same staged form; does **not** re-open review) | sysadmin, initiative admin, that project's admin **or** the author while it is unapproved |
 | POST | `/citizen-science/project/<slug>/resubmit` | Send a **rejected** project back for review | same as edit |
+| POST | `/citizen-science/project/<slug>/delete` | Permanently delete an unapproved proposal | proposer, scoped administrator or sysadmin |
+| POST | `/citizen-science/project/<slug>/archive` · `/restore` | Hide or restore an approved project without deleting its history | scoped administrator or sysadmin |
 | POST | `/citizen-science/project/<slug>/join` | Request to join a project | authenticated |
 | GET·POST | `/citizen-science/project/<slug>/content/new` | Add news/event to a project | sysadmin, initiative admin **or** that project's admin |
 | GET·POST | `/citizen-science/org/<org>/content/new` | Add news/event for an ORGANIZATION (no project) | sysadmin **or** an admin/editor of the org |
@@ -180,6 +182,8 @@ enumerate accounts.
 | `csunesco_data_source_create` | sysadmin, initiative admin **or** project admin — **always** creates `pending`; idempotent per `(project, form)` |
 | `csunesco_admin_pending_list` | sysadmin, any initiative admin **or** any project admin |
 | `csunesco_project_approve`, `csunesco_project_reject` | sysadmin **or** the project's initiative admin |
+| `csunesco_project_delete` | proposer, scoped administrator or sysadmin; only while the proposal is unapproved |
+| `csunesco_project_archive`, `csunesco_project_restore` | scoped administrator or sysadmin; preserves the project and its related records |
 | `csunesco_content_create`, `csunesco_content_update` | project content: sysadmin, initiative admin or project admin. Org content (`owner_org`, XOR with the project): sysadmin or org admin/editor. `visibility` public/private; the owning scope is immutable on update |
 | `csunesco_content_approve`, `csunesco_content_reject` | sysadmin **or** the content's initiative admin — approve also RESTORES rejected/withdrawn rows |
 | — org-scoped content | has `initiative_group = NULL`, so approve/reject/withdraw collapse to **sysadmin-only** (no initiative admin exists for it) |
@@ -377,7 +381,8 @@ a default template plus a custom one.
   CKAN's FileStore and its `ckan.max_image_size` limit; stored page JSON still
   contains only a same-origin `/uploads/csunesco/...` URL. Project covers join
   the page draft/review lifecycle, so a card on the hub never changes before
-  the corresponding page version is published.
+  the corresponding page version is published. News may additionally carry a
+  signature-checked PDF, DOC or DOCX attachment with its own size limit.
 - **Charts are aggregated server-side.** `csunesco_data_source_series` buckets
   observations by an auto-chosen period, caps the series at 8 and rounds the
   values, turning a ~1.6 MB dashboard payload into ~3 KB of dense arrays. The

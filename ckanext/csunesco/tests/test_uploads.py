@@ -165,6 +165,31 @@ def test_project_cover_uses_the_same_upload_contract(monkeypatch):
     assert batch.project_image_url == '/uploads/csunesco/cover.jpg'
 
 
+def test_project_resize_preserves_aspect_ratio():
+    from PIL import Image
+    source = io.BytesIO()
+    Image.new('RGB', (2000, 500), 'blue').save(source, format='JPEG')
+    source.seek(0)
+    upload = FileStorage(source, filename='wide.jpg', content_type='image/jpeg')
+    resized = uploads._resized_upload(upload, (1200, 1200))
+    with Image.open(resized.stream) as image:
+        assert image.size == (1200, 300)
+
+
+@pytest.mark.parametrize('filename,data', [
+    ('report.pdf', b'%PDF-1.7\n'),
+    ('report.doc', b'\xd0\xcf\x11\xe0xxxx'),
+    ('report.docx', b'PK\x03\x04xxxx'),
+])
+def test_news_attachment_signatures_are_validated(filename, data):
+    uploads._validate_document(DummyFile(filename, data))
+
+
+def test_news_attachment_rejects_a_spoofed_extension():
+    with pytest.raises(ValueError):
+        uploads._validate_document(DummyFile('report.pdf', b'not a pdf'))
+
+
 def test_more_than_twelve_files_are_refused_before_writing(monkeypatch):
     monkeypatch.setattr(uploads, 'uploads_enabled', lambda: True)
     raw = [{'type': 'image', 'id': 'abcdef01', 'items': {

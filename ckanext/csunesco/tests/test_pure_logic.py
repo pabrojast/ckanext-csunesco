@@ -9,6 +9,7 @@ installed but MUST run and pass inside the ckan-dev container.
 """
 import datetime
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -967,6 +968,39 @@ def test_is_sysadmin_tolerates_flask_login_anonymous_user():
     assert auth._is_sysadmin(context) is False
     assert auth._user_obj(context) is None
     assert action_pkg.current_user_id(context) is None
+
+
+def test_project_proposal_auth_requires_an_editable_organization(monkeypatch):
+    auth = pytest.importorskip('ckanext.csunesco.logic.auth')
+    monkeypatch.setattr(auth, '_is_sysadmin', lambda context: False)
+    monkeypatch.setattr(
+        auth, '_is_org_editor',
+        lambda context, org_id: org_id == 'managed-org')
+
+    allowed = auth.csunesco_project_request_create(
+        {'user': 'editor'}, {'organization_id': 'managed-org'})
+    wrong_org = auth.csunesco_project_request_create(
+        {'user': 'editor'}, {'organization_id': 'other-org'})
+    missing_org = auth.csunesco_project_request_create(
+        {'user': 'editor'}, {})
+
+    assert allowed['success'] is True
+    assert wrong_org['success'] is False
+    assert missing_org['success'] is False
+
+
+def test_project_edit_template_helper_delegates_to_auth(monkeypatch):
+    helpers = pytest.importorskip('ckanext.csunesco.logic.helpers')
+    auth = pytest.importorskip('ckanext.csunesco.logic.auth')
+    project = {'id': 'project-1', 'status': 'pending'}
+    monkeypatch.setattr(
+        helpers, 'tk', SimpleNamespace(g=SimpleNamespace(user='editor')))
+    monkeypatch.setattr(
+        auth, 'can_edit_project_details',
+        lambda context, candidate: (
+            context['user'] == 'editor' and candidate is project))
+
+    assert helpers.csunesco_can_edit_project(project) is True
 
 
 def test_package_name_is_munged_and_bounded():

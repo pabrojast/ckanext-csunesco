@@ -295,6 +295,13 @@ def csunesco_valid_radius_km(value):
     return _valid_float(value, 0.01, 5000, tk._('Radius'))
 
 
+def csunesco_valid_focal_point(value):
+    """A normalized image focal coordinate in the inclusive 0..100 range."""
+    if value in (None, ''):
+        return None
+    return _valid_float(value, 0, 100, tk._('Image focal point'))
+
+
 def csunesco_valid_document_url(value):
     """Allow only ``http``/``https`` document URLs (no javascript:, data:, ...)."""
     if value in (None, ''):
@@ -535,6 +542,7 @@ def get_validators():
         'csunesco_valid_latitude': csunesco_valid_latitude,
         'csunesco_valid_longitude': csunesco_valid_longitude,
         'csunesco_valid_radius_km': csunesco_valid_radius_km,
+        'csunesco_valid_focal_point': csunesco_valid_focal_point,
         'csunesco_valid_slug': csunesco_valid_slug,
         'csunesco_valid_geojson': csunesco_valid_geojson,
         'csunesco_valid_country_list': csunesco_valid_country_list,

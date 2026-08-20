@@ -383,11 +383,26 @@ def _first_error_step(errors):
     return 1
 
 
-def _organization_choices():
-    """Existing CKAN organizations for the lead-organisation datalist."""
+def _organization_choices(eligible_only=False, include_id=None):
+    """CKAN organizations, optionally restricted to the acting user's roles."""
     try:
         from ckanext.csunesco.logic import registration
-        return registration._organization_options()
+        choices = registration._organization_options()
+        if not eligible_only:
+            return choices
+        from ckanext.csunesco.logic import auth
+        context = _context()
+        if auth._is_sysadmin(context):
+            return choices
+        allowed = []
+        for choice in choices:
+            group = model.Group.get(choice['name'])
+            group_id = group.id if group is not None else choice['name']
+            if auth._is_org_editor(context, group_id) or group_id == include_id:
+                item = dict(choice)
+                item['id'] = group_id
+                allowed.append(item)
+        return allowed
     except Exception:
         log.warning('csunesco: organization list unavailable for the form')
         return []
@@ -422,7 +437,9 @@ def _render_project_form(data, errors, success=False, mode='new',
         'lead_partner_types': constants.LEAD_PARTNER_TYPES,
         'funding_bodies': constants.FUNDING_BODIES,
         'intl_frameworks': constants.INTL_FRAMEWORKS,
-        'organizations': _organization_choices(),
+        'organizations': _organization_choices(
+            eligible_only=True,
+            include_id=(project or {}).get('organization_id')),
         'is_draft': bool(project and project.get('status') == 'draft'),
     })
 
@@ -459,6 +476,11 @@ def _read_project_form():
         'image_url': (form.get('image_url') or '').strip(),
         'logo_url': (form.get('logo_url') or '').strip(),
         'heading_image_url': (form.get('heading_image_url') or '').strip(),
+        'organization_id': (form.get('organization_id') or '').strip(),
+        'image_focal_x': (form.get('image_focal_x') or '50').strip(),
+        'image_focal_y': (form.get('image_focal_y') or '50').strip(),
+        'heading_focal_x': (form.get('heading_focal_x') or '50').strip(),
+        'heading_focal_y': (form.get('heading_focal_y') or '50').strip(),
         'how_to_participate': (form.get('how_to_participate') or '').strip(),
         'start_date': (form.get('start_date') or '').strip(),
         'end_date': (form.get('end_date') or '').strip(),
@@ -583,6 +605,11 @@ def _project_to_form(project):
         'image_url': project.get('image_url') or '',
         'logo_url': project.get('logo_url') or '',
         'heading_image_url': project.get('heading_image_url') or '',
+        'organization_id': project.get('organization_id') or '',
+        'image_focal_x': project.get('image_focal_x', 50),
+        'image_focal_y': project.get('image_focal_y', 50),
+        'heading_focal_x': project.get('heading_focal_x', 50),
+        'heading_focal_y': project.get('heading_focal_y', 50),
         'keywords': ', '.join(_list('keywords')),
         'geographic_extent': project.get('geographic_extent') or '',
         'locality': project.get('locality') or '',
@@ -615,10 +642,14 @@ def project_new():
     # Login is required at ENTRY, not discovered on submit. An anonymous
     # visitor could previously fill in the whole 5-step form and lose
     # everything to the login redirect when posting it.
-    if not tk.g.user:
-        tk.h.flash_notice(tk._('Please log in to propose a project.'))
-        return _not_authorized_response(
-            came_from=tk.h.url_for('csunesco.project_new'))
+    from ckanext.csunesco.logic import auth
+    context = _context()
+    eligible_organizations = _organization_choices(eligible_only=True)
+    if (not tk.g.user or not auth._is_sysadmin(context)
+            and not eligible_organizations):
+        return tk.render('csunesco/project_eligibility.html', extra_vars={
+            'logged_in': bool(tk.g.user),
+        })
 
     if request.method == 'GET':
         # The PRG target lands here with ?submitted=1 -> show the success state.
@@ -780,6 +811,46 @@ def project_edit(slug):
     if return_to == 'review':
         return tk.redirect_to('csunesco.project_review', id=project['id'])
     return tk.redirect_to('csunesco.project_landing', slug=project['slug'])
+
+
+def _project_state_post(slug, action, success, destination='admin'):
+    """Shared CSRF-protected project state transition view."""
+    if not tk.g.user:
+        return _not_authorized_response()
+    data = {'slug': slug}
+    reason = (request.form.get('reason') or '').strip()
+    if reason:
+        data['reason'] = reason
+    try:
+        result = tk.get_action(action)(_context(), data)
+    except tk.ObjectNotFound:
+        return tk.abort(404, tk._('Project not found'))
+    except tk.NotAuthorized:
+        return _not_authorized_response()
+    except tk.ValidationError as error:
+        tk.h.flash_error(next(iter(error.error_dict.values()))[0]
+                         if error.error_dict else GENERIC_ERROR)
+        return tk.redirect_to('csunesco.admin_dashboard')
+    tk.h.flash_success(tk._(success))
+    if destination == 'project':
+        return tk.redirect_to('csunesco.project_landing', slug=result['slug'])
+    return tk.redirect_to('csunesco.admin_dashboard')
+
+
+def project_delete(slug):
+    return _project_state_post(
+        slug, 'csunesco_project_delete', 'The project proposal was deleted.')
+
+
+def project_archive(slug):
+    return _project_state_post(
+        slug, 'csunesco_project_archive', 'The project was archived.')
+
+
+def project_restore(slug):
+    return _project_state_post(
+        slug, 'csunesco_project_restore', 'The project was restored.',
+        destination='project')
 
 
 def _ofform_app_url():

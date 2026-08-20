@@ -54,6 +54,24 @@ def project_resubmit(slug):
     return views.project_resubmit(slug)
 
 
+def project_delete(slug):
+    """POST: permanently delete an unapproved proposal."""
+    from ckanext.csunesco.logic import views
+    return views.project_delete(slug)
+
+
+def project_archive(slug):
+    """POST: archive an approved project without destroying its records."""
+    from ckanext.csunesco.logic import views
+    return views.project_archive(slug)
+
+
+def project_restore(slug):
+    """POST: restore an archived project."""
+    from ckanext.csunesco.logic import views
+    return views.project_restore(slug)
+
+
 def project_landing(slug):
     """Public landing page for a single project."""
     from ckanext.csunesco.logic import views
@@ -396,6 +414,12 @@ csunesco_bp.add_url_rule('/project/<slug>/edit', 'project_edit', project_edit,
                          methods=['GET', 'POST'])
 csunesco_bp.add_url_rule('/project/<slug>/resubmit', 'project_resubmit',
                          project_resubmit, methods=['POST'])
+csunesco_bp.add_url_rule('/project/<slug>/delete', 'project_delete',
+                         project_delete, methods=['POST'])
+csunesco_bp.add_url_rule('/project/<slug>/archive', 'project_archive',
+                         project_archive, methods=['POST'])
+csunesco_bp.add_url_rule('/project/<slug>/restore', 'project_restore',
+                         project_restore, methods=['POST'])
 csunesco_bp.add_url_rule('/project/<slug>', 'project_landing', project_landing,
                          methods=['GET'])
 csunesco_bp.add_url_rule(

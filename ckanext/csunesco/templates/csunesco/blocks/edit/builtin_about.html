@@ -1,0 +1,6 @@
+<div class="cs-field">
+  <label for="b{{ index }}-about-html">{{ _("Full project description") }}</label>
+  <textarea id="b{{ index }}-about-html" name="blocks[{{ index }}][html]"
+            rows="10" class="cs-pb-richtext">{{ block.html or project.landing_content or '' }}</textarea>
+  <p class="cs-hint">{{ _("This long About project text belongs to the page. Edit the short hero summary under Project details.") }}</p>
+</div>

@@ -14,7 +14,8 @@
     {% if project.image_url %}
       <span class="cs-project-card-media" aria-hidden="true">
         <img class="cs-project-card-img" src="{{ project.image_url }}"
-             alt="" loading="lazy">
+             alt="" loading="lazy"
+             style="object-position:{{ project.image_focal_x or 50 }}% {{ project.image_focal_y or 50 }}%">
       </span>
     {% endif %}
     {% if project.initiative_title %}

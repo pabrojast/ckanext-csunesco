@@ -37,12 +37,14 @@
         the affordance without knowing about it.
       #}
       <div class="cs-block-managed">
-        <a class="cs-block-edit-pencil"
-           href="{{ ctx.edit_url }}?open={{ block.id }}#block-{{ block.id }}">
-          {{ h.csunesco_icon('pencil', 14) }}
-          <span>{{ _("Edit section") }}</span>
-        </a>
         {% snippet spec.snippet, block=block, ctx=ctx %}
+        <div class="cs-block-edit-footer">
+          <a class="cs-block-edit-pencil"
+             href="{{ ctx.edit_url }}?open={{ block.id }}#block-{{ block.id }}">
+            {{ h.csunesco_icon('pencil', 14) }}
+            <span>{{ _("Edit section") }}</span>
+          </a>
+        </div>
       </div>
     {% else %}
       {% snippet spec.snippet, block=block, ctx=ctx %}

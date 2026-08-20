@@ -71,6 +71,10 @@ def _content_index(content_type):
     list_template = _TYPE_VIEW[content_type][0]
     data_dict = {
         'content_type': content_type,
+        # Public indexes are publication surfaces even for a logged-in
+        # moderator.  Never let the caller's wider permissions turn them into
+        # an implicit review queue.
+        'status': 'approved',
         'limit': CONTENT_PER_PAGE,
         'offset': (page - 1) * CONTENT_PER_PAGE,
     }
@@ -149,6 +153,7 @@ def cs_content_index():
     if selected and selected not in _TYPE_VIEW:
         return tk.abort(404, tk._('Unknown content type'))
     data_dict = {
+        'status': 'approved',
         'limit': CONTENT_PER_PAGE,
         'offset': (page - 1) * CONTENT_PER_PAGE,
         'include_project': True,
@@ -219,6 +224,29 @@ def cs_maps_show(slug):
 def _read_content_form():
     """Read the editor POST into an action ``data_dict`` (echo-friendly)."""
     form = request.form
+    gallery = []
+    gallery_urls = form.getlist('gallery_url')
+    gallery_alts = form.getlist('gallery_alt')
+    gallery_captions = form.getlist('gallery_caption')
+    for index, url in enumerate(gallery_urls):
+        if url.strip():
+            gallery.append({
+                'url': url.strip(),
+                'alt': gallery_alts[index].strip()
+                       if index < len(gallery_alts) else '',
+                'caption': gallery_captions[index].strip()
+                           if index < len(gallery_captions) else '',
+            })
+    related_links = []
+    link_urls = form.getlist('related_link_url')
+    link_labels = form.getlist('related_link_label')
+    for index, url in enumerate(link_urls):
+        if url.strip():
+            related_links.append({
+                'url': url.strip(),
+                'label': link_labels[index].strip()
+                         if index < len(link_labels) else '',
+            })
     data = {
         'title': (form.get('title') or '').strip(),
         'content_type': (form.get('content_type') or '').strip(),
@@ -230,6 +258,17 @@ def _read_content_form():
         'terria_url': (form.get('terria_url') or '').strip(),
         'doi': (form.get('doi') or '').strip(),
         'authors': (form.get('authors') or '').strip(),
+        'excerpt': (form.get('excerpt') or '').strip(),
+        'author': (form.get('author') or '').strip(),
+        'source_url': (form.get('source_url') or '').strip(),
+        'header_image_url': (form.get('header_image_url') or '').strip(),
+        'header_image_alt': (form.get('header_image_alt') or '').strip(),
+        'header_focal_x': (form.get('header_focal_x') or '50').strip(),
+        'header_focal_y': (form.get('header_focal_y') or '50').strip(),
+        'gallery': gallery,
+        'related_links': related_links,
+        'attachment_url': (form.get('attachment_url') or '').strip(),
+        'attachment_label': (form.get('attachment_label') or '').strip(),
     }
     # ``featured`` travels ONLY when its (sysadmin-only) checkbox was actually
     # rendered -- the hidden ``featured_present`` marker says so. Sending the
@@ -238,6 +277,39 @@ def _read_content_form():
     if form.get('featured_present'):
         data['featured'] = bool(form.get('featured'))
     return data
+
+
+def _process_content_uploads(data):
+    """Apply multipart news uploads to ``data`` and return their batch."""
+    from ckanext.csunesco.logic import uploads
+    header = {
+        'url': data.get('header_image_url') or '',
+        'upload': request.files.get('header_image_upload'),
+        'clear': request.form.get('header_image_clear'),
+    }
+    gallery_holders = [dict(item) for item in data.get('gallery') or []]
+    available = max(0, 12 - len(gallery_holders))
+    for upload in request.files.getlist('gallery_upload')[:available]:
+        if getattr(upload, 'filename', None):
+            gallery_holders.append({
+                'url': '', 'upload': upload, 'alt': '',
+                'caption': upload.filename,
+            })
+    attachment = {
+        'url': data.get('attachment_url') or '',
+        'upload': request.files.get('attachment_upload'),
+        'clear': request.form.get('attachment_clear'),
+    }
+    batch = uploads.process_content_files(
+        header=header, gallery=gallery_holders, attachment=attachment)
+    data['header_image_url'] = header.get('url') or ''
+    data['gallery'] = [
+        {'url': item.get('url') or '', 'alt': item.get('alt') or '',
+         'caption': item.get('caption') or ''}
+        for item in gallery_holders if item.get('url')
+    ]
+    data['attachment_url'] = attachment.get('url') or ''
+    return batch
 
 
 def _render_content_form(mode, project, content, data, errors,
@@ -288,20 +360,31 @@ def content_new(slug):
     if request.method == 'GET':
         return _render_content_form(
             'new', project, None,
-            {'content_type': 'cs-news', 'media': []}, {})
+            {'content_type': 'cs-news', 'media': [], 'visibility': 'public',
+             'header_focal_x': 50, 'header_focal_y': 50,
+             'gallery': [], 'related_links': []}, {})
 
     # --- POST ---------------------------------------------------------------
     data = _read_content_form()
+    try:
+        upload_batch = _process_content_uploads(data)
+    except Exception:
+        return _render_content_form(
+            'new', project, None, data,
+            {'message': tk._('One or more uploaded files could not be saved.')})
     data_dict = dict(data)
     data_dict['project_id'] = project['id']
     try:
         content = tk.get_action('csunesco_content_create')(context, data_dict)
     except tk.NotAuthorized:
+        upload_batch.rollback()
         return _not_authorized_response()
     except tk.ValidationError as error:
+        upload_batch.rollback()
         return _render_content_form(
             'new', project, None, data, error.error_dict or {})
     except Exception:
+        upload_batch.rollback()
         log.warning('csunesco: content could not be created')
         return _render_content_form(
             'new', project, None, data, {'message': GENERIC_ERROR})
@@ -341,21 +424,33 @@ def org_content_new(org):
     if request.method == 'GET':
         return _render_content_form(
             'new', None, None,
-            {'content_type': 'cs-news', 'media': [], 'visibility': 'public'},
+            {'content_type': 'cs-news', 'media': [], 'visibility': 'public',
+             'header_focal_x': 50, 'header_focal_y': 50,
+             'gallery': [], 'related_links': []},
             {}, organization=organization)
 
     data = _read_content_form()
+    try:
+        upload_batch = _process_content_uploads(data)
+    except Exception:
+        return _render_content_form(
+            'new', None, None, data,
+            {'message': tk._('One or more uploaded files could not be saved.')},
+            organization=organization)
     data_dict = dict(data)
     data_dict['owner_org'] = organization['id']
     try:
         content = tk.get_action('csunesco_content_create')(context, data_dict)
     except tk.NotAuthorized:
+        upload_batch.rollback()
         return _not_authorized_response()
     except tk.ValidationError as error:
+        upload_batch.rollback()
         return _render_content_form(
             'new', None, None, data, error.error_dict or {},
             organization=organization)
     except Exception:
+        upload_batch.rollback()
         log.warning('csunesco: org content could not be created')
         return _render_content_form(
             'new', None, None, data, {'message': GENERIC_ERROR},
@@ -429,23 +524,44 @@ def content_edit(id):
             'terria_url': content.get('terria_url') or '',
             'doi': content.get('doi') or '',
             'authors': content.get('authors') or '',
+            'excerpt': content.get('excerpt') or '',
+            'author': content.get('author') or content.get('app_author') or '',
+            'source_url': content.get('source_url') or '',
+            'header_image_url': content.get('header_image_url') or '',
+            'header_image_alt': content.get('header_image_alt') or '',
+            'header_focal_x': content.get('header_focal_x', 50),
+            'header_focal_y': content.get('header_focal_y', 50),
+            'gallery': content.get('gallery') or [],
+            'related_links': content.get('related_links') or [],
+            'attachment_url': content.get('attachment_url') or '',
+            'attachment_label': content.get('attachment_label') or '',
         }
         return _render_content_form('edit', project, content, data, {},
                                     organization=organization)
 
     # --- POST ---------------------------------------------------------------
     data = _read_content_form()
+    try:
+        upload_batch = _process_content_uploads(data)
+    except Exception:
+        return _render_content_form(
+            'edit', project, content, data,
+            {'message': tk._('One or more uploaded files could not be saved.')},
+            organization=organization)
     data_dict = dict(data)
     data_dict['id'] = content['id']
     try:
         updated = tk.get_action('csunesco_content_update')(context, data_dict)
     except tk.NotAuthorized:
+        upload_batch.rollback()
         return _not_authorized_response()
     except tk.ValidationError as error:
+        upload_batch.rollback()
         return _render_content_form(
             'edit', project, content, data, error.error_dict or {},
             organization=organization)
     except Exception:
+        upload_batch.rollback()
         log.warning('csunesco: content could not be updated')
         return _render_content_form(
             'edit', project, content, data, {'message': GENERIC_ERROR},
