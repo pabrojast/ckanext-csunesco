@@ -230,9 +230,7 @@
       <div class="cs-field">
         <label for="cs-content-body">{{ _("Body") }}</label>
         <p id="cs-content-body-guide" class="cs-hint">
-          {{ _("Allowed HTML tags:") }}
-          <code>b i em strong a p ul ol li br h3 h4 blockquote</code>.
-          {{ _("Everything else is removed when saved.") }}
+          {{ _("Use the toolbar to add bold, italic, headings, lists and links. The preview below shows how the text will look.") }}
         </p>
         <textarea id="cs-content-body" name="body" rows="10" data-rich-editor
                   aria-describedby="cs-content-body-guide">{{ data.body or '' }}</textarea>

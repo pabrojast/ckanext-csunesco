@@ -56,6 +56,7 @@
   var TOOLS = [
     ["B", "bold", null, "Bold"],
     ["I", "italic", null, "Italic"],
+    ["U", "underline", null, "Underline"],
     ["H3", "formatBlock", "<h3>", "Heading"],
     ["¶", "formatBlock", "<p>", "Paragraph"],
     ["• List", "insertUnorderedList", null, "Bulleted list"],

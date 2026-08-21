@@ -57,9 +57,12 @@ ofform `/cs/*` endpoints and the `csunesco_*` actions they drive:
 | ofform endpoint | Path (`ofform/backend/app/routers/`) | Outbox kind | CKAN action |
 | --- | --- | --- | --- |
 | Register a Citizen Scientist | `POST /cs/register` (`cs_auth.py`, public, no Bearer) | — (synchronous) | `csunesco_register_citizen_scientist` |
-| Request a new CS project | `POST /cs/projects/request` (`cs_projects.py`) | `project_request` | `csunesco_project_request_create` |
+| Request a new CS project | `POST /cs/projects/request` (`cs_projects.py`) | `project_request` | `csunesco_project_request_create` (phase-1 A–F fields, all optional except `title`; `programme_id`/`requested_by` dropped) |
+| Edit CS project ficha | `PATCH /cs/projects/{id}/details` (`cs_projects.py`) | `project_update` | `csunesco_project_update` (partial; never sends `slug`; `programme_id`/`updated_by` dropped). Owner / initiative ADM / account admin. |
 | List CS projects | `GET /cs/projects` | — | local Programme mirror (no CKAN call) |
 | CS project detail | `GET /cs/projects/{id}` | — (read) | `csunesco_content_list` filtered by **`project_slug`** (news/event counters). The portal-wide totals live on `csunesco_project_show['stats']`, not here |
+| CS project ficha | `GET /cs/projects/{id}/details` | — (read) | local `project_details` mirror; reconciler pulls `csunesco_project_show` (incl. extras + `include_geojson`) |
+| Initiative landing | `GET/PUT /cs/initiatives/{slug}` (`cs_initiatives.py`); `POST .../publish` | `initiative_page_update` / `initiative_page_publish` | `csunesco_initiative_page_update` (full `blocks` after GET-draft + builtin merge) / `csunesco_initiative_page_publish`. ADM of that initiative or account admin. |
 | Join a project | `POST /cs/projects/{id}/join` | `join_request` | `csunesco_join_request_create` (`project_slug` + `username`; the membership is filed for that **named user**, not for the token) |
 | Approve a join | `POST /cs/projects/{id}/join/{user_id}/approve` | `join_approve` | `csunesco_join_approve` (`project_slug` + `username`; `approved_by` is ofform-local and ignored — the reviewer of record is the caller) |
 | Retry failed sync | `POST /cs/projects/{id}/retry-sync` | re-queues `failed` rows | (whatever the requeued rows target) |
@@ -93,9 +96,13 @@ ofform):
   `csunesco_data_source_approve`, `csunesco_data_source_reject`,
   `csunesco_data_source_list`, `csunesco_data_source_show`.
 - **Admin panel:** `csunesco_admin_pending_list`, `csunesco_aggregate_stats`.
-- **Project editing:** `csunesco_project_update` (never re-opens moderation),
+- **Project editing:** `csunesco_project_update` (never re-opens moderation;
+  ofform `PATCH /cs/projects/{id}/details` is the bidirectional write),
   `csunesco_project_resubmit` (`rejected → pending`),
   `csunesco_project_trusted_set`, `csunesco_my_projects`.
+- **Initiative pages:** `csunesco_initiative_page_show` / `_update` / `_publish`
+  (ofform `GET/PUT /cs/initiatives/{slug}` edits builtins via read-modify-write
+  of the block list so extra CKAN blocks are kept).
 - **Reference data:** `csunesco_member_state_list` (the `name` values are what
   a project's `countries` must contain).
 - **Content, also:** `csunesco_content_withdraw`, `csunesco_content_delete`.

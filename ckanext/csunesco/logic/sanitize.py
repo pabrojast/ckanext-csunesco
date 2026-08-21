@@ -24,7 +24,7 @@ import re
 # RESTRICTIVE allowlist: inline emphasis, links, lists, small headings and
 # blockquotes only. Deliberately NO images, tables, styles, iframes or scripts.
 ALLOWED_TAGS = [
-    'b', 'i', 'em', 'strong', 'a', 'p', 'ul', 'ol', 'li', 'br',
+    'b', 'i', 'em', 'strong', 'u', 'a', 'p', 'ul', 'ol', 'li', 'br',
     'h3', 'h4', 'blockquote',
 ]
 # Only anchors keep attributes, and only these three.

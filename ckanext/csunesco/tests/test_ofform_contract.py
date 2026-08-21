@@ -435,3 +435,152 @@ def test_project_structure_accepts_the_literal_payload(service, session,
     assert out['structure']['duration_of_involvement'] == 'Monthly'
     assert len(out['workplan']) == 2
     assert out['workplan'][1]['starts_on'] == '2026-09-01'
+
+
+# --------------------------------------------------------------------------- #
+# csunesco_project_update                                                      #
+# ofform/backend/app/services/cs_details.py:build_update_payload               #
+# --------------------------------------------------------------------------- #
+
+def _project_update_payload(**overrides):
+    """Literal ofform outbox body for a ficha PATCH (kind ``project_update``).
+
+    ``programme_id`` and ``updated_by`` are ofform bookkeeping and must be
+    dropped, never rejected. ``id`` is the CKAN slug (or the local slug before
+    reconcile). ``slug`` is deliberately absent -- the URL is permanent.
+    """
+    payload = {
+        'programme_id': 42,
+        'id': 'douro-basin',
+        'title': 'Douro Basin Freshwater',
+        'short_description': 'Citizen monitoring along the Douro.',
+        'initiative': 'riverwatch',
+        # Empty on purpose: member-state names are validated against the
+        # seeded ``member-states`` group, which this sqlite harness does not
+        # populate. ofform still sends real slugs in production.
+        'countries': [],
+        'keywords': ['rivers', 'citizens'],
+        'water_type': ['River'],
+        'water_data_type': ['Physical water quality'],
+        'geographic_extent': 'National',
+        'locality': 'Douro valley',
+        'biosphere_reserve': None,
+        'participation_mode': 'open',
+        'activity_status': ['Active'],
+        'lead_partner_type': 'University',
+        'lead_organisation': 'University of Porto',
+        'contact_person': 'Ana Silva',
+        'contact_email': 'ana@example.org',
+        'start_date': '2026-03-01',
+        'end_date': '2027-03-01',
+        'updated_by': 'ana',
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_project_update_accepts_the_literal_payload(service, session, project):
+    out = projects_action.csunesco_project_update(
+        _service_ctx(), _project_update_payload())
+    assert out['slug'] == 'douro-basin'
+    assert out['title'] == 'Douro Basin Freshwater'
+    assert out['initiative_group'] == 'riverwatch'
+    assert out['contact_email'] == 'ana@example.org'
+    assert out['keywords'] == ['rivers', 'citizens']
+    assert 'programme_id' not in out
+    assert 'updated_by' not in out
+    assert 'slug' not in _project_update_payload()
+
+
+def test_project_update_ignores_a_slug_key_so_the_url_stays_put(
+        service, session, project):
+    """Even if a stale client smuggles ``slug``, the action's schema drops it
+    and the project's public URL does not move."""
+    out = projects_action.csunesco_project_update(
+        _service_ctx(), _project_update_payload(slug='renamed-in-error'))
+    assert out['slug'] == 'douro-basin'
+
+
+def test_project_update_partial_contact_only(service, session, project):
+    """A PATCH of a single extras field must not demand ``title`` again."""
+    out = projects_action.csunesco_project_update(_service_ctx(), {
+        'programme_id': 42,
+        'id': 'douro-basin',
+        'contact_email': 'new@example.org',
+        'updated_by': 'ana',
+    })
+    assert out['contact_email'] == 'new@example.org'
+    assert out['title'] == 'Douro Basin'
+
+
+# --------------------------------------------------------------------------- #
+# csunesco_initiative_page_update                                              #
+# ofform/backend/app/services/cs_initiatives.py:build_page_payload             #
+# --------------------------------------------------------------------------- #
+
+def _initiative_page_payload(**overrides):
+    """Literal ofform outbox body after GET-draft + merge of builtins."""
+    payload = {
+        'initiative': 'riverwatch',
+        'blocks': [
+            {'type': 'initiative_hero',
+             'heading': 'River Watch',
+             'tagline': 'Citizen monitoring of rivers',
+             'image_url': None, 'focal_x': 50, 'focal_y': 50},
+            {'type': 'initiative_glance'},
+            {'type': 'initiative_about',
+             'html': '<p>We watch rivers together.</p>',
+             'image_url': None, 'alt': ''},
+            {'type': 'initiative_projects', 'intro': 'Our projects',
+             'limit': 6},
+            {'type': 'initiative_news', 'intro': '', 'limit': 3},
+            {'type': 'initiative_events', 'intro': '', 'limit': 3},
+        ],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_initiative_page_update_accepts_the_literal_payload(service, session):
+    from ckanext.csunesco.logic.action import page as page_action
+    from ckanext.csunesco.logic import blocks as blocks_module
+
+    out = page_action.csunesco_initiative_page_update(
+        _service_ctx(), _initiative_page_payload())
+    types = {item['type'] for item in out['draft_blocks']}
+    assert set(blocks_module.INITIATIVE_DEFAULT_BLOCK_TYPES) <= types
+    hero = next(b for b in out['draft_blocks']
+                if b['type'] == 'initiative_hero')
+    assert hero['heading'] == 'River Watch'
+    about = next(b for b in out['draft_blocks']
+                 if b['type'] == 'initiative_about')
+    assert 'rivers together' in about['html']
+
+
+def test_initiative_page_update_keeps_an_extra_block(service, session):
+    """The action REPLACES the draft. ofform therefore GET-drafts, merges
+    builtins, and PUTs the full list -- extras survive only if they ride back.
+    This pins that a round-trip of the stored blocks keeps ``rich_text``."""
+    from ckanext.csunesco.logic.action import page as page_action
+
+    first = page_action.csunesco_initiative_page_update(
+        _service_ctx(), _initiative_page_payload(blocks=[
+            {'type': 'initiative_hero', 'heading': 'River Watch'},
+            {'type': 'rich_text', 'html': '<p>Keep me</p>'},
+        ]))
+    merged = list(first['draft_blocks'])
+    out = page_action.csunesco_initiative_page_update(
+        _service_ctx(), {'initiative': 'riverwatch', 'blocks': merged})
+    types = [item['type'] for item in out['draft_blocks']]
+    assert 'rich_text' in types
+
+
+def test_initiative_page_publish_accepts_the_apps_payload(service, session):
+    from ckanext.csunesco.logic.action import page as page_action
+
+    page_action.csunesco_initiative_page_update(
+        _service_ctx(), _initiative_page_payload())
+    out = page_action.csunesco_initiative_page_publish(
+        _service_ctx(), {'initiative': 'riverwatch'})
+    assert out['status'] == 'approved'
+    assert out['published_blocks'] == out['draft_blocks']

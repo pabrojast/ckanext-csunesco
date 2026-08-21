@@ -13,7 +13,7 @@
   // in logic/sanitize.py). The real sanitization is server-side; this only keeps
   // the author's own preview tidy and free of active markup.
   var ALLOWED_PREVIEW_TAGS = {
-    B: 1, I: 1, EM: 1, STRONG: 1, A: 1, P: 1, UL: 1, OL: 1, LI: 1,
+    B: 1, I: 1, EM: 1, STRONG: 1, U: 1, A: 1, P: 1, UL: 1, OL: 1, LI: 1,
     BR: 1, H3: 1, H4: 1, BLOCKQUOTE: 1
   };
 
@@ -158,17 +158,20 @@
   function initRichEditors() {
     var tools = [
       ["B", "bold", null, "Bold"], ["I", "italic", null, "Italic"],
-      ["¶", "formatBlock", "<p>", "Paragraph"],
-      ["H3", "formatBlock", "<h3>", "Heading"],
+      ["U", "underline", null, "Underline"],
+      ["¶", "formatBlock", "p", "Paragraph"],
+      ["H3", "formatBlock", "h3", "Heading"],
       ["• List", "insertUnorderedList", null, "Bulleted list"],
       ["1. List", "insertOrderedList", null, "Numbered list"],
-      ["Quote", "formatBlock", "<blockquote>", "Quote"],
+      ["Quote", "formatBlock", "blockquote", "Quote"],
       ["Link", "createLink", null, "Add link"],
       ["Unlink", "unlink", null, "Remove link"],
       ["Undo", "undo", null, "Undo"], ["Redo", "redo", null, "Redo"]
     ];
     Array.prototype.forEach.call(
       document.querySelectorAll("textarea[data-rich-editor]"), function (source) {
+        if (source.getAttribute("data-rt-ready")) { return; }
+        source.setAttribute("data-rt-ready", "1");
         var area = document.createElement("div");
         area.className = "cs-rt-area";
         area.contentEditable = "true";
@@ -179,13 +182,17 @@
         toolbar.className = "cs-rt-toolbar";
         toolbar.setAttribute("role", "toolbar");
         function sync() {
-          source.value = area.innerHTML;
+          var scratch = document.createElement("div");
+          scratch.innerHTML = area.innerHTML;
+          stripToAllowed(scratch);
+          source.value = scratch.innerHTML;
           source.dispatchEvent(new Event("input", {bubbles: true}));
         }
         tools.forEach(function (tool) {
           var button = document.createElement("button");
           button.type = "button"; button.className = "cs-rt-btn";
           button.textContent = tool[0]; button.setAttribute("aria-label", tool[3]);
+          button.title = tool[3];
           button.addEventListener("click", function () {
             area.focus(); var argument = tool[2];
             if (tool[1] === "createLink") {
@@ -193,9 +200,19 @@
               if (!argument) { return; }
             }
             try { document.execCommand(tool[1], false, argument); } catch (error) {}
+            if (tool[1] === "formatBlock") {
+              try { document.execCommand(tool[1], false, "<" + argument + ">"); } catch (error) {}
+            }
             sync();
           });
           toolbar.appendChild(button);
+        });
+        area.addEventListener("paste", function (event) {
+          event.preventDefault();
+          var text = (event.clipboardData || window.clipboardData)
+            .getData("text/plain");
+          try { document.execCommand("insertText", false, text); } catch (error) {}
+          sync();
         });
         area.addEventListener("input", sync);
         source.hidden = true;

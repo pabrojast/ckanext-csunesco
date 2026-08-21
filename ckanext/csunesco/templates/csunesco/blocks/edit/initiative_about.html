@@ -1,3 +1,3 @@
 {% snippet "csunesco/blocks/edit/_image_picker.html", input_id='b%s-about-image' | format(index), url_name='blocks[%s][image_url]' | format(index), upload_name='blocks[%s][image_upload]' | format(index), clear_name='blocks[%s][image_clear]' | format(index), value=block.image_url, label=_("Image URL"), clear_label=_("Remove the image"), drops=drops, url_field='image_url', upload_field='image_upload' %}
 <div class="cs-field"><label for="b{{ index }}-alt">{{ _("Image description") }}</label><input id="b{{ index }}-alt" name="blocks[{{ index }}][alt]" value="{{ block.alt }}"></div>
-<div class="cs-field"><label for="b{{ index }}-html">{{ _("Text") }}</label><textarea id="b{{ index }}-html" name="blocks[{{ index }}][html]" rows="8">{{ block.html }}</textarea></div>
+<div class="cs-field"><label for="b{{ index }}-html">{{ _("Text") }}</label><textarea id="b{{ index }}-html" name="blocks[{{ index }}][html]" rows="8" class="cs-pb-richtext">{{ block.html }}</textarea></div>
