@@ -57,8 +57,18 @@ def _resolve_project(data_dict):
 
 
 def _can_manage_project(context, project_id):
-    return (auth._is_sysadmin(context)
-            or auth._is_project_admin(context, project_id))
+    """Project-admin, initiative-admin OR sysadmin -- the write authorization.
+
+    Delegates to the shared composite in ``logic/auth`` (the same shape
+    ``logic/action/content.py`` uses) so data connections cannot drift from
+    content and project pages. This used to be a NARROWER local copy (sysadmin
+    OR PM only), which contradicted both ``can_manage_project``'s own docstring
+    -- it names data connections as its scope -- and the
+    ``csunesco_data_source_create`` auth function, which grants the initiative
+    admin. The effect was an ADM being shown the "Connect app data" button by
+    ``ctx.can_manage`` and then refused by this check.
+    """
+    return auth.can_manage_project(context, project_id)
 
 
 def _required_form_id(data_dict):

@@ -263,10 +263,12 @@ def can_manage_project(context, project_id):
 
     THE write authorization for anything owned by a project: content, data
     connections and the project page. It lives here, not in an action module,
-    because ``logic/action/data.py`` happens to define a same-named helper with
-    a NARROWER meaning (sysadmin OR PM only, no ADM) -- so importing "the"
-    ``_can_manage_project`` from wherever was a coin flip. Callers that want the
-    full composite must use this one.
+    so the three can never drift apart: ``logic/action/content.py`` and
+    ``logic/action/data.py`` both define a thin same-named ``_can_manage_project``
+    that delegates straight here. (``data.py``'s used to be a NARROWER local
+    copy -- sysadmin OR PM only, no ADM -- which silently contradicted this
+    docstring and the ``csunesco_data_source_create`` auth function; pinned now
+    by ``test_initiative_admin.py``.)
     """
     return (_is_sysadmin(context)
             or _is_project_admin(context, project_id)

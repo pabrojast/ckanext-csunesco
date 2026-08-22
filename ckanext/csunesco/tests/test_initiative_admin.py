@@ -328,3 +328,38 @@ def test_pending_counts_hides_pages_from_a_plain_project_admin(session):
 
     counts = db.pending_counts({'auth_user_obj': _StubUser('u-pm')})
     assert counts['page_requests'] == 0
+
+
+def test_data_source_create_uses_the_shared_composite(session):
+    """An ADM may connect data, exactly as they may add content or edit a page.
+
+    ``logic/action/data.py`` used to shadow ``auth.can_manage_project`` with a
+    NARROWER local ``_can_manage_project`` (sysadmin OR PM, no ADM). Because the
+    project landing gates its "Connect app data" button on
+    ``csunesco_can_manage_project`` -> ``csunesco_content_create`` auth, which
+    DOES grant the ADM, an initiative admin was shown a button the action then
+    refused. This pins the three writes owned by a project to one answer.
+    """
+    from ckanext.csunesco.logic import auth
+    from ckanext.csunesco.logic.action import content as content_action
+    from ckanext.csunesco.logic.action import data as data_action
+
+    riverwatch = _group(session, 'riverwatch')
+    adm = _StubUser('u-adm')
+    _member(session, riverwatch, adm.id, 'admin')
+    context = {'auth_user_obj': adm}
+
+    mine = _project(session, 'river-a', 'riverwatch', status='approved')
+    theirs = _project(session, 'island-a', 'islandwatch', status='approved')
+
+    # The composite is the single source of truth; both action-local helpers
+    # must agree with it, in both directions.
+    for project, expected in [(mine, True), (theirs, False)]:
+        assert auth.can_manage_project(context, project.id) is expected
+        assert bool(data_action._can_manage_project(
+            context, project.id)) is expected
+        assert bool(content_action._can_manage_project(
+            context, project.id)) is expected
+
+    # And the ADM's answer is the one the landing page's affordance promises.
+    assert data_action._can_manage_project(context, mine.id) is True
