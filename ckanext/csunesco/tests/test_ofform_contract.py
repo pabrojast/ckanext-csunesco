@@ -340,14 +340,18 @@ def test_a_backwards_app_event_is_still_rejected():
 # ofform/backend/app/services/cs_registration.py:136-144                       #
 # --------------------------------------------------------------------------- #
 
-def test_registration_accepts_the_literal_payload(service, session,
+def test_registration_accepts_the_minimal_payload(service, session,
                                                   monkeypatch):
-    """The app's CKAN-first registration payload, verbatim.
+    """The DEMOGRAPHICS-LESS registration payload must keep working.
 
     Fase 1 made the WEB form stricter (fullname/DOB/gender required, username
     optional+generated). None of that may leak into this action: the payload
     below carries a username and no demographics, and must keep working
-    byte-for-byte.
+    byte-for-byte -- an app build older than the one that started sending them
+    is still a valid caller, and the demographics are optional action-side.
+
+    The CURRENT app sends the four reporting fields too; that is pinned
+    separately by ``test_registration_stores_the_reporting_fields``.
     """
     import ckan.model as model
     from ckanext.csunesco.logic import registration as reg_module
@@ -379,6 +383,56 @@ def test_registration_accepts_the_literal_payload(service, session,
     # Trusted server-to-server path: already verified, no token.
     assert bool(profile.email_verified) is True
     assert profile.profile_type in (None, 'citizen')
+
+
+def test_registration_stores_the_reporting_fields(service, session,
+                                                  monkeypatch):
+    """The app's CURRENT payload, verbatim, incl. the 2026 reporting fields.
+
+    ofform/backend/app/services/cs_registration.py:195-211 -- the app REQUIRES
+    fullname/date_of_birth/gender/nationality and the terms checkbox
+    ("desagregación por género, grupo etario y Estado Miembro") and forwards
+    all four. It used to require them and forward NONE, so every profile the
+    app created landed with no demographics and ``terms_accepted`` false while
+    the person had in fact accepted. This pins the whole round trip.
+    """
+    import ckan.model as model
+    from ckanext.csunesco.logic import registration as reg_module
+    from ckanext.csunesco.logic.action import registration as reg_action
+
+    monkeypatch.setattr(model.User, 'get', staticmethod(lambda key: None))
+    monkeypatch.setattr(reg_module, 'check_access', lambda *a, **k: True)
+
+    def get_action(name):
+        assert name == 'user_create'
+        return lambda context, data: {'id': 'user-88', 'name': data['name']}
+
+    monkeypatch.setattr(tk, 'get_action', get_action)
+
+    out = reg_action.csunesco_register_citizen_scientist(_service_ctx(), {
+        'username': 'ada',
+        'email': 'ada@example.org',
+        'password': 'water-quality-2026',
+        'fullname': 'Ada Lovelace',
+        'country': 'Chile',
+        # date_of_birth travels as ISO-8601: ``date`` is not JSON serializable.
+        'date_of_birth': '1990-05-17',
+        'gender': 'non_binary',
+        'nationality': 'CL',
+        'terms_accepted': True,
+    })
+
+    assert out['status'] == 'success'
+    assert out['username'] == 'ada'
+    profile = (session.query(db.CsCitizenScientist)
+               .filter(db.CsCitizenScientist.user_id == 'user-88').one())
+    assert str(profile.date_of_birth) == '1990-05-17'
+    assert profile.gender == 'non_binary'
+    assert profile.nationality == 'CL'
+    assert profile.terms_accepted_at is not None
+    # nationality wins over the app-sent ``country`` label, resolved to the
+    # canonical English name portal-side.
+    assert profile.country == 'Chile'
 
 
 # --------------------------------------------------------------------------- #
@@ -435,6 +489,127 @@ def test_project_structure_accepts_the_literal_payload(service, session,
     assert out['structure']['duration_of_involvement'] == 'Monthly'
     assert len(out['workplan']) == 2
     assert out['workplan'][1]['starts_on'] == '2026-09-01'
+    # ORDER IS THE CONTRACT. The app sends ``position`` on every step and this
+    # action drops it on purpose -- the snapshot's order is the list's order,
+    # and a stored ``position`` could contradict it. That only holds because
+    # ofform serializes ``ORDER BY position, id``
+    # (ofform/backend/app/routers/cs_structure.py:build_structure_payload); if
+    # that ORDER BY ever goes, the portal renders the workplan shuffled and
+    # nothing else would notice.
+    assert [step['title'] for step in out['workplan']] == [
+        '1. Understand the Context and Challenges', 'Sampling season']
+    assert all('position' not in step for step in out['workplan'])
+
+
+# --------------------------------------------------------------------------- #
+# csunesco_data_source_create (outbox kind ``dataset_publish``)                #
+# ofform/backend/app/routers/cs_projects.py:1532-1548                          #
+# --------------------------------------------------------------------------- #
+
+def test_data_source_create_accepts_the_literal_payload(service, session,
+                                                        project):
+    """The app's publish-data payload, verbatim.
+
+    This kind had NO case here at all -- the one outbox kind the contract file
+    never covered, despite ``form_id`` being type-checked, ``title`` required
+    non-empty and ``source`` allowlisted portal-side. ``programme_id`` is
+    ofform bookkeeping and must be dropped, never rejected; ``owner_org`` is a
+    SUGGESTION that lands in extras, not a decision.
+    """
+    from ckanext.csunesco.logic.action import data as data_action
+
+    out = data_action.csunesco_data_source_create(_service_ctx(), {
+        'programme_id': 42,
+        'project_slug': 'douro-basin',
+        'form_id': 3,
+        'title': 'Physico-chemical water quality',
+        'description': 'Monthly sampling along the Douro.',
+        'source': 'app',
+        'owner_org': 'citizen-science',
+    })
+
+    assert out['form_id'] == 3
+    assert out['title'] == 'Physico-chemical water quality'
+    # App-originated data ALWAYS lands pending: the service token is a
+    # sysadmin, but the real author is a project member.
+    assert out['status'] == 'pending'
+    assert out['source'] == 'app'
+
+
+def test_data_source_create_rejects_a_non_numeric_form_id(service, session,
+                                                          project):
+    """``form_id`` is the app's form primary key; anything else is a bug
+    upstream and must fail loudly rather than store a broken link."""
+    from ckanext.csunesco.logic.action import data as data_action
+
+    with pytest.raises(tk.ValidationError):
+        data_action.csunesco_data_source_create(_service_ctx(), {
+            'project_slug': 'douro-basin', 'form_id': 'three',
+            'title': 'Broken', 'description': '', 'source': 'app',
+        })
+
+
+# --------------------------------------------------------------------------- #
+# csunesco_content_create — the ACTION, not just its schema                    #
+# ofform/backend/app/routers/cs_content.py:73-121                              #
+# --------------------------------------------------------------------------- #
+
+def test_app_content_lands_pending_on_an_approved_project(service, session,
+                                                          project):
+    """The full app content push through the action.
+
+    The cases above only run ``navl_validate`` over ``content_schema`` after
+    stripping ``programme_id``/``project_slug``/``source``/``author``, so the
+    scope XOR, the approved-project gate and the ``source`` allowlist -- all of
+    which the app's payload exercises -- were never pinned.
+    """
+    from ckanext.csunesco.logic.action import content as content_action
+
+    out = content_action.csunesco_content_create(_service_ctx(), {
+        'programme_id': 42,
+        'project_slug': 'douro-basin',
+        'content_type': 'cs-news',
+        'title': 'First sampling campaign',
+        'body': 'We sampled twelve sites.',
+        'publish_date': '2026-07-16',
+        'source': 'app',
+        'author': 'maria',
+    })
+
+    assert out['project_id'] == project.id
+    assert out['status'] == 'pending'
+    assert out['source'] == 'app'
+
+
+def test_app_content_is_refused_for_an_unapproved_project(service, session):
+    """Content can only hang off an APPROVED project."""
+    from ckanext.csunesco.logic.action import content as content_action
+
+    row = db.CsProject()
+    row.slug = 'not-yet'
+    row.title = 'Not yet'
+    row.status = 'pending'
+    session.add(row)
+    session.commit()
+
+    with pytest.raises(tk.ValidationError):
+        content_action.csunesco_content_create(_service_ctx(), {
+            'project_slug': 'not-yet', 'content_type': 'cs-news',
+            'title': 'Too early', 'body': 'x', 'source': 'app',
+        })
+
+
+def test_content_scope_is_exclusive(service, session, project):
+    """A payload naming BOTH a project and an owner_org is a bug, not a
+    preference: the action refuses rather than silently picking one."""
+    from ckanext.csunesco.logic.action import content as content_action
+
+    with pytest.raises(tk.ValidationError):
+        content_action.csunesco_content_create(_service_ctx(), {
+            'project_slug': 'douro-basin', 'owner_org': 'citizen-science',
+            'content_type': 'cs-news', 'title': 'Both', 'body': 'x',
+            'source': 'app',
+        })
 
 
 # --------------------------------------------------------------------------- #
