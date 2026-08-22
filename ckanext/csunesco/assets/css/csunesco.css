@@ -232,7 +232,14 @@
  * These classes are registration-specific; the older .cs-form-* primitives
  * above remain shared by project/content/resend forms. */
 .cs-register-page {
-  margin: 0 -15px;
+  /* No full-bleed negative margin. It used to be `margin: 0 -15px` (and -10px
+     under 640px), which assumed the content column had horizontal padding to
+     absorb it. `.cs-main` has NONE below Bootstrap's desktop breakpoint, so the
+     panel ran 15px (10px on phones) past BOTH viewport edges and put a
+     horizontal scrollbar on the two sign-up pages -- the pages with the most to
+     lose from looking broken. It also clipped the 18px border-radius off-screen.
+     At desktop the bleed was asymmetric anyway (.primary has a 30px left gutter
+     and none on the right), so the panel sat 15px off-centre. */
   padding: 2.5rem 1rem 3rem;
   background: linear-gradient(155deg, var(--unesco-blue) 0%, #083655 100%);
   border-radius: 18px;
@@ -593,7 +600,6 @@
 
 @media (max-width: 639px) {
   .cs-register-page {
-    margin: 0 -10px;
     padding: 1rem 0.6rem 1.5rem;
     border-radius: 12px;
   }
