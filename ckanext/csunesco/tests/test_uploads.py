@@ -226,3 +226,44 @@ def test_later_failure_rolls_back_files_written_by_the_batch(monkeypatch,
         uploads.process_page_images(raw)
     assert caught.value.problems[0]['reason'] == 'upload_too_large'
     assert not os.path.exists(first.filepath)
+
+
+@pytest.mark.parametrize('given,expected', [
+    ('evil.html', 'evil.png'),
+    ('evil.svg', 'evil.png'),
+    ('shell.php', 'shell.png'),
+    ('photo', 'photo.png'),
+    ('PHOTO.PNG', 'PHOTO.png'),
+    ('archive.tar.gz', 'archive.tar.png'),
+])
+def test_image_extension_is_pinned_to_the_verified_bytes(given, expected):
+    """A genuine PNG cannot keep a dangerous name.
+
+    ``_validate_image`` only ever inspected the CONTENT, so a real PNG called
+    ``evil.html`` passed and was stored under that name -- ``munge_filename``
+    keeps the suffix and whatever serves the file picks its content type from
+    it. The bytes are authoritative, so the extension is rewritten to match
+    rather than the upload being rejected.
+    """
+    upload = FileStorage(stream=io.BytesIO(ONE_PIXEL_PNG), filename=given)
+    fmt = uploads._validate_image(upload)
+    assert fmt == 'PNG'
+    uploads._pin_image_extension(upload, fmt)
+    assert upload.filename == expected
+
+
+def test_pinning_survives_the_resize_step():
+    """The resized copy is a NEW FileStorage built from the original filename,
+    so the rename has to happen before it -- otherwise the dangerous name is
+    copied straight onto the object that actually gets written."""
+    from PIL import Image as _Image
+    source = io.BytesIO()
+    _Image.new('RGB', (2000, 100), 'white').save(source, format='JPEG')
+    source.seek(0)
+    upload = FileStorage(source, filename='wide.html', content_type='image/jpeg')
+
+    uploads._pin_image_extension(upload, uploads._validate_image(upload))
+    assert upload.filename == 'wide.jpg'
+
+    resized = uploads._resized_upload(upload, (800, 800))
+    assert resized.filename == 'wide.jpg'

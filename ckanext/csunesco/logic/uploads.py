@@ -107,8 +107,15 @@ def _reason_for(error):
     return 'upload_too_large' if 'too large' in text else 'upload_bad_type'
 
 
+#: Canonical extension per verified image format. The bytes decide the name.
+_IMAGE_EXTENSIONS = {'JPEG': '.jpg', 'PNG': '.png', 'WEBP': '.webp'}
+
+
 def _validate_image(upload):
-    """Inspect actual bytes instead of trusting a filename or MIME header."""
+    """Inspect actual bytes instead of trusting a filename or MIME header.
+
+    Returns the verified Pillow format so the caller can pin the extension.
+    """
     stream = getattr(upload, 'stream', upload)
     if not all(hasattr(stream, method) for method in ('read', 'seek', 'tell')):
         raise UnidentifiedImageError('The upload has no readable stream')
@@ -117,10 +124,40 @@ def _validate_image(upload):
         stream.seek(0)
         with Image.open(stream) as image:
             image.verify()
-            if image.format not in ('JPEG', 'PNG', 'WEBP'):
+            if image.format not in _IMAGE_EXTENSIONS:
                 raise UnidentifiedImageError('Unsupported image format')
+            return image.format
     finally:
         stream.seek(position)
+
+
+def _pin_image_extension(upload, image_format):
+    """Rename the upload so its extension matches the bytes we just verified.
+
+    Only the CONTENT was checked, never the name, so a genuine PNG called
+    ``x.html`` passed validation and was stored under that name --
+    ``munge_filename`` keeps the suffix, and whatever serves the file then picks
+    its content type from it. On a deployment that serves uploads from the
+    portal's own origin that is stored XSS; on one that serves them from
+    separate object storage it is still a UNESCO-branded URL handing out
+    attacker HTML.
+
+    Rewriting beats rejecting: the bytes are already known-good, so a picture
+    named ``photo`` or ``photo.HTML`` is stored correctly instead of failing in
+    the user's face. ``_validate_document`` guards the same hole by extension,
+    but it cannot do this -- there is no re-deriving a .docx from its magic
+    number.
+    """
+    extension = _IMAGE_EXTENSIONS.get(image_format)
+    if not extension:
+        return
+    filename = str(getattr(upload, 'filename', '') or '')
+    stem = os.path.splitext(filename)[0] or 'image'
+    try:
+        upload.filename = stem + extension
+    except (AttributeError, TypeError):
+        # A read-only file wrapper: validation still ran, nothing else to do.
+        pass
 
 
 def _validate_document(upload):
@@ -293,7 +330,8 @@ class UploadBatch(object):
                 if job.get('kind') == 'document':
                     _validate_document(job['upload'])
                 else:
-                    _validate_image(job['upload'])
+                    _pin_image_extension(
+                        job['upload'], _validate_image(job['upload']))
                 if job.get('resize_to') and job.get('kind') == 'image':
                     job['upload'] = _resized_upload(job['upload'],
                                                     job['resize_to'])
