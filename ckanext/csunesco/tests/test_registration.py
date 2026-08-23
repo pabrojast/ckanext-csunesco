@@ -372,3 +372,46 @@ def test_verify_keeps_a_manager_account_pending(monkeypatch):
         staticmethod(lambda uid: pytest.fail('manager must not be activated')))
     monkeypatch.setattr(registration, '_render_verify', lambda state: state)
     assert registration.verify_citizen('tok') == 'manager_pending'
+
+
+def test_resend_verification_is_rate_limited(app, monkeypatch):
+    """El reenvío era anónimo, ilimitado y rotaba el token de la víctima.
+
+    Un bucle contra una dirección pendiente conocida mandaba correo sin tope y
+    dejaba a esa persona sin poder verificarse: cada petición invalidaba el
+    enlace que tenía abierto. Ahora consume el MISMO cupo que el alta.
+    """
+    monkeypatch.setattr(registration, '_registration_retry_after', lambda: 37)
+    rendered = []
+    monkeypatch.setattr(
+        registration.tk, 'render',
+        lambda template, extra_vars=None: rendered.append(
+            (template, extra_vars)) or 'PAGE')
+
+    with app.test_request_context('/verify/resend', method='POST',
+                                  data={'email': 'victim@example.org'}):
+        out = registration.resend_verification()
+
+    body, status, headers = out
+    assert status == 429
+    assert headers['Retry-After'] == '37'
+    # Misma página "ya te hemos mandado un enlace": el 429 no puede convertirse
+    # en un oráculo de qué direcciones existen.
+    assert body == 'PAGE'
+    assert rendered[-1][1] == {'sent': True}
+
+
+def test_resend_verification_does_not_touch_tokens_when_limited(app, monkeypatch):
+    """Y sobre todo: estando limitado no llega a rotar ningún token."""
+    monkeypatch.setattr(registration, '_registration_retry_after', lambda: 5)
+    monkeypatch.setattr(registration.tk, 'render',
+                        lambda template, extra_vars=None: 'PAGE')
+
+    def _explode(*args, **kwargs):  # pragma: no cover - debe no llamarse
+        raise AssertionError('no se puede consultar usuarios estando limitado')
+
+    monkeypatch.setattr(model.Session, 'query', _explode)
+    with app.test_request_context('/verify/resend', method='POST',
+                                  data={'email': 'victim@example.org'}):
+        _body, status, _headers = registration.resend_verification()
+    assert status == 429

@@ -852,6 +852,19 @@ def resend_verification():
         return tk.render('csunesco/resend_verification.html',
                          extra_vars={'sent': False})
 
+    # MISMO throttle que el alta (`register_citizen` / `register_manager`).
+    # Sin él este POST era anónimo e ilimitado, y cada llamada rotaba el token
+    # de la víctima: bastaba un bucle contra una dirección pendiente conocida
+    # para (a) mandar correo sin tope y (b) invalidar una y otra vez el enlace
+    # que esa persona tenía abierto, dejándola sin poder verificarse nunca.
+    # La respuesta 429 es idéntica a la del alta, así que no añade un oráculo:
+    # depende del llamante, no de si la cuenta existe.
+    retry_after = _registration_retry_after()
+    if retry_after is not None:
+        response = tk.render('csunesco/resend_verification.html',
+                             extra_vars={'sent': True})
+        return (response, 429, {'Retry-After': str(retry_after)})
+
     email = request.form.get('email', '').strip()
     if email:
         try:
