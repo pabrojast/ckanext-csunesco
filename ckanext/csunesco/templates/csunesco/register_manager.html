@@ -55,6 +55,10 @@
         <p class="cs-register-intro">
           {{ _("Project Managers propose and run citizen science projects on behalf of an organization. Your account will be reviewed by a platform administrator before it is activated.") }}
         </p>
+        <p class="cs-register-muted">
+          {{ _("Once approved, you become an editor of your organization on this portal (or the administrator of a newly created one) — that membership is what unlocks proposing projects.") }}
+          <a class="cs-link" href="{{ h.url_for('csunesco.project_new') }}">{{ _("Who can propose a project?") }}</a>
+        </p>
 
         <p id="cs-reg-announcement" class="cs-visually-hidden" aria-live="polite"></p>
 

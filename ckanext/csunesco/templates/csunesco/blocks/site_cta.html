@@ -19,5 +19,8 @@
       <a class="cs-link" href="{{ h.url_for('user.login') }}">{{ _("Log in") }}</a>
     {% endif %}
     <a class="cs-link" href="{{ h.url_for('csunesco.register_manager') }}">{{ _("Register as a Project Manager") }}</a>
+    {# For a non-eligible visitor project_new renders the eligibility page,
+       so this link is the "what are the requirements?" explainer. #}
+    <a class="cs-link" href="{{ h.url_for('csunesco.project_new') }}">{{ _("Who can propose a project?") }}</a>
   {% endif %}
 </section>

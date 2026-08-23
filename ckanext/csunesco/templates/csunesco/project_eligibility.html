@@ -9,7 +9,15 @@
   </nav>
   <section class="cs-card cs-form-card" aria-labelledby="cs-eligibility-title">
     <h1 id="cs-eligibility-title">{{ _("Who can propose a project?") }}</h1>
-    <p>{{ _("Project proposals can be submitted after your Project Manager account is approved and you are an administrator or editor of a CKAN organization.") }}</p>
+    <p>{{ _("Projects are proposed and run by Project Managers: people leading a citizen science effort on behalf of an organization (an NGO, a school or university, a public agency, a community group…). Proposals can be submitted once your Project Manager account is approved and you are an administrator or editor of that organization on this portal.") }}</p>
+    <h2 class="cs-form-subtitle">{{ _("Becoming a Project Manager") }}</h2>
+    <ol class="cs-eligibility-steps">
+      <li>{{ _("Register as a Project Manager, naming the organization you work with — an existing one on this portal, or a new one you ask us to create.") }}</li>
+      <li>{{ _("Confirm your email address.") }}</li>
+      <li>{{ _("A platform administrator reviews your request. You are notified of the decision by email.") }}</li>
+      <li>{{ _("On approval you become an editor of the existing organization (or the administrator of the newly created one), and “Propose a project” unlocks for your account.") }}</li>
+    </ol>
+    <p>{{ _("Citizen Scientists who just want to join an existing project don't need any of this — they can register from a project's page or through the mobile app.") }}</p>
     <div class="cs-form-actions">
       {% if not logged_in %}
         <a class="cs-btn cs-btn-primary" href="{{ h.url_for('user.login', came_from=h.url_for('csunesco.project_new')) }}">{{ _("Log in") }}</a>

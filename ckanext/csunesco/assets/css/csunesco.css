@@ -170,6 +170,21 @@
   color: #5a6b7b;
 }
 
+/* Página de elegibilidad ("Who can propose a project?"). */
+.cs-form-subtitle {
+  margin: calc(var(--space-unit) * 1.25) 0 0.5rem 0;
+  font-size: 1.1rem;
+}
+
+.cs-eligibility-steps {
+  margin: 0 0 var(--space-unit) 0;
+  padding-left: 1.5rem;
+}
+
+.cs-eligibility-steps li {
+  margin-bottom: 0.5rem;
+}
+
 .cs-recaptcha-note {
   margin-bottom: var(--space-unit);
 }
