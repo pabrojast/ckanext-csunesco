@@ -4062,7 +4062,9 @@
 .cs-hero-search {
   display: flex;
   gap: 0.5rem;
-  margin-top: 1rem;
+  /* Centrada bajo el título del hero: con max-width y sin margin auto el
+     formulario quedaba pegado a la izquierda del contenido centrado. */
+  margin: 1rem auto 0;
   max-width: 34rem;
 }
 .cs-hero-search input[type="search"] {
