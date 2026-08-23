@@ -303,62 +303,64 @@
            aria-labelledby="cs-tabbtn-projects" data-tabpanel="projects">
         <h2 class="cs-visually-hidden">{{ _("Project requests") }}</h2>
         {% if project_requests %}
-          <table class="cs-admin-table">
-            <thead>
-              <tr>
-                <th scope="col">{{ _("Project") }}</th>
-                <th scope="col">{{ _("Initiative") }}</th>
-                <th scope="col">{{ _("Actions") }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for p in project_requests %}
+          <div class="cs-table-scroll">
+            <table class="cs-admin-table">
+              <thead>
                 <tr>
-                  <td data-label="{{ _('Project') }}">
-                    <strong>{{ p.title }}</strong>
-                    {% if p.slug %}<br><span class="cs-muted">{{ p.slug }}</span>{% endif %}
-                    {#
-                      Everything the requester actually filled in. It used to
-                      be title + slug + initiative only, so approving was a
-                      decision made without the countries, the description,
-                      the dates or the contact. Folded into a <details> rather
-                      than new columns: the &lt;=640px rule turns this table
-                      into data-label cards, which seven more columns would
-                      wreck.
-                    #}
-                    <details class="cs-review-details">
-                      <summary>{{ _("Review the submission") }}</summary>
-                      {% if p.short_description %}
-                        <p class="cs-facts-text">{{ p.short_description | striptags }}</p>
-                      {% endif %}
-                      {% snippet "csunesco/snippets/project_facts.html",
-                                 project=p, compact=true %}
-                    </details>
-                  </td>
-                  <td data-label="{{ _('Initiative') }}">{{ p.initiative_title or p.initiative_group or _("Not part of an initiative") }}</td>
-                  <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
-                    <a class="cs-btn cs-btn-secondary cs-btn-sm"
-                       href="{{ h.url_for('csunesco.project_review', id=p.id) }}">{{ _("Review") }}</a>
-                    <form method="post"
-                          action="{{ h.url_for('csunesco.project_approve', id=p.id) }}"
-                          data-confirm="{{ _('Approve this project?') }}">
-                      {{ h.csrf_input() }}
-                      <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
-                    </form>
-                    <form method="post" class="cs-reject-form"
-                          action="{{ h.url_for('csunesco.project_reject', id=p.id) }}"
-                          data-confirm="{{ _('Reject this project?') }}">
-                      {{ h.csrf_input() }}
-                      <label class="cs-visually-hidden" for="reason-p-{{ p.id }}">{{ _("Reason") }}</label>
-                      <input type="text" id="reason-p-{{ p.id }}" name="reason"
-                             class="cs-reject-reason" placeholder="{{ _('Reason (optional)') }}">
-                      <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
-                    </form>
-                  </td>
+                  <th scope="col">{{ _("Project") }}</th>
+                  <th scope="col">{{ _("Initiative") }}</th>
+                  <th scope="col">{{ _("Actions") }}</th>
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {% for p in project_requests %}
+                  <tr>
+                    <td data-label="{{ _('Project') }}">
+                      <strong>{{ p.title }}</strong>
+                      {% if p.slug %}<br><span class="cs-muted">{{ p.slug }}</span>{% endif %}
+                      {#
+                        Everything the requester actually filled in. It used to
+                        be title + slug + initiative only, so approving was a
+                        decision made without the countries, the description,
+                        the dates or the contact. Folded into a <details> rather
+                        than new columns: the &lt;=640px rule turns this table
+                        into data-label cards, which seven more columns would
+                        wreck.
+                      #}
+                      <details class="cs-review-details">
+                        <summary>{{ _("Review the submission") }}</summary>
+                        {% if p.short_description %}
+                          <p class="cs-facts-text">{{ p.short_description | striptags }}</p>
+                        {% endif %}
+                        {% snippet "csunesco/snippets/project_facts.html",
+                                   project=p, compact=true %}
+                      </details>
+                    </td>
+                    <td data-label="{{ _('Initiative') }}">{{ p.initiative_title or p.initiative_group or _("Not part of an initiative") }}</td>
+                    <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
+                      <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                         href="{{ h.url_for('csunesco.project_review', id=p.id) }}">{{ _("Review") }}</a>
+                      <form method="post"
+                            action="{{ h.url_for('csunesco.project_approve', id=p.id) }}"
+                            data-confirm="{{ _('Approve this project?') }}">
+                        {{ h.csrf_input() }}
+                        <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
+                      </form>
+                      <form method="post" class="cs-reject-form"
+                            action="{{ h.url_for('csunesco.project_reject', id=p.id) }}"
+                            data-confirm="{{ _('Reject this project?') }}">
+                        {{ h.csrf_input() }}
+                        <label class="cs-visually-hidden" for="reason-p-{{ p.id }}">{{ _("Reason") }}</label>
+                        <input type="text" id="reason-p-{{ p.id }}" name="reason"
+                               class="cs-reject-reason" placeholder="{{ _('Reason (optional)') }}">
+                        <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         {% else %}
           <p class="cs-empty cs-wb-empty">{{ h.csunesco_icon('inbox', 22) }} {{ _("No project requests are awaiting review.") }}</p>
         {% endif %}
@@ -370,68 +372,70 @@
          aria-labelledby="cs-tabbtn-joins" data-tabpanel="joins">
       <h2 class="cs-visually-hidden">{{ _("Join requests") }}</h2>
       {% if join_requests %}
-        <table class="cs-admin-table">
-          <thead>
-            <tr>
-              <th scope="col">{{ _("User") }}</th>
-              <th scope="col">{{ _("Project") }}</th>
-              <th scope="col">{{ _("Actions") }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for j in join_requests %}
+        <div class="cs-table-scroll">
+          <table class="cs-admin-table">
+            <thead>
               <tr>
-                {#
-                  Everything known about the applicant, so the decision can be
-                  made here. This cell used to hold a bare username: whoever
-                  approved was told nothing about who they were letting in.
-
-                  The email is PERSONAL DATA and appears only here -- every
-                  caller of this panel is a moderator of the row. It is
-                  deliberately absent from csunesco_project_show, which
-                  publishes usernames and nothing more.
-                #}
-                <td data-label="{{ _('User') }}">
-                  <strong>{{ j.user_name or j.user_id }}</strong>
-                  {% if j.user_login and j.user_login != j.user_name %}
-                    <span class="cs-muted">({{ j.user_login }})</span>
-                  {% endif %}
-                  <br>
-                  <span class="cs-muted">
-                    {%- if j.user_email %}{{ j.user_email }}{% endif -%}
-                    {%- if j.user_email and j.user_country %} · {% endif -%}
-                    {%- if j.user_country %}{{ h.csunesco_member_state_title(j.user_country) }}{% endif -%}
-                  </span>
-                  {% if not j.email_verified %}
-                    <br>
-                    <span class="cs-wb-chip cs-wb-chip-work">{{ _("Email not verified") }}</span>
-                  {% endif %}
-                  {% if j.note %}
-                    <p class="cs-join-note">{{ j.note }}</p>
-                  {% endif %}
-                  {% if j.source == 'app' %}
-                    <span class="cs-muted">{{ _("via the CS Toolbox app") }}</span>
-                  {% endif %}
-                </td>
-                <td data-label="{{ _('Project') }}">{{ j.project_title or j.project_id }}</td>
-                <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
-                  <form method="post"
-                        action="{{ h.url_for('csunesco.join_approve', project_id=j.project_id, user_id=j.user_id) }}"
-                        data-confirm="{{ _('Approve this join request?') }}">
-                    {{ h.csrf_input() }}
-                    <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
-                  </form>
-                  <form method="post"
-                        action="{{ h.url_for('csunesco.join_reject', project_id=j.project_id, user_id=j.user_id) }}"
-                        data-confirm="{{ _('Reject this join request?') }}">
-                    {{ h.csrf_input() }}
-                    <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
-                  </form>
-                </td>
+                <th scope="col">{{ _("User") }}</th>
+                <th scope="col">{{ _("Project") }}</th>
+                <th scope="col">{{ _("Actions") }}</th>
               </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {% for j in join_requests %}
+                <tr>
+                  {#
+                    Everything known about the applicant, so the decision can be
+                    made here. This cell used to hold a bare username: whoever
+                    approved was told nothing about who they were letting in.
+  
+                    The email is PERSONAL DATA and appears only here -- every
+                    caller of this panel is a moderator of the row. It is
+                    deliberately absent from csunesco_project_show, which
+                    publishes usernames and nothing more.
+                  #}
+                  <td data-label="{{ _('User') }}">
+                    <strong>{{ j.user_name or j.user_id }}</strong>
+                    {% if j.user_login and j.user_login != j.user_name %}
+                      <span class="cs-muted">({{ j.user_login }})</span>
+                    {% endif %}
+                    <br>
+                    <span class="cs-muted">
+                      {%- if j.user_email %}{{ j.user_email }}{% endif -%}
+                      {%- if j.user_email and j.user_country %} · {% endif -%}
+                      {%- if j.user_country %}{{ h.csunesco_member_state_title(j.user_country) }}{% endif -%}
+                    </span>
+                    {% if not j.email_verified %}
+                      <br>
+                      <span class="cs-wb-chip cs-wb-chip-work">{{ _("Email not verified") }}</span>
+                    {% endif %}
+                    {% if j.note %}
+                      <p class="cs-join-note">{{ j.note }}</p>
+                    {% endif %}
+                    {% if j.source == 'app' %}
+                      <span class="cs-muted">{{ _("via the CS Toolbox app") }}</span>
+                    {% endif %}
+                  </td>
+                  <td data-label="{{ _('Project') }}">{{ j.project_title or j.project_id }}</td>
+                  <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
+                    <form method="post"
+                          action="{{ h.url_for('csunesco.join_approve', project_id=j.project_id, user_id=j.user_id) }}"
+                          data-confirm="{{ _('Approve this join request?') }}">
+                      {{ h.csrf_input() }}
+                      <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
+                    </form>
+                    <form method="post"
+                          action="{{ h.url_for('csunesco.join_reject', project_id=j.project_id, user_id=j.user_id) }}"
+                          data-confirm="{{ _('Reject this join request?') }}">
+                      {{ h.csrf_input() }}
+                      <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       {% else %}
         <p class="cs-empty cs-wb-empty">{{ h.csunesco_icon('inbox', 22) }} {{ _("No join requests are awaiting review.") }}</p>
       {% endif %}
@@ -459,68 +463,70 @@
             {{ h.csrf_input() }}
           </form>
         {% endif %}
-        <table class="cs-admin-table">
-          <thead>
-            <tr>
-              {% if can_bulk %}<th scope="col">{{ _("Select") }}</th>{% endif %}
-              <th scope="col">{{ _("Title") }}</th>
-              <th scope="col">{{ _("Type") }}</th>
-              <th scope="col">{{ _("Project") }}</th>
-              <th scope="col">{{ _("Actions") }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for c in content_requests %}
+        <div class="cs-table-scroll">
+          <table class="cs-admin-table">
+            <thead>
               <tr>
-                {% if can_bulk %}
-                  <td data-label="{{ _('Select') }}">
-                    {% if is_sysadmin or (c.initiative_group and c.initiative_group in admin_initiatives) %}
-                      <input type="checkbox" name="content_ids" value="{{ c.id }}"
-                             form="cs-bulk-content-form"
-                             aria-label="{{ _('Select for bulk approval') }}">
-                    {% endif %}
-                  </td>
-                {% endif %}
-                <td data-label="{{ _('Title') }}">
-                  <strong>{{ c.title }}</strong>
-                  {% if c.excerpt %}<br><span class="cs-muted">{{ c.excerpt | truncate(120) }}</span>{% endif %}
-                </td>
-                <td data-label="{{ _('Type') }}">
-                  {{ {'cs-event': _("Event"), 'cs-publication': _("Publication"), 'cs-map': _("Map")}.get(c.content_type, _("News")) }}
-                </td>
-                <td data-label="{{ _('Project') }}">{{ c.project_title or c.project_id }}</td>
-                <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
-                  {% if is_sysadmin or (c.initiative_group and c.initiative_group in admin_initiatives) %}
-                    <form method="post"
-                          action="{{ h.url_for('csunesco.content_approve', id=c.id) }}"
-                          data-confirm="{{ _('Approve this content?') }}">
-                      {{ h.csrf_input() }}
-                      <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
-                    </form>
-                    <form method="post" class="cs-reject-form"
-                          action="{{ h.url_for('csunesco.content_reject', id=c.id) }}"
-                          data-confirm="{{ _('Reject this content?') }}">
-                      {{ h.csrf_input() }}
-                      <label class="cs-visually-hidden" for="reason-c-{{ c.id }}">{{ _("Reason") }}</label>
-                      <input type="text" id="reason-c-{{ c.id }}" name="reason"
-                             class="cs-reject-reason" placeholder="{{ _('Reason (optional)') }}">
-                      <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
-                    </form>
-                  {% endif %}
-                  {% if c.slug %}
-                    {# The reviewer sees the item exactly as the public will
-                       (detail pages already allow sysadmins on pending rows,
-                       incl. the embedded Terria map for cs-map). #}
-                    <a class="cs-btn cs-btn-secondary cs-btn-sm"
-                       href="{{ h.url_for(show_endpoints.get(c.content_type, 'csunesco.cs_news_show'), slug=c.slug) }}">{{ _("View") }}</a>
-                  {% endif %}
-                  <a class="cs-btn cs-btn-secondary cs-btn-sm"
-                     href="{{ h.url_for('csunesco.content_edit', id=c.id) }}">{{ _("Edit") }}</a>
-                </td>
+                {% if can_bulk %}<th scope="col">{{ _("Select") }}</th>{% endif %}
+                <th scope="col">{{ _("Title") }}</th>
+                <th scope="col">{{ _("Type") }}</th>
+                <th scope="col">{{ _("Project") }}</th>
+                <th scope="col">{{ _("Actions") }}</th>
               </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {% for c in content_requests %}
+                <tr>
+                  {% if can_bulk %}
+                    <td data-label="{{ _('Select') }}">
+                      {% if is_sysadmin or (c.initiative_group and c.initiative_group in admin_initiatives) %}
+                        <input type="checkbox" name="content_ids" value="{{ c.id }}"
+                               form="cs-bulk-content-form"
+                               aria-label="{{ _('Select for bulk approval') }}">
+                      {% endif %}
+                    </td>
+                  {% endif %}
+                  <td data-label="{{ _('Title') }}">
+                    <strong>{{ c.title }}</strong>
+                    {% if c.excerpt %}<br><span class="cs-muted">{{ c.excerpt | truncate(120) }}</span>{% endif %}
+                  </td>
+                  <td data-label="{{ _('Type') }}">
+                    {{ {'cs-event': _("Event"), 'cs-publication': _("Publication"), 'cs-map': _("Map")}.get(c.content_type, _("News")) }}
+                  </td>
+                  <td data-label="{{ _('Project') }}">{{ c.project_title or c.project_id }}</td>
+                  <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
+                    {% if is_sysadmin or (c.initiative_group and c.initiative_group in admin_initiatives) %}
+                      <form method="post"
+                            action="{{ h.url_for('csunesco.content_approve', id=c.id) }}"
+                            data-confirm="{{ _('Approve this content?') }}">
+                        {{ h.csrf_input() }}
+                        <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
+                      </form>
+                      <form method="post" class="cs-reject-form"
+                            action="{{ h.url_for('csunesco.content_reject', id=c.id) }}"
+                            data-confirm="{{ _('Reject this content?') }}">
+                        {{ h.csrf_input() }}
+                        <label class="cs-visually-hidden" for="reason-c-{{ c.id }}">{{ _("Reason") }}</label>
+                        <input type="text" id="reason-c-{{ c.id }}" name="reason"
+                               class="cs-reject-reason" placeholder="{{ _('Reason (optional)') }}">
+                        <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
+                      </form>
+                    {% endif %}
+                    {% if c.slug %}
+                      {# The reviewer sees the item exactly as the public will
+                         (detail pages already allow sysadmins on pending rows,
+                         incl. the embedded Terria map for cs-map). #}
+                      <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                         href="{{ h.url_for(show_endpoints.get(c.content_type, 'csunesco.cs_news_show'), slug=c.slug) }}">{{ _("View") }}</a>
+                    {% endif %}
+                    <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                       href="{{ h.url_for('csunesco.content_edit', id=c.id) }}">{{ _("Edit") }}</a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
         {% if can_bulk %}
           <button type="submit" form="cs-bulk-content-form"
                   class="cs-btn cs-btn-primary cs-btn-sm">
@@ -535,79 +541,81 @@
          withdrawn, a rejection undone, or (sysadmin) a row hard-deleted. #}
       {% if content_moderated %}
         <h3 class="cs-admin-subtitle">{{ _("Recently moderated") }}</h3>
-        <table class="cs-admin-table">
-          <thead>
-            <tr>
-              <th scope="col">{{ _("Title") }}</th>
-              <th scope="col">{{ _("Type") }}</th>
-              <th scope="col">{{ _("Project") }}</th>
-              <th scope="col">{{ _("Status") }}</th>
-              <th scope="col">{{ _("Reviewed") }}</th>
-              <th scope="col">{{ _("Actions") }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for c in content_moderated %}
+        <div class="cs-table-scroll">
+          <table class="cs-admin-table">
+            <thead>
               <tr>
-                <td data-label="{{ _('Title') }}">
-                  <strong>{{ c.title }}</strong>
-                  {% if c.rejection_reason %}<br><span class="cs-muted">{{ c.rejection_reason | truncate(100) }}</span>{% endif %}
-                </td>
-                <td data-label="{{ _('Type') }}">
-                  {{ {'cs-event': _("Event"), 'cs-publication': _("Publication"), 'cs-map': _("Map")}.get(c.content_type, _("News")) }}
-                </td>
-                <td data-label="{{ _('Project') }}">{{ c.project_title or c.project_id }}</td>
-                <td data-label="{{ _('Status') }}">
-                  {% if c.status == 'approved' %}
-                    <span class="cs-status-badge cs-status-approved">{{ _("Published") }}</span>
-                  {% elif c.withdrawn %}
-                    <span class="cs-status-badge cs-status-rejected">{{ _("Withdrawn") }}</span>
-                  {% else %}
-                    <span class="cs-status-badge cs-status-rejected">{{ _("Rejected") }}</span>
-                  {% endif %}
-                </td>
-                <td data-label="{{ _('Reviewed') }}">
-                  {% if c.reviewed_at %}{{ h.render_datetime(c.reviewed_at, with_hours=True) }}{% else %}—{% endif %}
-                  {% if c.reviewed_by %}<br><span class="cs-muted">{{ h.linked_user(c.reviewed_by, maxlength=24) }}</span>{% endif %}
-                </td>
-                <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
-                  {% if is_sysadmin or (c.initiative_group and c.initiative_group in admin_initiatives) %}
+                <th scope="col">{{ _("Title") }}</th>
+                <th scope="col">{{ _("Type") }}</th>
+                <th scope="col">{{ _("Project") }}</th>
+                <th scope="col">{{ _("Status") }}</th>
+                <th scope="col">{{ _("Reviewed") }}</th>
+                <th scope="col">{{ _("Actions") }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in content_moderated %}
+                <tr>
+                  <td data-label="{{ _('Title') }}">
+                    <strong>{{ c.title }}</strong>
+                    {% if c.rejection_reason %}<br><span class="cs-muted">{{ c.rejection_reason | truncate(100) }}</span>{% endif %}
+                  </td>
+                  <td data-label="{{ _('Type') }}">
+                    {{ {'cs-event': _("Event"), 'cs-publication': _("Publication"), 'cs-map': _("Map")}.get(c.content_type, _("News")) }}
+                  </td>
+                  <td data-label="{{ _('Project') }}">{{ c.project_title or c.project_id }}</td>
+                  <td data-label="{{ _('Status') }}">
                     {% if c.status == 'approved' %}
-                      <form method="post" class="cs-reject-form"
-                            action="{{ h.url_for('csunesco.content_withdraw', id=c.id) }}"
-                            data-confirm="{{ _('Withdraw this content from the portal?') }}">
-                        {{ h.csrf_input() }}
-                        <label class="cs-visually-hidden" for="reason-w-{{ c.id }}">{{ _("Reason") }}</label>
-                        <input type="text" id="reason-w-{{ c.id }}" name="reason"
-                               class="cs-reject-reason" placeholder="{{ _('Reason (optional)') }}">
-                        <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Withdraw") }}</button>
-                      </form>
+                      <span class="cs-status-badge cs-status-approved">{{ _("Published") }}</span>
+                    {% elif c.withdrawn %}
+                      <span class="cs-status-badge cs-status-rejected">{{ _("Withdrawn") }}</span>
                     {% else %}
+                      <span class="cs-status-badge cs-status-rejected">{{ _("Rejected") }}</span>
+                    {% endif %}
+                  </td>
+                  <td data-label="{{ _('Reviewed') }}">
+                    {% if c.reviewed_at %}{{ h.render_datetime(c.reviewed_at, with_hours=True) }}{% else %}—{% endif %}
+                    {% if c.reviewed_by %}<br><span class="cs-muted">{{ h.linked_user(c.reviewed_by, maxlength=24) }}</span>{% endif %}
+                  </td>
+                  <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
+                    {% if is_sysadmin or (c.initiative_group and c.initiative_group in admin_initiatives) %}
+                      {% if c.status == 'approved' %}
+                        <form method="post" class="cs-reject-form"
+                              action="{{ h.url_for('csunesco.content_withdraw', id=c.id) }}"
+                              data-confirm="{{ _('Withdraw this content from the portal?') }}">
+                          {{ h.csrf_input() }}
+                          <label class="cs-visually-hidden" for="reason-w-{{ c.id }}">{{ _("Reason") }}</label>
+                          <input type="text" id="reason-w-{{ c.id }}" name="reason"
+                                 class="cs-reject-reason" placeholder="{{ _('Reason (optional)') }}">
+                          <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Withdraw") }}</button>
+                        </form>
+                      {% else %}
+                        <form method="post"
+                              action="{{ h.url_for('csunesco.content_approve', id=c.id) }}"
+                              data-confirm="{{ _('Restore and publish this content?') }}">
+                          {{ h.csrf_input() }}
+                          <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Re-approve") }}</button>
+                        </form>
+                      {% endif %}
+                    {% endif %}
+                    {% if is_sysadmin %}
                       <form method="post"
-                            action="{{ h.url_for('csunesco.content_approve', id=c.id) }}"
-                            data-confirm="{{ _('Restore and publish this content?') }}">
+                            action="{{ h.url_for('csunesco.content_delete', id=c.id) }}"
+                            data-confirm="{{ _('Permanently delete this content? This cannot be undone.') }}">
                         {{ h.csrf_input() }}
-                        <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Re-approve") }}</button>
+                        <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Delete") }}</button>
                       </form>
                     {% endif %}
-                  {% endif %}
-                  {% if is_sysadmin %}
-                    <form method="post"
-                          action="{{ h.url_for('csunesco.content_delete', id=c.id) }}"
-                          data-confirm="{{ _('Permanently delete this content? This cannot be undone.') }}">
-                      {{ h.csrf_input() }}
-                      <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Delete") }}</button>
-                    </form>
-                  {% endif %}
-                  {% if c.slug %}
-                    <a class="cs-btn cs-btn-secondary cs-btn-sm"
-                       href="{{ h.url_for(show_endpoints.get(c.content_type, 'csunesco.cs_news_show'), slug=c.slug) }}">{{ _("View") }}</a>
-                  {% endif %}
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+                    {% if c.slug %}
+                      <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                         href="{{ h.url_for(show_endpoints.get(c.content_type, 'csunesco.cs_news_show'), slug=c.slug) }}">{{ _("View") }}</a>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       {% endif %}
     </div>
 
@@ -628,88 +636,90 @@
                 data-confirm="{{ _('Approve every selected data source and publish their datasets?') }}">
             {{ h.csrf_input() }}
           </form>
-          <table class="cs-admin-table">
-            <thead>
-              <tr>
-                <th scope="col">{{ _("Select") }}</th>
-                <th scope="col">{{ _("Title") }}</th>
-                <th scope="col">{{ _("Project") }}</th>
-                <th scope="col">{{ _("App form") }}</th>
-                <th scope="col">{{ _("Origin") }}</th>
-                <th scope="col">{{ _("Actions") }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for d in data_requests %}
-                {# Preselect the app-suggested org when it exists on the portal;
-                   otherwise the configured default. The reviewer can change it. #}
-                {% set suggested = d.owner_org if d.owner_org in organizations else None %}
-                {% set preselected = suggested or default_owner_org %}
+          <div class="cs-table-scroll">
+            <table class="cs-admin-table">
+              <thead>
                 <tr>
-                  <td data-label="{{ _('Select') }}">
-                    {# Filas ya scoped server-side (sysadmin: todas; ADM: solo
-                       su iniciativa), así que toda fila visible es aprobable. #}
-                    <input type="checkbox" name="data_ids" value="{{ d.id }}"
-                           form="cs-bulk-data-form"
-                           aria-label="{{ _('Select for bulk approval') }}">
-                  </td>
-                  <td data-label="{{ _('Title') }}">
-                    <strong>{{ d.title }}</strong>
-                    {% if d.description %}<br><span class="cs-muted">{{ d.description | striptags | truncate(120) }}</span>{% endif %}
-                    {% if organizations and d.owner_org and not suggested %}
-                      <br><span class="cs-muted">{{ _("App organization not on this portal:") }} {{ d.owner_org }}</span>
-                    {% endif %}
-                    {% if d.probe %}
-                      <br>
-                      {% if d.probe.ok %}
-                        <span class="cs-muted">
-                          ✓ {{ _("%(n)s observations", n=d.probe.total) }}{% if d.probe.with_coords is not none %} ({{ d.probe.with_coords }} {{ _("geolocated") }}){% endif %}{% if d.probe.first_date %} · {{ d.probe.first_date }} → {{ d.probe.last_date or d.probe.first_date }}{% endif %}{% if d.probe.truncated %} · {{ _("truncated") }}{% endif %}
-                        </span>
-                      {% else %}
-                        <span class="cs-status-badge cs-status-rejected">{{ _("Form not reachable or not public in the app") }}</span>
-                      {% endif %}
-                    {% endif %}
-                    {% if d.app_url %}
-                      <br><a class="cs-link" href="{{ d.app_url }}" target="_blank" rel="noopener noreferrer">{{ _("Open in the app") }} ↗</a>
-                    {% endif %}
-                  </td>
-                  <td data-label="{{ _('Project') }}">{{ d.project_title or d.project_id }}</td>
-                  <td data-label="{{ _('App form') }}">#{{ d.form_id }}</td>
-                  <td data-label="{{ _('Origin') }}">{{ _("App") if d.source == 'app' else _("Portal") }}</td>
-                  <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
-                    <form method="post"
-                          action="{{ h.url_for('csunesco.data_source_approve', id=d.id) }}"
-                          data-confirm="{{ _('Approve this data source and publish its dataset?') }}">
-                      {{ h.csrf_input() }}
-                      {% if organizations %}
-                        <label class="cs-visually-hidden" for="org-d-{{ d.id }}">{{ _("Dataset organization") }}</label>
-                        <select id="org-d-{{ d.id }}" name="owner_org" class="cs-org-select">
-                          {% if preselected not in organizations %}
-                            {# Neither the suggestion nor the default exists yet:
-                               make the reviewer choose explicitly. #}
-                            <option value="" selected>{{ _("Choose organization…") }}</option>
-                          {% endif %}
-                          {% for org in organizations %}
-                            <option value="{{ org }}" {% if org == preselected %}selected{% endif %}>{{ org }}</option>
-                          {% endfor %}
-                        </select>
-                      {% endif %}
-                      <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
-                    </form>
-                    <form method="post" class="cs-reject-form"
-                          action="{{ h.url_for('csunesco.data_source_reject', id=d.id) }}"
-                          data-confirm="{{ _('Reject this data source?') }}">
-                      {{ h.csrf_input() }}
-                      <label class="cs-visually-hidden" for="reason-d-{{ d.id }}">{{ _("Reason") }}</label>
-                      <input type="text" id="reason-d-{{ d.id }}" name="reason"
-                             class="cs-reject-reason" placeholder="{{ _('Reason (optional)') }}">
-                      <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
-                    </form>
-                  </td>
+                  <th scope="col">{{ _("Select") }}</th>
+                  <th scope="col">{{ _("Title") }}</th>
+                  <th scope="col">{{ _("Project") }}</th>
+                  <th scope="col">{{ _("App form") }}</th>
+                  <th scope="col">{{ _("Origin") }}</th>
+                  <th scope="col">{{ _("Actions") }}</th>
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {% for d in data_requests %}
+                  {# Preselect the app-suggested org when it exists on the portal;
+                     otherwise the configured default. The reviewer can change it. #}
+                  {% set suggested = d.owner_org if d.owner_org in organizations else None %}
+                  {% set preselected = suggested or default_owner_org %}
+                  <tr>
+                    <td data-label="{{ _('Select') }}">
+                      {# Filas ya scoped server-side (sysadmin: todas; ADM: solo
+                         su iniciativa), así que toda fila visible es aprobable. #}
+                      <input type="checkbox" name="data_ids" value="{{ d.id }}"
+                             form="cs-bulk-data-form"
+                             aria-label="{{ _('Select for bulk approval') }}">
+                    </td>
+                    <td data-label="{{ _('Title') }}">
+                      <strong>{{ d.title }}</strong>
+                      {% if d.description %}<br><span class="cs-muted">{{ d.description | striptags | truncate(120) }}</span>{% endif %}
+                      {% if organizations and d.owner_org and not suggested %}
+                        <br><span class="cs-muted">{{ _("App organization not on this portal:") }} {{ d.owner_org }}</span>
+                      {% endif %}
+                      {% if d.probe %}
+                        <br>
+                        {% if d.probe.ok %}
+                          <span class="cs-muted">
+                            ✓ {{ _("%(n)s observations", n=d.probe.total) }}{% if d.probe.with_coords is not none %} ({{ d.probe.with_coords }} {{ _("geolocated") }}){% endif %}{% if d.probe.first_date %} · {{ d.probe.first_date }} → {{ d.probe.last_date or d.probe.first_date }}{% endif %}{% if d.probe.truncated %} · {{ _("truncated") }}{% endif %}
+                          </span>
+                        {% else %}
+                          <span class="cs-status-badge cs-status-rejected">{{ _("Form not reachable or not public in the app") }}</span>
+                        {% endif %}
+                      {% endif %}
+                      {% if d.app_url %}
+                        <br><a class="cs-link" href="{{ d.app_url }}" target="_blank" rel="noopener noreferrer">{{ _("Open in the app") }} ↗</a>
+                      {% endif %}
+                    </td>
+                    <td data-label="{{ _('Project') }}">{{ d.project_title or d.project_id }}</td>
+                    <td data-label="{{ _('App form') }}">#{{ d.form_id }}</td>
+                    <td data-label="{{ _('Origin') }}">{{ _("App") if d.source == 'app' else _("Portal") }}</td>
+                    <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
+                      <form method="post"
+                            action="{{ h.url_for('csunesco.data_source_approve', id=d.id) }}"
+                            data-confirm="{{ _('Approve this data source and publish its dataset?') }}">
+                        {{ h.csrf_input() }}
+                        {% if organizations %}
+                          <label class="cs-visually-hidden" for="org-d-{{ d.id }}">{{ _("Dataset organization") }}</label>
+                          <select id="org-d-{{ d.id }}" name="owner_org" class="cs-org-select">
+                            {% if preselected not in organizations %}
+                              {# Neither the suggestion nor the default exists yet:
+                                 make the reviewer choose explicitly. #}
+                              <option value="" selected>{{ _("Choose organization…") }}</option>
+                            {% endif %}
+                            {% for org in organizations %}
+                              <option value="{{ org }}" {% if org == preselected %}selected{% endif %}>{{ org }}</option>
+                            {% endfor %}
+                          </select>
+                        {% endif %}
+                        <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
+                      </form>
+                      <form method="post" class="cs-reject-form"
+                            action="{{ h.url_for('csunesco.data_source_reject', id=d.id) }}"
+                            data-confirm="{{ _('Reject this data source?') }}">
+                        {{ h.csrf_input() }}
+                        <label class="cs-visually-hidden" for="reason-d-{{ d.id }}">{{ _("Reason") }}</label>
+                        <input type="text" id="reason-d-{{ d.id }}" name="reason"
+                               class="cs-reject-reason" placeholder="{{ _('Reason (optional)') }}">
+                        <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
           <button type="submit" form="cs-bulk-data-form"
                   class="cs-btn cs-btn-primary cs-btn-sm">
             {{ _("Approve selected") }}
@@ -727,44 +737,46 @@
         #}
         {% if data_connected %}
           <h3 class="cs-wb-palette-title">{{ _("Connected data sources") }}</h3>
-          <table class="cs-admin-table">
-            <thead>
-              <tr>
-                <th scope="col">{{ _("Title") }}</th>
-                <th scope="col">{{ _("Project") }}</th>
-                <th scope="col">{{ _("App form") }}</th>
-                <th scope="col">{{ _("Health") }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for d in data_connected %}
+          <div class="cs-table-scroll">
+            <table class="cs-admin-table">
+              <thead>
                 <tr>
-                  <td data-label="{{ _('Title') }}"><strong>{{ d.title }}</strong></td>
-                  <td data-label="{{ _('Project') }}">{{ d.project_title or d.project_id }}</td>
-                  <td data-label="{{ _('App form') }}">#{{ d.form_id }}</td>
-                  <td data-label="{{ _('Health') }}">
-                    {% if d.probe and not d.probe.ok %}
-                      {# Amber, not the pending queue's red REJECTED badge: an
-                         approved source going dark is a warning, not a verdict. #}
-                      <span class="cs-wb-chip cs-wb-chip-work">
-                        {{ h.csunesco_icon('alert', 13) }} {{ _("Not answering") }}
-                      </span>
-                      <br><span class="cs-muted">{{ _("Its charts and CSV downloads on the project page are failing. Check the form is still public and published in the app.") }}</span>
-                      {% if d.app_url %}
-                        <br><a class="cs-link" href="{{ d.app_url }}" target="_blank" rel="noopener noreferrer">{{ _("Open in the app") }} ↗</a>
-                      {% endif %}
-                    {% elif d.probe %}
-                      <span class="cs-muted">
-                        ✓ {{ _("%(n)s observations", n=d.probe.total) }}{% if d.probe.last_date %} · {{ _("last") }} {{ d.probe.last_date }}{% endif %}
-                      </span>
-                    {% else %}
-                      <span class="cs-muted">{{ _("Not checked on this load") }}</span>
-                    {% endif %}
-                  </td>
+                  <th scope="col">{{ _("Title") }}</th>
+                  <th scope="col">{{ _("Project") }}</th>
+                  <th scope="col">{{ _("App form") }}</th>
+                  <th scope="col">{{ _("Health") }}</th>
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {% for d in data_connected %}
+                  <tr>
+                    <td data-label="{{ _('Title') }}"><strong>{{ d.title }}</strong></td>
+                    <td data-label="{{ _('Project') }}">{{ d.project_title or d.project_id }}</td>
+                    <td data-label="{{ _('App form') }}">#{{ d.form_id }}</td>
+                    <td data-label="{{ _('Health') }}">
+                      {% if d.probe and not d.probe.ok %}
+                        {# Amber, not the pending queue's red REJECTED badge: an
+                           approved source going dark is a warning, not a verdict. #}
+                        <span class="cs-wb-chip cs-wb-chip-work">
+                          {{ h.csunesco_icon('alert', 13) }} {{ _("Not answering") }}
+                        </span>
+                        <br><span class="cs-muted">{{ _("Its charts and CSV downloads on the project page are failing. Check the form is still public and published in the app.") }}</span>
+                        {% if d.app_url %}
+                          <br><a class="cs-link" href="{{ d.app_url }}" target="_blank" rel="noopener noreferrer">{{ _("Open in the app") }} ↗</a>
+                        {% endif %}
+                      {% elif d.probe %}
+                        <span class="cs-muted">
+                          ✓ {{ _("%(n)s observations", n=d.probe.total) }}{% if d.probe.last_date %} · {{ _("last") }} {{ d.probe.last_date }}{% endif %}
+                        </span>
+                      {% else %}
+                        <span class="cs-muted">{{ _("Not checked on this load") }}</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         {% endif %}
       </div>
     {% endif %}
@@ -785,84 +797,86 @@
            data-tabpanel="pages" aria-labelledby="cs-tabbtn-pages">
         <h2 class="cs-visually-hidden">{{ _("Pages to review") }}</h2>
         {% if page_requests %}
-          <table class="cs-admin-table">
-            <thead>
-              <tr>
-                <th scope="col">{{ _("Project") }}</th>
-                <th scope="col">{{ _("Initiative") }}</th>
-                <th scope="col">{{ _("Submitted") }}</th>
-                <th scope="col">{{ _("Decision") }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in page_requests %}
+          <div class="cs-table-scroll">
+            <table class="cs-admin-table">
+              <thead>
                 <tr>
-                  <td data-label="{{ _('Project') }}">
-                    <a href="{{ h.url_for('csunesco.project_landing', slug=row.project_slug) }}">
-                      {{ row.project_title or row.project_slug }}
-                    </a>
-                  </td>
-                  <td data-label="{{ _('Initiative') }}">
-                    {{ h.csunesco_member_state_title(row.initiative_group) }}
-                  </td>
-                  <td data-label="{{ _('Submitted') }}">
-                    {{ (row.submitted_at or row.modified or '')[:16] | replace('T', ' ') }}
-                    {% if row.submitted_by_name %}
-                      <span class="cs-muted">{{ _("by") }} {{ row.submitted_by_name }}</span>
-                    {% endif %}
-                    <br>
-                    {% if row.first_publication %}
-                      <span class="cs-status-badge cs-status-draft">{{ _("first publication") }}</span>
-                    {% else %}
-                      <span class="cs-status-badge cs-status-draft">{{ _("update") }}</span>
-                    {% endif %}
-                    {# What actually forced this into the queue, so the reviewer
-                       knows whether to expect embedded media or a typo fix. #}
-                    {% for kind in row.requires_review or [] %}
-                      {% set spec = h.csunesco_block_type(kind) %}
-                      <span class="cs-status-badge cs-status-pending">
-                        {% if kind == 'project_cover' %}{{ _("Project cover") }}{% else %}{{ _(spec.label) if spec else kind }}{% endif %}
-                      </span>
-                    {% endfor %}
-                  </td>
-                  <td data-label="{{ _('Decision') }}">
-                    {# New tab: reviewing means reading the page, and coming
-                       back must not cost the reasons typed into other rows. #}
-                    <a class="cs-btn cs-btn-secondary cs-btn-sm"
-                       target="_blank" rel="noopener noreferrer"
-                       href="{{ h.url_for('csunesco.project_page_preview', slug=row.project_slug) }}">
-                      {{ _("Preview") }}
-                    </a>
-                    <form method="post"
-                          action="{{ h.url_for('csunesco.page_approve', project_id=row.project_id) }}"
-                          data-confirm="{{ _('Publish this page for everyone?') }}">
-                      {{ h.csrf_input() }}
-                      <input type="hidden" name="draft_hash" value="{{ row.draft_hash }}">
-                      <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">
-                        {{ _("Publish") }}
-                      </button>
-                    </form>
-                    {# cs-reject-form / cs-reject-reason are the classes the
-                       other tabs use and the only ones that exist in the CSS. #}
-                    <form method="post" class="cs-reject-form"
-                          action="{{ h.url_for('csunesco.page_reject', project_id=row.project_id) }}"
-                          data-confirm="{{ _('Send this page back to its author?') }}">
-                      {{ h.csrf_input() }}
-                      <label class="cs-visually-hidden" for="reason-page-{{ row.project_id }}">
-                        {{ _("Reason for sending back") }}
-                      </label>
-                      <input type="text" id="reason-page-{{ row.project_id }}"
-                             name="reason" class="cs-reject-reason"
-                             placeholder="{{ _('Reason (optional)') }}">
-                      <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">
-                        {{ _("Send back") }}
-                      </button>
-                    </form>
-                  </td>
+                  <th scope="col">{{ _("Project") }}</th>
+                  <th scope="col">{{ _("Initiative") }}</th>
+                  <th scope="col">{{ _("Submitted") }}</th>
+                  <th scope="col">{{ _("Decision") }}</th>
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {% for row in page_requests %}
+                  <tr>
+                    <td data-label="{{ _('Project') }}">
+                      <a href="{{ h.url_for('csunesco.project_landing', slug=row.project_slug) }}">
+                        {{ row.project_title or row.project_slug }}
+                      </a>
+                    </td>
+                    <td data-label="{{ _('Initiative') }}">
+                      {{ h.csunesco_member_state_title(row.initiative_group) }}
+                    </td>
+                    <td data-label="{{ _('Submitted') }}">
+                      {{ (row.submitted_at or row.modified or '')[:16] | replace('T', ' ') }}
+                      {% if row.submitted_by_name %}
+                        <span class="cs-muted">{{ _("by") }} {{ row.submitted_by_name }}</span>
+                      {% endif %}
+                      <br>
+                      {% if row.first_publication %}
+                        <span class="cs-status-badge cs-status-draft">{{ _("first publication") }}</span>
+                      {% else %}
+                        <span class="cs-status-badge cs-status-draft">{{ _("update") }}</span>
+                      {% endif %}
+                      {# What actually forced this into the queue, so the reviewer
+                         knows whether to expect embedded media or a typo fix. #}
+                      {% for kind in row.requires_review or [] %}
+                        {% set spec = h.csunesco_block_type(kind) %}
+                        <span class="cs-status-badge cs-status-pending">
+                          {% if kind == 'project_cover' %}{{ _("Project cover") }}{% else %}{{ _(spec.label) if spec else kind }}{% endif %}
+                        </span>
+                      {% endfor %}
+                    </td>
+                    <td data-label="{{ _('Decision') }}">
+                      {# New tab: reviewing means reading the page, and coming
+                         back must not cost the reasons typed into other rows. #}
+                      <a class="cs-btn cs-btn-secondary cs-btn-sm"
+                         target="_blank" rel="noopener noreferrer"
+                         href="{{ h.url_for('csunesco.project_page_preview', slug=row.project_slug) }}">
+                        {{ _("Preview") }}
+                      </a>
+                      <form method="post"
+                            action="{{ h.url_for('csunesco.page_approve', project_id=row.project_id) }}"
+                            data-confirm="{{ _('Publish this page for everyone?') }}">
+                        {{ h.csrf_input() }}
+                        <input type="hidden" name="draft_hash" value="{{ row.draft_hash }}">
+                        <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">
+                          {{ _("Publish") }}
+                        </button>
+                      </form>
+                      {# cs-reject-form / cs-reject-reason are the classes the
+                         other tabs use and the only ones that exist in the CSS. #}
+                      <form method="post" class="cs-reject-form"
+                            action="{{ h.url_for('csunesco.page_reject', project_id=row.project_id) }}"
+                            data-confirm="{{ _('Send this page back to its author?') }}">
+                        {{ h.csrf_input() }}
+                        <label class="cs-visually-hidden" for="reason-page-{{ row.project_id }}">
+                          {{ _("Reason for sending back") }}
+                        </label>
+                        <input type="text" id="reason-page-{{ row.project_id }}"
+                               name="reason" class="cs-reject-reason"
+                               placeholder="{{ _('Reason (optional)') }}">
+                        <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">
+                          {{ _("Send back") }}
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         {% else %}
           <p class="cs-empty cs-wb-empty">{{ h.csunesco_icon('inbox', 22) }} {{ _("No project pages are awaiting review.") }}</p>
         {% endif %}

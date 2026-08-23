@@ -1263,6 +1263,17 @@
 }
 
 /* ---- Admin tables (stack into labelled cards on mobile) ----------------- */
+
+/* Las tablas se apilan en tarjetas sólo bajo 640px, pero la de solicitudes de
+   proyecto tiene 6 columnas y 802px de ancho mínimo (medido en vivo). Entre
+   641px y ~802px —una tablet en vertical— no cabía y era la PÁGINA la que
+   ganaba scroll horizontal, arrastrando cabecera y pestañas con ella. Que
+   desborde la tabla dentro de su caja, nunca el documento. */
+.cs-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .cs-admin-table {
   width: 100%;
   border-collapse: collapse;
@@ -3213,16 +3224,23 @@
   color: var(--wb-ink-muted);
 }
 
-/* Ops cluster: vertically CENTERED on the summary bar (it used to hang past
-   the row edge), ghost buttons, red only as a hover outcome on delete. */
-.cs-pb-ops {
-  top: 50%;
-  transform: translateY(-50%);
-  right: 0.6rem;
-}
+/* Ops cluster: anclado a la BARRA de resumen, no centrado en la tarjeta.
+   Llevaba `top: 50%; transform: translateY(-50%)`, y el bloque contenedor es
+   `.cs-pb-block` entero (el único ancestro posicionado): con el bloque plegado
+   coincidían, pero al desplegarlo —que es el caso normal, `views_page.py:126`
+   abre los bloques con avisos— el 50% pasaba a ser la mitad de la tarjeta y
+   Subir / Bajar / Eliminar quedaban flotando sobre los campos del formulario.
+   Medido en vivo: bloque de 391px, centro del cluster a 196px, 171px por
+   debajo de la barra. Con `top: 0.5rem` se queda a 27px del borde tanto con 48
+   como con 665px de alto.
 
-@media (max-width: 599px) {
-  .cs-pb-ops { transform: none; }
+   La regla móvil que había debajo ponía `transform: none` SIN quitar el
+   `top: 50%`, así que en móvil el cluster empezaba directamente a media
+   tarjeta: mismo fallo, peor. Sobra al arreglar esto. */
+.cs-pb-ops {
+  top: 0.5rem;
+  transform: none;
+  right: 0.6rem;
 }
 
 /* ---- Editor: sticky action bar ------------------------------------------ */
