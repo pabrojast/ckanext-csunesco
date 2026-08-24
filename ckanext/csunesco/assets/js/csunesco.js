@@ -215,6 +215,18 @@
           sync();
         });
         area.addEventListener("input", sync);
+        // Accesibilidad: el label y el hint del form apuntan al textarea, que
+        // queda OCULTO — sin esto el contenteditable (role=textbox) no tiene
+        // nombre ni descripción accesibles.
+        if (source.id) {
+          var srcLabel = document.querySelector('label[for="' + source.id + '"]');
+          if (srcLabel) {
+            if (!srcLabel.id) { srcLabel.id = source.id + "-label"; }
+            area.setAttribute("aria-labelledby", srcLabel.id);
+          }
+        }
+        var describedBy = source.getAttribute("aria-describedby");
+        if (describedBy) { area.setAttribute("aria-describedby", describedBy); }
         source.hidden = true;
         source.parentNode.insertBefore(toolbar, source);
         source.parentNode.insertBefore(area, source);
@@ -223,7 +235,8 @@
   }
 
   // -------------------------------------------------------------------------
-  // Content editor: end-date toggle, live preview, add-media, disable-on-submit.
+  // Content editor: end-date toggle, add-media, disable-on-submit. (El rich
+  // editor ES la vista previa: la caja "Preview" aparte se eliminó.)
   // -------------------------------------------------------------------------
   function stripToAllowed(node) {
     var children = Array.prototype.slice.call(node.childNodes);
@@ -257,8 +270,6 @@
     var newsFields = document.getElementById("cs-news-fields");
     var mediaLabel = document.getElementById("cs-media-label");
     var mediaHint = document.getElementById("cs-media-hint");
-    var body = document.getElementById("cs-content-body");
-    var preview = document.getElementById("cs-content-preview");
     var mediaList = document.getElementById("cs-media-list");
     var mediaAdd = document.getElementById("cs-media-add");
     var submit = document.getElementById("cs-content-submit");
@@ -289,19 +300,6 @@
     if (typeSelect) {
       typeSelect.addEventListener("change", syncTypeFields);
       syncTypeFields();
-    }
-
-    // Live, allowlist-filtered preview of the body.
-    function renderPreview() {
-      if (!body || !preview) { return; }
-      var scratch = document.createElement("div");
-      scratch.innerHTML = body.value;
-      stripToAllowed(scratch);
-      preview.innerHTML = scratch.innerHTML;
-    }
-    if (body && preview) {
-      body.addEventListener("input", renderPreview);
-      renderPreview();
     }
 
     // Add another empty media URL input.

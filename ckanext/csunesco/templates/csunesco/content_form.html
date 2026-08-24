@@ -4,12 +4,15 @@
   News/event editor (increment 5, part B). Single-column accessible form that
   POSTs to csunesco_content_create (new) or csunesco_content_update (edit).
   Field errors wire through aria-describedby; CSRF token included; the submit
-  button disables on submit. The body is plain HTML limited to a small allowlist
-  (shown inline); a live preview is progressive enhancement only -- the SERVER
-  re-sanitizes everything before storage.
+  button disables on submit. The body is edited in the rich editor (WYSIWYG),
+  which doubles as its own preview -- the SERVER re-sanitizes everything
+  before storage.
 
-  All `{{ ... }}` output is autoescaped. The body preview is populated by JS from
-  the textarea in the author's own browser (never trusted server-side).
+  Layout: one WIDE card (cs-form-card--wide), no hero band -- the page title
+  lives inside the card so the editor reads as one coherent surface. Every
+  input carries an explicit type= — the CSS control selectors are
+  attribute-based, so an input tag without one matches none of them and
+  renders unstyled (guarded by tests/test_content_templates.py).
 
   Vars: mode ('new'|'edit'), project (dict|None), content (dict|None),
         data (echoed values), errors (dict), content_type_choices.
@@ -23,34 +26,37 @@
 {% else %}
   {% set action_url = h.url_for('csunesco.content_edit', id=content.id) %}
 {% endif %}
+{% if project %}
+  {% set cancel_url = h.url_for('csunesco.project_landing', slug=project.slug) %}
+  {% set cancel_label = project.title %}
+{% elif organization %}
+  {% set cancel_url = h.url_for('organization.read', id=organization.name) %}
+  {% set cancel_label = organization.title or organization.name %}
+{% else %}
+  {% set cancel_url = h.url_for('csunesco.admin_dashboard') %}
+  {% set cancel_label = _("Administration") %}
+{% endif %}
 
 {% block subtitle %}{{ _("Add content") if is_new else _("Edit content") }}{% endblock %}
 
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
-  {% if project %}
-    {% snippet "csunesco/snippets/context_nav.html", url=h.url_for('csunesco.project_landing', slug=project.slug), label=project.title %}
-  {% elif organization %}
-    {% snippet "csunesco/snippets/context_nav.html", url=h.url_for('organization.read', id=organization.name), label=organization.title or organization.name %}
-  {% else %}
-    {% snippet "csunesco/snippets/context_nav.html", url=h.url_for('csunesco.admin_dashboard'), label=_("Administration") %}
-  {% endif %}
-  <section class="cs-hero" aria-labelledby="cs-editor-title">
-    <h1 id="cs-editor-title">{{ _("Add content") if is_new else _("Edit content") }}</h1>
-    {% if project %}
-      <p>{{ _("For project:") }} <strong>{{ project.title }}</strong></p>
-    {% elif organization %}
-      <p>{{ _("For organization:") }} <strong>{{ organization.title or organization.name }}</strong></p>
-    {% endif %}
-  </section>
+  {% snippet "csunesco/snippets/context_nav.html", url=cancel_url, label=cancel_label %}
 
-  <section class="cs-card cs-form-card" aria-labelledby="cs-editor-form-title">
-    <h2 id="cs-editor-form-title" class="cs-form-heading">{{ _("Content details") }}</h2>
+  <section class="cs-card cs-form-card cs-form-card--wide" aria-labelledby="cs-editor-title">
+    <header class="cs-form-header">
+      <h1 id="cs-editor-title" class="cs-form-heading">{{ _("Add content") if is_new else _("Edit content") }}</h1>
+      {% if project %}
+        <p class="cs-hint">{{ _("For project") }} · <strong>{{ project.title }}</strong></p>
+      {% elif organization %}
+        <p class="cs-hint">{{ _("For organization") }} · <strong>{{ organization.title or organization.name }}</strong></p>
+      {% endif %}
+    </header>
 
     {% if not is_new and content %}
       <p class="cs-hint">
-        <strong>{{ _("Status:") }}</strong>
+        <strong>{{ _("Status") }}</strong>
         <span class="cs-status-badge cs-status-{{ content.status }}">{{ content.status }}</span>
       </p>
     {% else %}
@@ -82,75 +88,6 @@
           <p id="cs-content-title-error" class="cs-field-error" role="alert">{{ errors.title | join(', ') }}</p>
         {% endif %}
       </div>
-
-      {# ---- WINS-compatible news fields -------------------------------- #}
-      <fieldset id="cs-news-fields" class="cs-content-type-fields"
-                {% if data.content_type != 'cs-news' %}hidden{% endif %}>
-        <legend>{{ _("News presentation") }}</legend>
-        <div class="cs-field">
-          <label for="cs-content-excerpt">{{ _("Excerpt / summary") }}</label>
-          <textarea id="cs-content-excerpt" name="excerpt" rows="3" maxlength="500">{{ data.excerpt or '' }}</textarea>
-          <p class="cs-hint">{{ _("Shown on cards and previews. If empty, it is generated from the body.") }}</p>
-        </div>
-        <div class="cs-field">
-          <label for="cs-content-author">{{ _("Author / source organization") }}</label>
-          <input id="cs-content-author" name="author" value="{{ data.author or '' }}" maxlength="200">
-        </div>
-        <div class="cs-field">
-          <label for="cs-content-source-url">{{ _("Original source URL") }}</label>
-          <input type="url" id="cs-content-source-url" name="source_url" value="{{ data.source_url or '' }}" placeholder="https://…">
-        </div>
-        <div class="cs-field">
-          <span class="cs-field-legend">{{ _("Header image") }}</span>
-          {% snippet "csunesco/blocks/edit/_image_picker.html",
-                     input_id="cs-news-header", url_name="header_image_url",
-                     upload_name="header_image_upload", clear_name="header_image_clear",
-                     value=data.header_image_url, label=_("Header image URL"),
-                     clear_label=_("Remove header image"), url_field="header_image_url",
-                     upload_field="header_image_upload" %}
-          <label for="cs-news-header-alt">{{ _("Image description") }}</label>
-          <input id="cs-news-header-alt" name="header_image_alt" value="{{ data.header_image_alt or '' }}" maxlength="160">
-          {% snippet "csunesco/blocks/edit/_focal_picker.html", input_id="cs-news-header",
-                     image_url=data.header_image_url, x_name="header_focal_x", y_name="header_focal_y",
-                     focal_x=data.header_focal_x, focal_y=data.header_focal_y %}
-        </div>
-        <div class="cs-field">
-          <label for="cs-news-gallery-upload">{{ _("Image gallery") }}</label>
-          {% if h.csunesco_uploads_enabled() %}
-            <input type="file" id="cs-news-gallery-upload" name="gallery_upload" multiple accept="image/jpeg,image/png,image/webp">
-            <p class="cs-hint">{{ _("Select multiple images. Up to 12 are stored in selection order.") }}</p>
-          {% endif %}
-          <div class="cs-repeat-list" data-repeat-list>
-            {% set gallery = data.gallery or [] %}
-            {% for item in gallery + [{}, {}] %}
-              <div class="cs-repeat-row">
-                <input type="url" name="gallery_url" value="{{ item.url or '' }}" placeholder="https://…" aria-label="{{ _('Gallery image URL') }}">
-                <input name="gallery_alt" value="{{ item.alt or '' }}" placeholder="{{ _('Image description') }}">
-                <input name="gallery_caption" value="{{ item.caption or '' }}" placeholder="{{ _('Caption') }}">
-              </div>
-            {% endfor %}
-          </div>
-        </div>
-        <div class="cs-field">
-          <label>{{ _("Related links") }}</label>
-          {% set related = data.related_links or [] %}
-          {% for item in related + [{}, {}] %}
-            <div class="cs-repeat-row">
-              <input type="url" name="related_link_url" value="{{ item.url or '' }}" placeholder="https://…" aria-label="{{ _('Related link URL') }}">
-              <input name="related_link_label" value="{{ item.label or '' }}" placeholder="{{ _('Link label') }}">
-            </div>
-          {% endfor %}
-        </div>
-        <div class="cs-field">
-          <label for="cs-news-attachment">{{ _("News attachment") }}</label>
-          {% if h.csunesco_uploads_enabled() %}
-            <input type="file" id="cs-news-attachment" name="attachment_upload" accept=".pdf,.doc,.docx,application/pdf">
-          {% endif %}
-          <input type="url" name="attachment_url" value="{{ data.attachment_url or '' }}" placeholder="{{ _('Attachment URL') }}">
-          <input name="attachment_label" value="{{ data.attachment_label or '' }}" placeholder="{{ _('Attachment label') }}">
-          {% if data.attachment_url %}<label class="cs-pb-toggle"><input type="checkbox" name="attachment_clear" value="on"> {{ _("Remove current attachment") }}</label>{% endif %}
-        </div>
-      </fieldset>
 
       {# ---- Content type ---------------------------------------------- #}
       <div class="cs-field">
@@ -195,6 +132,121 @@
         {% endif %}
       </div>
 
+      {# ---- WINS-compatible news fields -------------------------------- #}
+      <fieldset id="cs-news-fields" class="cs-content-type-fields"
+                {% if data.content_type != 'cs-news' %}hidden{% endif %}>
+        <legend>{{ _("News presentation") }}</legend>
+        <div class="cs-field">
+          <label for="cs-content-excerpt">{{ _("Excerpt / summary") }}</label>
+          <textarea id="cs-content-excerpt" name="excerpt" rows="3" maxlength="500">{{ data.excerpt or '' }}</textarea>
+          <p class="cs-hint">{{ _("Shown on cards and previews. If empty, it is generated from the body.") }}</p>
+        </div>
+        <div class="cs-field">
+          <label for="cs-content-author">{{ _("Author / source organization") }}</label>
+          <input type="text" id="cs-content-author" name="author" value="{{ data.author or '' }}" maxlength="200">
+        </div>
+        <div class="cs-field">
+          <label for="cs-content-source-url">{{ _("Original source URL") }}</label>
+          <input type="url" id="cs-content-source-url" name="source_url" value="{{ data.source_url or '' }}" placeholder="https://…">
+        </div>
+        <div class="cs-field">
+          <span class="cs-field-legend">{{ _("Header image") }}</span>
+          {% snippet "csunesco/blocks/edit/_image_picker.html",
+                     input_id="cs-news-header", url_name="header_image_url",
+                     upload_name="header_image_upload", clear_name="header_image_clear",
+                     value=data.header_image_url, label=_("Header image URL"),
+                     clear_label=_("Remove header image"), url_field="header_image_url",
+                     upload_field="header_image_upload" %}
+          <label for="cs-news-header-alt">{{ _("Image description") }}</label>
+          <input type="text" id="cs-news-header-alt" name="header_image_alt" value="{{ data.header_image_alt or '' }}" maxlength="160">
+          {% snippet "csunesco/blocks/edit/_focal_picker.html", input_id="cs-news-header",
+                     image_url=data.header_image_url, x_name="header_focal_x", y_name="header_focal_y",
+                     focal_x=data.header_focal_x, focal_y=data.header_focal_y %}
+        </div>
+        <div class="cs-field">
+          <span class="cs-field-legend">{{ _("Image gallery") }}</span>
+          {% if h.csunesco_uploads_enabled() %}
+            <label class="cs-hint-inline" for="cs-news-gallery-upload">{{ _("Upload images") }}</label>
+            <input type="file" id="cs-news-gallery-upload" name="gallery_upload" multiple accept="image/jpeg,image/png,image/webp">
+            <p class="cs-hint">{{ _("Select multiple images. Up to 12 are stored in selection order.") }}</p>
+          {% endif %}
+          <div class="cs-repeat-list" data-repeat-list>
+            {% set gallery = data.gallery or [] %}
+            {% for item in gallery + [{}, {}] %}
+              <div class="cs-repeat-row">
+                <span>
+                  <label for="cs-gal-url-{{ loop.index }}">{{ _("Image URL") }}</label>
+                  <input type="url" id="cs-gal-url-{{ loop.index }}" name="gallery_url" value="{{ item.url or '' }}" placeholder="https://…">
+                </span>
+                <span>
+                  <label for="cs-gal-alt-{{ loop.index }}">{{ _("Image description") }}</label>
+                  <input type="text" id="cs-gal-alt-{{ loop.index }}" name="gallery_alt" value="{{ item.alt or '' }}">
+                </span>
+                <span>
+                  <label for="cs-gal-cap-{{ loop.index }}">{{ _("Caption") }}</label>
+                  <input type="text" id="cs-gal-cap-{{ loop.index }}" name="gallery_caption" value="{{ item.caption or '' }}">
+                </span>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="cs-field">
+          <span class="cs-field-legend">{{ _("Related links") }}</span>
+          <div class="cs-repeat-list">
+            {% set related = data.related_links or [] %}
+            {% for item in related + [{}, {}] %}
+              <div class="cs-repeat-row">
+                <span>
+                  <label for="cs-rel-url-{{ loop.index }}">{{ _("Link URL") }}</label>
+                  <input type="url" id="cs-rel-url-{{ loop.index }}" name="related_link_url" value="{{ item.url or '' }}" placeholder="https://…">
+                </span>
+                <span>
+                  <label for="cs-rel-label-{{ loop.index }}">{{ _("Link label") }}</label>
+                  <input type="text" id="cs-rel-label-{{ loop.index }}" name="related_link_label" value="{{ item.label or '' }}">
+                </span>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="cs-field">
+          <span class="cs-field-legend">{{ _("News attachment") }}</span>
+          {% if h.csunesco_uploads_enabled() %}
+            <label class="cs-hint-inline" for="cs-news-attachment">{{ _("Upload a document") }}</label>
+            <input type="file" id="cs-news-attachment" name="attachment_upload" accept=".pdf,.doc,.docx,application/pdf">
+          {% endif %}
+          <div class="cs-repeat-row">
+            <span>
+              <label for="cs-news-attachment-url">{{ _("Attachment URL") }}</label>
+              <input type="url" id="cs-news-attachment-url" name="attachment_url" value="{{ data.attachment_url or '' }}" placeholder="https://…">
+            </span>
+            <span>
+              <label for="cs-news-attachment-label">{{ _("Attachment label") }}</label>
+              <input type="text" id="cs-news-attachment-label" name="attachment_label" value="{{ data.attachment_label or '' }}">
+            </span>
+          </div>
+          {% if data.attachment_url %}<label class="cs-pb-toggle"><input type="checkbox" name="attachment_clear" value="on"> {{ _("Remove current attachment") }}</label>{% endif %}
+        </div>
+      </fieldset>
+
+      {# ---- Publication details (publications only) -------------------- #}
+      <fieldset id="cs-publication-fields" class="cs-content-type-fields"
+                {% if data.content_type != 'cs-publication' %}hidden{% endif %}>
+        <legend>{{ _("Publication details") }}</legend>
+        <div class="cs-field">
+          <label for="cs-content-authors">{{ _("Authors") }}</label>
+          <input type="text" id="cs-content-authors" name="authors"
+                 value="{{ data.authors or '' }}"
+                 placeholder="{{ _('e.g. A. Author, B. Author') }}">
+        </div>
+        <div class="cs-field">
+          <label for="cs-content-doi">{{ _("DOI") }}</label>
+          <input type="text" id="cs-content-doi" name="doi"
+                 value="{{ data.doi or '' }}"
+                 placeholder="10.xxxx/xxxxx">
+          <p class="cs-hint">{{ _("Optional. List the publication's authors and DOI if it has one.") }}</p>
+        </div>
+      </fieldset>
+
       {# ---- Terria map URL (maps only) --------------------------------- #}
       <div class="cs-field" id="cs-terria-field"
            {% if data.content_type != 'cs-map' %}hidden{% endif %}>
@@ -212,39 +264,21 @@
         {% endif %}
       </div>
 
-      {# ---- Publication details (publications only) -------------------- #}
-      <div class="cs-field" id="cs-publication-fields"
-           {% if data.content_type != 'cs-publication' %}hidden{% endif %}>
-        <label for="cs-content-authors">{{ _("Authors") }}</label>
-        <input type="text" id="cs-content-authors" name="authors"
-               value="{{ data.authors or '' }}"
-               placeholder="{{ _('e.g. A. Author, B. Author') }}">
-        <label for="cs-content-doi">{{ _("DOI") }}</label>
-        <input type="text" id="cs-content-doi" name="doi"
-               value="{{ data.doi or '' }}"
-               placeholder="10.xxxx/xxxxx">
-        <p class="cs-hint">{{ _("Optional. List the publication's authors and DOI if it has one.") }}</p>
-      </div>
-
       {# ---- Body ------------------------------------------------------- #}
       <div class="cs-field">
         <label for="cs-content-body">{{ _("Body") }}</label>
         <p id="cs-content-body-guide" class="cs-hint">
-          {{ _("Use the toolbar to add bold, italic, headings, lists and links. The preview below shows how the text will look.") }}
+          {{ _("Use the toolbar to add bold, italic, headings, lists and links.") }}
         </p>
         <textarea id="cs-content-body" name="body" rows="10" data-rich-editor
                   aria-describedby="cs-content-body-guide">{{ data.body or '' }}</textarea>
-        <div class="cs-preview-wrap">
-          <p class="cs-preview-label">{{ _("Preview") }}</p>
-          <div id="cs-content-preview" class="cs-rich-text cs-content-preview" aria-live="polite"></div>
-        </div>
       </div>
 
       {# ---- Media URLs ------------------------------------------------- #}
       <div class="cs-field">
-        <label id="cs-media-label"
-               data-label-default="{{ _('Media links (URLs)') }}"
-               data-label-publication="{{ _('Document links (URLs)') }}">{{ _("Media links (URLs)") }}</label>
+        <span class="cs-field-legend" id="cs-media-label"
+              data-label-default="{{ _('Media links (URLs)') }}"
+              data-label-publication="{{ _('Document links (URLs)') }}">{{ _("Media links (URLs)") }}</span>
         <p class="cs-hint" id="cs-media-hint"
            data-hint-default="{{ _('Optional. Add http/https links to images or documents.') }}"
            data-hint-publication="{{ _('Required. Add at least one link to the publication document (PDF, DOI landing page, …).') }}">{{ _("Optional. Add http/https links to images or documents.") }}</p>
@@ -296,11 +330,7 @@
           <span class="cs-btn-label">{{ _("Save") }}</span>
           <span class="cs-btn-spinner" aria-hidden="true" hidden></span>
         </button>
-        {% if project %}
-          <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.project_landing', slug=project.slug) }}">
-            {{ _("Cancel") }}
-          </a>
-        {% endif %}
+        <a class="cs-btn cs-btn-secondary" href="{{ cancel_url }}">{{ _("Cancel") }}</a>
       </div>
     </form>
   </section>
