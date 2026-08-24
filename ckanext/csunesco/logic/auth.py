@@ -358,6 +358,23 @@ def _join_scope_id(data_dict):
     return project.id if project is not None else None
 
 
+def decider_role(context, project_id):
+    """The role the acting user decides WITH on ``project_id``, for the audit
+    trail: ``platform_admin`` / ``project_manager`` / ``initiative_admin``,
+    or None when they hold none (or the lookup fails -- audit must never
+    block a decision the auth function already allowed)."""
+    try:
+        if _is_sysadmin(context):
+            return C.APPROVER_ROLE_PLATFORM_ADMIN
+        if _is_project_admin(context, project_id):
+            return C.APPROVER_ROLE_PROJECT_MANAGER
+        if _is_project_initiative_admin(context, project_id):
+            return C.APPROVER_ROLE_INITIATIVE_ADMIN
+    except Exception:
+        pass
+    return None
+
+
 def csunesco_join_approve(context, data_dict):
     project_id = _join_scope_id(data_dict)
     if (_is_sysadmin(context)
@@ -736,6 +753,13 @@ def csunesco_my_joined_projects(context, data_dict):
     return {'success': False, 'msg': tk._('You must be logged in')}
 
 
+def csunesco_my_join_requests(context, data_dict):
+    # "What became of the requests *I* filed" -- per-user by construction.
+    if context.get('user'):
+        return {'success': True}
+    return {'success': False, 'msg': tk._('You must be logged in')}
+
+
 def csunesco_data_chat(context, data_dict):
     """Ask a question about an approved data source's observations.
 
@@ -937,6 +961,7 @@ def get_auth_functions():
         'csunesco_data_chat': csunesco_data_chat,
         'csunesco_my_projects': csunesco_my_projects,
         'csunesco_my_joined_projects': csunesco_my_joined_projects,
+        'csunesco_my_join_requests': csunesco_my_join_requests,
         'csunesco_project_page_show': csunesco_project_page_show,
         'csunesco_project_page_update': csunesco_project_page_update,
         'csunesco_project_page_submit': csunesco_project_page_submit,

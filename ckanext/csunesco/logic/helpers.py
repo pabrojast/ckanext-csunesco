@@ -226,6 +226,64 @@ def csunesco_has_joined_projects():
         return False
 
 
+def csunesco_has_join_requests():
+    """True when the acting user has filed at least one join request (any
+    state) -- so a pending or rejected applicant still gets a "My projects"
+    entry that tells them what became of it. Fail-soft."""
+    if not tk.g.user:
+        return False
+    try:
+        import ckan.model as model
+        from ckanext.csunesco import db
+        user = model.User.get(tk.g.user)
+        if user is None:
+            return False
+        return bool(db.requests_of(user.id, limit=1))
+    except Exception:
+        log.warning('csunesco: join-requests check failed')
+        return False
+
+
+def csunesco_my_membership(project_id):
+    """The acting user's membership row on ``project_id`` (dict with the
+    decision trail and the decider's name) or None. Drives the join block:
+    a pending applicant sees "awaiting review", a member sees "approved by X
+    on <date>", instead of the bare form everyone used to get. Fail-soft."""
+    if not tk.g.user or not project_id:
+        return None
+    try:
+        import ckan.model as model
+        from ckanext.csunesco import db
+        user = model.User.get(tk.g.user)
+        if user is None:
+            return None
+        member = db.project_member(project_id, user.id)
+        if member is None:
+            return None
+        return db._decorate_member_people([db.member_dictize(member)])[0]
+    except Exception:
+        log.warning('csunesco: membership state could not be resolved')
+        return None
+
+
+def csunesco_member_role_label(role):
+    """Human label for a ``cs_project_member.role`` value."""
+    if role == constants.MEMBER_ROLE_PM:
+        return tk._('Project manager')
+    if role == constants.MEMBER_ROLE_EDITOR:
+        return tk._('Editor')
+    return tk._('Citizen scientist')
+
+
+def csunesco_approver_role_label(role):
+    """Human label for the role a decision was taken with."""
+    return {
+        constants.APPROVER_ROLE_PLATFORM_ADMIN: tk._('Platform admin'),
+        constants.APPROVER_ROLE_PROJECT_MANAGER: tk._('Project manager'),
+        constants.APPROVER_ROLE_INITIATIVE_ADMIN: tk._('Initiative admin'),
+    }.get(role, tk._('Reviewer'))
+
+
 def csunesco_field_audience_ok(field, project):
     """May the acting visitor see ``field`` of ``project``? (spec section 5)
 

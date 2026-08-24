@@ -698,6 +698,12 @@ def csunesco_project_approve(context, data_dict):
         member.created = now
         member.reviewed_by = current_user_id(context)
         member.reviewed_at = now
+        member.reviewed_role = auth.decider_role(context, project.id)
+        member.reviewed_via = C.MEMBER_SOURCE_PORTAL
+        db.append_member_event(
+            member, 'manager_assigned', actor_id=current_user_id(context),
+            actor_name=context.get('user'), actor_role=member.reviewed_role,
+            via=C.MEMBER_SOURCE_PORTAL, note='project approved')
         model.Session.add(member)
     db.ensure_stats(project.id)
     # Seed the derived member-states counter from the declared countries; the
@@ -900,6 +906,11 @@ def csunesco_project_show(context, data_dict):
         names[i] for i in adm_ids if i in names)
     result['admins'] = sorted(
         set(result['project_managers']) | set(result['initiative_admins']))
+    # Every membership row with its decision trail -- managers only (it
+    # names the applicants). The CS Toolbox reads it through its service
+    # token to mirror decisions taken on the portal.
+    if auth.can_manage_project(context, project.id):
+        result['members'] = db.project_members(project.id)
     return result
 
 
@@ -1007,6 +1018,20 @@ def csunesco_my_projects(context, data_dict):
 
 
 @tk.side_effect_free
+def csunesco_my_join_requests(context, data_dict):
+    """Every join request the acting user filed, with what became of it.
+
+    ``csunesco_my_joined_projects`` lists APPROVED memberships only, so an
+    applicant whose request was pending or rejected had no page that said
+    so -- the flash on submit was the last they ever heard. Each row carries
+    ``status``, ``reviewed_by_name``, ``reviewed_role``, ``reviewed_via``,
+    ``reviewed_at`` and the append-only ``history``.
+    """
+    tk.check_access('csunesco_my_join_requests', context, data_dict)
+    return {'requests': db.requests_of(current_user_id(context))}
+
+
+@tk.side_effect_free
 def csunesco_my_joined_projects(context, data_dict):
     """The APPROVED projects the acting user participates in (any role).
 
@@ -1022,6 +1047,7 @@ def get_actions():
     return {
         'csunesco_my_projects': csunesco_my_projects,
         'csunesco_my_joined_projects': csunesco_my_joined_projects,
+        'csunesco_my_join_requests': csunesco_my_join_requests,
         'csunesco_project_request_create': csunesco_project_request_create,
         'csunesco_project_update': csunesco_project_update,
         'csunesco_project_resubmit': csunesco_project_resubmit,

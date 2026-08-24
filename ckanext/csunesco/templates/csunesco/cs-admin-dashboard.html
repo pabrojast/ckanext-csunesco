@@ -439,6 +439,62 @@
       {% else %}
         <p class="cs-empty cs-wb-empty">{{ h.csunesco_icon('inbox', 22) }} {{ _("No join requests are awaiting review.") }}</p>
       {% endif %}
+
+      {#
+        Who approved or rejected whom, as what, when, and through which
+        channel. Until this band existed a decision vanished from the panel
+        the moment it was taken -- the row above simply disappeared -- so a
+        project manager could not tell whether a platform admin had let
+        someone in behind their back (2026-08-24, the Paris test session).
+      #}
+      {% if joins_moderated %}
+        <h3 class="cs-section-title">{{ _("Recently decided") }}</h3>
+        <div class="cs-table-scroll">
+          <table class="cs-admin-table">
+            <thead>
+              <tr>
+                <th scope="col">{{ _("User") }}</th>
+                <th scope="col">{{ _("Project") }}</th>
+                <th scope="col">{{ _("Decision") }}</th>
+                <th scope="col">{{ _("Decided by") }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for j in joins_moderated %}
+                <tr>
+                  <td data-label="{{ _('User') }}">
+                    <strong>{{ j.user_name or j.user_id }}</strong>
+                    {% if j.user_login and j.user_login != j.user_name %}
+                      <span class="cs-muted">({{ j.user_login }})</span>
+                    {% endif %}
+                    <br><span class="cs-chip">{{ h.csunesco_member_role_label(j.role) }}</span>
+                  </td>
+                  <td data-label="{{ _('Project') }}">{{ j.project_title or j.project_id }}</td>
+                  <td data-label="{{ _('Decision') }}">
+                    {% if j.status == 'active' %}
+                      <span class="cs-status-badge cs-status-approved">{{ _("Approved") }}</span>
+                    {% else %}
+                      <span class="cs-status-badge cs-status-rejected">{{ _("Rejected") }}</span>
+                    {% endif %}
+                  </td>
+                  <td data-label="{{ _('Decided by') }}">
+                    {{ j.reviewed_by_name or j.reviewed_by or "—" }}
+                    {% if j.reviewed_role %}
+                      <span class="cs-chip">{{ h.csunesco_approver_role_label(j.reviewed_role) }}</span>
+                    {% endif %}
+                    <br>
+                    <span class="cs-muted">
+                      {%- if j.reviewed_at %}{{ h.render_datetime(j.reviewed_at, with_hours=True) }}{% endif -%}
+                      {%- if j.reviewed_via == 'app' %} · {{ _("via the CS Toolbox app") }}
+                      {%- elif j.reviewed_via == 'ckan' %} · {{ _("on the portal") }}{% endif -%}
+                    </span>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
     </div>
 
     {# ---- Content to review ------------------------------------------- #}

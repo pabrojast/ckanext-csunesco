@@ -35,7 +35,8 @@ import sqlalchemy as sa
 from ckan.model.meta import metadata, mapper, Session  # noqa: F401
 from ckan.model.domain_object import DomainObject
 
-from ckanext.csunesco.constants import CS_INITIATIVES, MEMBER_ROLE_PM
+from ckanext.csunesco.constants import (
+    CS_INITIATIVES, MEMBER_ROLE_PM, MEMBER_STATUS_ACTIVE, MEMBER_STATUS_REJECTED)
 
 from ckanext.csunesco import constants
 
@@ -104,6 +105,18 @@ cs_project_member_table = Table(
     # Who decided the join (approve/reject) and when — audit trail.
     Column('reviewed_by', types.UnicodeText),
     Column('reviewed_at', types.DateTime),
+    # The decider's ROLE at decision time (constants.APPROVER_ROLE_*) and the
+    # channel the decision came through: 'app' = the CS Toolbox acting through
+    # its service token for a named person, 'ckan' = a click on this portal.
+    # Until these existed every app-mediated decision read "reviewed by
+    # ckan_admin" and nothing said whether a PM or a platform admin decided.
+    Column('reviewed_role', types.UnicodeText),
+    Column('reviewed_via', types.UnicodeText),
+    # Append-only trail: [{event, actor_id, actor_name, actor_role, via, at,
+    # note}, ...]. ``reviewed_*`` only hold the LAST decision and the row is
+    # unique per (project, user), so a rejected-then-reapplied request used to
+    # erase who had decided before. This never forgets.
+    Column('history', types.Text, default=u'[]'),
     Column('created', types.DateTime, default=_utcnow),
     UniqueConstraint('project_id', 'user_id',
                      name='uq_cs_project_member_project_user'),
@@ -385,6 +398,9 @@ _AUTO_HEAL_COLUMNS = [
     ('cs_project_member', 'reviewed_by', 'TEXT'),
     ('cs_project_member', 'reviewed_at', 'TIMESTAMP'),
     ('cs_project_member', 'note', 'TEXT'),
+    ('cs_project_member', 'reviewed_role', 'TEXT'),
+    ('cs_project_member', 'reviewed_via', 'TEXT'),
+    ('cs_project_member', 'history', "TEXT DEFAULT '[]'"),
     ('cs_content', 'featured', 'BOOLEAN DEFAULT FALSE'),
     ('cs_content', 'extras', "TEXT DEFAULT '{}'"),
     ('cs_content', 'slug', 'TEXT'),
@@ -798,11 +814,12 @@ def project_member(project_id, user_id):
     )
 
 
-def set_member_status(project_id, user_id, status, reviewed_by=None):
+def set_member_status(project_id, user_id, status, reviewed_by=None,
+                      reviewed_role=None, reviewed_via=None):
     """Set a membership's status in place (no commit). Returns the member/None.
 
     ``reviewed_by`` (when given) is persisted together with the decision
-    timestamp — the join audit trail (P2).
+    timestamp, the decider's role and the channel — the join audit trail.
     """
     member = project_member(project_id, user_id)
     if member is None:
@@ -811,6 +828,36 @@ def set_member_status(project_id, user_id, status, reviewed_by=None):
     if reviewed_by:
         member.reviewed_by = reviewed_by
         member.reviewed_at = _utcnow()
+        member.reviewed_role = reviewed_role
+        member.reviewed_via = reviewed_via
+    return member
+
+
+# The trail is bounded like ``extras['edit_history']``: fifty decisions on one
+# membership is already a story nobody reads to the end.
+MEMBER_HISTORY_LIMIT = 50
+
+
+def append_member_event(member, event, actor_id=None, actor_name=None,
+                        actor_role=None, via=None, note=None):
+    """Append one event to the membership's append-only ``history`` (no commit).
+
+    ``actor_role`` is one of ``constants.APPROVER_ROLES`` for a decision, or
+    ``'citizen_scientist'`` for the applicant's own acts (request / re-request).
+    """
+    history = _load_json(getattr(member, 'history', None), [])
+    if not isinstance(history, list):
+        history = []
+    history.append({
+        'event': event,
+        'actor_id': actor_id,
+        'actor_name': actor_name,
+        'actor_role': actor_role,
+        'via': via,
+        'at': _utcnow().isoformat(),
+        'note': note,
+    })
+    member.history = json.dumps(history[-MEMBER_HISTORY_LIMIT:])
     return member
 
 
@@ -1059,8 +1106,133 @@ def member_dictize(member):
         'note': getattr(member, 'note', None),
         'reviewed_by': getattr(member, 'reviewed_by', None),
         'reviewed_at': _iso(getattr(member, 'reviewed_at', None)),
+        'reviewed_role': getattr(member, 'reviewed_role', None),
+        'reviewed_via': getattr(member, 'reviewed_via', None),
+        'history': _load_json(getattr(member, 'history', None), []) or [],
         'created': member.created.isoformat() if member.created else None,
     }
+
+
+def _user_names(user_ids):
+    """``{user_id: (login, display_name)}`` for CKAN accounts, fail-soft.
+
+    Guarded and issued LAST by every caller (see ``pending_joins``): a failing
+    read of CKAN's ``user`` table must degrade to bare ids, never poison the
+    session for the rows that come from our own tables.
+    """
+    ids = [uid for uid in set(user_ids or []) if uid]
+    if not ids:
+        return {}
+    import ckan.model as model
+    try:
+        return {
+            user.id: (user.name, user.display_name or user.name)
+            for user in Session.query(model.User)
+            .filter(model.User.id.in_(ids)).all()
+        }
+    except Exception:
+        log.warning('csunesco: member accounts could not be resolved')
+        return {}
+
+
+def _decorate_member_people(items):
+    """Attach ``user_name``/``user_login`` and ``reviewed_by_name``/
+    ``reviewed_by_login`` to member dicts, in ONE guarded query."""
+    names = _user_names([i.get('user_id') for i in items]
+                        + [i.get('reviewed_by') for i in items])
+    for item in items:
+        login, display = names.get(item.get('user_id'), (None, None))
+        item['user_login'] = login
+        item['user_name'] = display or item.get('user_id')
+        rlogin, rdisplay = names.get(item.get('reviewed_by'), (None, None))
+        item['reviewed_by_login'] = rlogin
+        item['reviewed_by_name'] = rdisplay
+    return items
+
+
+def project_members(project_id):
+    """Every membership row of a project (any status), newest first, with the
+    people resolved. Manager-only surface (``csunesco_project_show`` gates it):
+    the CS Toolbox mirrors decisions taken on the portal from this list."""
+    _ensure_mappers()
+    if not project_id:
+        return []
+    rows = (
+        Session.query(CsProjectMember)
+        .filter(CsProjectMember.project_id == project_id)
+        .order_by(CsProjectMember.created.desc(), CsProjectMember.id)
+        .all()
+    )
+    return _decorate_member_people([member_dictize(m) for m in rows])
+
+
+def requests_of(user_id, limit=100):
+    """Every join request ``user_id`` ever filed, with its decision.
+
+    The applicant's own view: pending, approved and rejected alike, most
+    recently decided first. Before this a citizen scientist had NO page that
+    said what became of their request -- ``projects_joined`` lists approved
+    memberships only.
+    """
+    _ensure_mappers()
+    if not user_id:
+        return []
+    rows = (
+        Session.query(CsProjectMember, CsProject.title, CsProject.slug,
+                      CsProject.initiative_group, CsProject.status)
+        .join(CsProject, CsProject.id == CsProjectMember.project_id)
+        .filter(CsProjectMember.user_id == user_id)
+        .order_by(sa.func.coalesce(CsProjectMember.reviewed_at,
+                                   CsProjectMember.created).desc(),
+                  CsProjectMember.id)
+        .limit(limit)
+        .all()
+    )
+    items = []
+    for member, title, slug, group, project_status in rows:
+        item = member_dictize(member)
+        item['project_title'] = title
+        item['project_slug'] = slug
+        item['initiative_group'] = group
+        item['project_status'] = project_status
+        items.append(item)
+    return _decorate_member_people(items)
+
+
+def moderated_joins(project_ids=None, limit=20, offset=0):
+    """Recently DECIDED join requests in scope. Returns ``(total, [dict, ...])``.
+
+    The review panel's answer to "who approved whom, when, and as what":
+    mirrors :func:`pending_joins` (same scoping) but lists rows that carry a
+    decision -- approved members and rejected applicants -- most recent
+    decision first, each with the decider resolved to a name.
+    """
+    _ensure_mappers()
+    query = (
+        Session.query(CsProjectMember, CsProject.title, CsProject.slug)
+        .join(CsProject, CsProject.id == CsProjectMember.project_id)
+        .filter(CsProjectMember.status.in_(
+            (MEMBER_STATUS_ACTIVE, MEMBER_STATUS_REJECTED)))
+        .filter(CsProjectMember.reviewed_at.isnot(None))
+    )
+    if project_ids is not None:
+        if not project_ids:
+            return 0, []
+        query = query.filter(CsProjectMember.project_id.in_(project_ids))
+    total = query.count()
+    rows = (
+        query.order_by(CsProjectMember.reviewed_at.desc(), CsProjectMember.id)
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    items = []
+    for member, title, slug in rows:
+        item = member_dictize(member)
+        item['project_title'] = title
+        item['project_slug'] = slug
+        items.append(item)
+    return total, _decorate_member_people(items)
 
 
 # ---------------------------------------------------------------------------

@@ -383,6 +383,114 @@ def test_join_approve_records_the_caller_not_the_apps_approved_by(
         'project_slug': 'douro-basin', 'username': 'maria', 'approved_by': 7,
     })
     assert out['membership']['reviewed_by'] == 'cs-toolbox-service'
+    assert out['membership']['reviewed_via'] == 'ckan'
+
+
+def test_join_approve_records_the_named_app_decider_and_their_role(
+        service, session, project, monkeypatch):
+    """The audit gap behind the Paris test session: every app approval read
+    "reviewed by ckan_admin". The app now names the person who clicked and
+    the role they hold; the portal records THAT, flagged as via the app."""
+    import ckan.model as model
+    monkeypatch.setattr(model.User, 'get',
+                        staticmethod(lambda name: _ckan_user(session, name)))
+    members_action.csunesco_join_request_create(
+        _service_ctx(), _join_payload())
+    out = members_action.csunesco_join_approve(_service_ctx(), {
+        'programme_id': 42,
+        'project_slug': 'douro-basin',
+        'username': 'maria',
+        'decided_by_username': 'charlene',
+        'decided_by_role': 'project_manager',
+    })
+    membership = out['membership']
+    assert membership['reviewed_by'] == 'user-charlene'
+    assert membership['reviewed_role'] == 'project_manager'
+    assert membership['reviewed_via'] == 'app'
+    assert membership['reviewed_at'] is not None
+    last = membership['history'][-1]
+    assert (last['event'], last['actor_name'], last['actor_role'], last['via']) == (
+        'approved', 'charlene', 'project_manager', 'app')
+
+
+def test_an_unknown_app_decider_falls_back_to_the_token_but_keeps_the_name(
+        service, session, project, monkeypatch):
+    import ckan.model as model
+    monkeypatch.setattr(model.User, 'get',
+                        staticmethod(lambda name: _ckan_user(session, name)))
+    members_action.csunesco_join_request_create(
+        _service_ctx(), _join_payload())
+    monkeypatch.setattr(model.User, 'get', staticmethod(lambda name: None))
+    out = members_action.csunesco_join_approve(_service_ctx(), {
+        'project_slug': 'douro-basin', 'user_id': 'user-maria',
+        'decided_by_username': 'csmanager', 'decided_by_role': 'bogus',
+    })
+    membership = out['membership']
+    assert membership['reviewed_by'] == 'cs-toolbox-service'
+    assert membership['reviewed_role'] is None      # not one of the 3 roles
+    assert membership['reviewed_via'] == 'app'
+    assert membership['history'][-1]['actor_name'] == 'csmanager'
+
+
+def test_join_reject_from_the_app_records_the_decider_too(
+        service, session, project, monkeypatch):
+    import ckan.model as model
+    monkeypatch.setattr(model.User, 'get',
+                        staticmethod(lambda name: _ckan_user(session, name)))
+    members_action.csunesco_join_request_create(
+        _service_ctx(), _join_payload())
+    out = members_action.csunesco_join_reject(_service_ctx(), {
+        'project_slug': 'douro-basin', 'username': 'maria',
+        'decided_by_username': 'charlene',
+        'decided_by_role': 'platform_admin',
+    })
+    assert out['status'] == 'rejected'
+    assert out['reviewed_by'] == 'user-charlene'
+    assert out['reviewed_role'] == 'platform_admin'
+    assert out['reviewed_via'] == 'app'
+    assert out['history'][-1]['event'] == 'rejected'
+
+
+def test_project_show_lists_members_with_their_decision_for_a_manager(
+        service, session, project, monkeypatch):
+    """The read the app uses to mirror portal-side decisions: every row, its
+    status and its audit trail. Gated by can_manage_project (patched True
+    by the service fixture)."""
+    import ckan.model as model
+    monkeypatch.setattr(model.User, 'get',
+                        staticmethod(lambda name: _ckan_user(session, name)))
+    monkeypatch.setattr(projects_action, '_active_usernames', lambda ids: {})
+    members_action.csunesco_join_request_create(
+        _service_ctx(), _join_payload())
+    members_action.csunesco_join_approve(_service_ctx(), {
+        'project_slug': 'douro-basin', 'username': 'maria',
+        'decided_by_username': 'charlene',
+        'decided_by_role': 'project_manager',
+    })
+    shown = projects_action.csunesco_project_show(
+        _service_ctx(), {'slug': 'douro-basin'})
+    members = shown['members']
+    assert [m['user_id'] for m in members] == ['user-maria']
+    assert members[0]['status'] == 'active'
+    assert members[0]['reviewed_by'] == 'user-charlene'
+    assert members[0]['reviewed_role'] == 'project_manager'
+    assert members[0]['reviewed_via'] == 'app'
+    assert [e['event'] for e in members[0]['history']] == [
+        'requested', 'approved']
+
+
+def test_project_show_hides_members_from_a_non_manager(
+        session, project, monkeypatch):
+    monkeypatch.setattr(tk, 'check_access', lambda *a, **k: True)
+    monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: False)
+    monkeypatch.setattr(cs_auth, 'can_manage_project',
+                        lambda context, project_id: False)
+    monkeypatch.setattr(projects_action, '_active_usernames', lambda ids: {})
+    monkeypatch.setattr(db, 'initiative_admin_user_ids', lambda group: [])
+    shown = projects_action.csunesco_project_show(
+        {'user': 'mallory', 'auth_user_obj': _User('mallory')},
+        {'slug': 'douro-basin'})
+    assert 'members' not in shown
 
 
 # --------------------------------------------------------------------------- #

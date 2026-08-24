@@ -266,3 +266,128 @@ def test_a_sysadmin_bypasses_the_gate(actions, session, monkeypatch):
     out = actions.csunesco_join_request_create(
         _ctx(), {'project_id': project.id})
     assert out['status'] == 'pending'
+
+
+# --------------------------------------------------------------------------- #
+# Audit trail: who decided, as what, through which channel -- never erased     #
+# --------------------------------------------------------------------------- #
+
+def test_a_re_request_keeps_the_previous_decision_in_the_trail(
+        actions, session, project, monkeypatch):
+    """The row is unique per (project, user), so re-asking used to WIPE
+    reviewed_by/reviewed_at. Now the last decision stays on the row and the
+    append-only history has the whole story."""
+    monkeypatch.setattr(cs_auth, 'decider_role',
+                        lambda context, project_id: 'project_manager')
+    actions.csunesco_join_request_create(_ctx('citizen-1'),
+                                         {'project_id': project.id})
+    actions.csunesco_join_reject(
+        _ctx('pm-1'), {'project_id': project.id, 'user_id': 'citizen-1'})
+    again = actions.csunesco_join_request_create(
+        _ctx('citizen-1'), {'project_id': project.id, 'note': 'Second try.'})
+    assert again['reopened'] is True
+    assert again['status'] == 'pending'
+    assert again['reviewed_by'] == 'pm-1'            # the "no" is not erased
+    assert again['reviewed_role'] == 'project_manager'
+    assert again['reviewed_via'] == 'ckan'
+    events = [(e['event'], e['actor_name'], e['actor_role'])
+              for e in again['history']]
+    assert events == [
+        ('requested', 'citizen-1', 'citizen_scientist'),
+        ('rejected', 'pm-1', 'project_manager'),
+        ('reopened', 'citizen-1', 'citizen_scientist'),
+    ]
+    assert again['history'][-1]['note'] == 'Second try.'
+
+
+def test_a_portal_decision_records_the_callers_role_from_auth(
+        actions, session, project, monkeypatch):
+    calls = []
+
+    def _role(context, project_id):
+        calls.append((context['user'], project_id))
+        return 'initiative_admin'
+    monkeypatch.setattr(cs_auth, 'decider_role', _role)
+    actions.csunesco_join_request_create(_ctx('citizen-2'),
+                                         {'project_id': project.id})
+    out = actions.csunesco_join_approve(
+        _ctx('adm-1'), {'project_id': project.id, 'user_id': 'citizen-2'})
+    membership = out['membership']
+    assert calls == [('adm-1', project.id)]
+    assert membership['reviewed_by'] == 'adm-1'
+    assert membership['reviewed_role'] == 'initiative_admin'
+    assert membership['reviewed_via'] == 'ckan'
+    assert membership['history'][-1]['event'] == 'approved'
+
+
+def test_revoking_an_active_member_is_its_own_event(
+        actions, session, project, monkeypatch):
+    monkeypatch.setattr(cs_auth, 'decider_role',
+                        lambda context, project_id: 'project_manager')
+    actions.csunesco_join_request_create(_ctx('citizen-3'),
+                                         {'project_id': project.id})
+    actions.csunesco_join_approve(
+        _ctx('pm-1'), {'project_id': project.id, 'user_id': 'citizen-3'})
+    out = actions.csunesco_join_reject(
+        _ctx('pm-1'), {'project_id': project.id, 'user_id': 'citizen-3',
+                       'reason': 'Left the programme.'})
+    assert [e['event'] for e in out['history']] == [
+        'requested', 'approved', 'revoked']
+    assert out['history'][-1]['note'] == 'Left the programme.'
+
+
+def test_the_applicant_sees_every_request_with_its_decision(
+        actions, session, project, monkeypatch):
+    monkeypatch.setattr(cs_auth, 'decider_role',
+                        lambda context, project_id: 'project_manager')
+    other = db.CsProject()
+    other.slug = 'river-y'
+    other.title = 'River Y'
+    other.status = 'approved'
+    session.add(other)
+    session.commit()
+    actions.csunesco_join_request_create(_ctx('citizen-4'),
+                                         {'project_id': project.id})
+    actions.csunesco_join_request_create(_ctx('citizen-4'),
+                                         {'project_id': other.id})
+    actions.csunesco_join_approve(
+        _ctx('pm-1'), {'project_id': other.id, 'user_id': 'citizen-4'})
+
+    from ckanext.csunesco.logic.action import projects as projects_action
+    rows = projects_action.csunesco_my_join_requests(
+        _ctx('citizen-4'), {})['requests']
+    by_slug = {r['project_slug']: r for r in rows}
+    assert set(by_slug) == {'river-x', 'river-y'}
+    assert by_slug['river-x']['status'] == 'pending'
+    assert by_slug['river-x']['reviewed_at'] is None
+    approved = by_slug['river-y']
+    assert approved['status'] == 'active'
+    assert approved['reviewed_by'] == 'pm-1'
+    assert approved['reviewed_role'] == 'project_manager'
+    assert approved['project_title'] == 'River Y'
+    # Most recently decided first.
+    assert rows[0]['project_slug'] == 'river-y'
+    # Nobody else's requests leak in.
+    assert projects_action.csunesco_my_join_requests(
+        _ctx('citizen-5'), {})['requests'] == []
+
+
+def test_moderated_joins_lists_decided_rows_most_recent_first(
+        actions, session, project, monkeypatch):
+    monkeypatch.setattr(cs_auth, 'decider_role',
+                        lambda context, project_id: 'project_manager')
+    for who in ('a', 'b', 'c'):
+        actions.csunesco_join_request_create(_ctx(who), {'project_id': project.id})
+    actions.csunesco_join_approve(_ctx('pm-1'),
+                                  {'project_id': project.id, 'user_id': 'a'})
+    actions.csunesco_join_reject(_ctx('pm-1'),
+                                 {'project_id': project.id, 'user_id': 'b'})
+    total, rows = db.moderated_joins([project.id])
+    assert total == 2
+    assert [(r['user_id'], r['status']) for r in rows] == [
+        ('b', 'rejected'), ('a', 'active')]
+    assert rows[0]['reviewed_role'] == 'project_manager'
+    assert rows[0]['project_title'] == 'River X'
+    # 'c' is still pending: not a decision, not listed here.
+    assert db.moderated_joins([])[0] == 0            # empty scope -> nothing
+    assert db.moderated_joins(None)[0] == 2          # sysadmin scope -> all

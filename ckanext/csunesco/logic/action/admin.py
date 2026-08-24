@@ -133,6 +133,7 @@ def csunesco_admin_pending_list(context, data_dict):
             context, None, limit, offset)
         _mod_count, content_moderated = db.moderated_content(
             None, limit, offset)
+        _modj_count, joins_moderated = db.moderated_joins(None, limit, offset)
         _data_count, data_requests = db.pending_data_sources(limit, offset)
         _conn_count, data_connected = db.approved_data_sources(
             CONNECTED_LIST_LIMIT, 0)
@@ -163,6 +164,8 @@ def csunesco_admin_pending_list(context, data_dict):
             context, scope, limit, offset)
         _mod_count, content_moderated = db.moderated_content(
             scope, limit, offset)
+        _modj_count, joins_moderated = db.moderated_joins(
+            scope, limit, offset)
 
     return {
         'project_requests': project_requests,
@@ -172,6 +175,9 @@ def csunesco_admin_pending_list(context, data_dict):
         # the only surface from which a published row can be withdrawn or a
         # rejected one restored. Additive key -- existing consumers unaffected.
         'content_moderated': content_moderated,
+        # Recently decided join requests in the same scope: who approved or
+        # rejected whom, as what role, when and through which channel.
+        'joins_moderated': joins_moderated,
         'data_requests': data_requests,
         # Additive: approved sources whose upstream form the panel health-checks.
         # Deliberately NOT part of ``counts`` -- an unreachable source is not

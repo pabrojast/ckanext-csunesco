@@ -84,6 +84,37 @@ def _resolve_actor(context, data_dict):
     return current_user_id(context), False
 
 
+def _resolve_decider(context, project_id, data_dict):
+    """Who decides, as what, through which channel: ``(reviewer_id, role,
+    via, actor_name)``.
+
+    The CS Toolbox app approves/rejects through ONE sysadmin service token
+    and names the real decider in ``decided_by_username`` + their role in
+    ``decided_by_role``. Honoured ONLY for a sysadmin caller (the join's own
+    trusted-proxy rule); an unknown username falls back to the token but the
+    name still reaches the history, so the person is never lost. A portal
+    click records the caller, with the role derived from the auth branch
+    that let them in (``auth.decider_role``).
+    """
+    from ckanext.csunesco.logic import auth as cs_auth
+    data_dict = data_dict or {}
+    username = (data_dict.get('decided_by_username') or '').strip()
+    if username and cs_auth._is_sysadmin(context):
+        role = data_dict.get('decided_by_role')
+        if role not in C.APPROVER_ROLES:
+            role = None
+        try:
+            user = model.User.get(username)
+        except Exception:
+            user = None
+        reviewer_id = user.id if user is not None else current_user_id(context)
+        return reviewer_id, role, C.MEMBER_SOURCE_APP, username
+    return (current_user_id(context),
+            cs_auth.decider_role(context, project_id),
+            C.MEMBER_SOURCE_PORTAL,
+            context.get('user'))
+
+
 def _participation_closed(project):
     """True when the project EXPLICITLY closed public participation.
 
@@ -135,14 +166,19 @@ def csunesco_join_request_create(context, data_dict):
     existing = db.project_member(project.id, user_id)
     if existing is not None:
         reopened = False
-        if existing.status == 'rejected':
+        if existing.status == C.MEMBER_STATUS_REJECTED:
             # Let them ask again, the way a rejected PROJECT can be resubmitted.
             # Approving is still the reviewer's call; this only re-queues.
-            existing.status = 'pending'
-            existing.reviewed_by = None
-            existing.reviewed_at = None
+            # The previous decision STAYS on the row (reviewed_*) and in the
+            # history: re-asking must not erase who said no, and when.
+            existing.status = C.MEMBER_STATUS_PENDING
+            db.append_member_event(
+                existing, 'reopened', actor_id=user_id,
+                actor_name=(data_dict.get('username') if on_behalf
+                            else context.get('user')),
+                actor_role='citizen_scientist', via=source, note=note)
             reopened = True
-        if note and existing.status == 'pending':
+        if note and existing.status == C.MEMBER_STATUS_PENDING:
             existing.note = note
         if reopened or note:
             existing.source = source
@@ -163,6 +199,11 @@ def csunesco_join_request_create(context, data_dict):
     # already sending ``note`` on every join, only for it to be dropped here.
     member.note = note
     member.created = _utcnow()
+    db.append_member_event(
+        member, 'requested', actor_id=user_id,
+        actor_name=(data_dict.get('username') if on_behalf
+                    else context.get('user')),
+        actor_role='citizen_scientist', via=source, note=note)
     model.Session.add(member)
     model.Session.commit()
 
@@ -197,9 +238,11 @@ def _resolve_membership_keys(data_dict):
 def csunesco_join_approve(context, data_dict):
     """Approve a pending join-request; bump ``citizen_scientists`` once.
 
-    ``approved_by`` is accepted and IGNORED: the CS Toolbox app sends its own
-    local integer user id there, which means nothing on the portal. The
-    reviewer of record is always the authenticated caller.
+    The reviewer of record is the authenticated caller -- unless the caller
+    is the sysadmin service token acting for a named person
+    (``decided_by_username`` + ``decided_by_role``, see ``_resolve_decider``),
+    in which case THAT person is recorded, with ``reviewed_via='app'``. The
+    legacy ``approved_by`` (an ofform-local integer) is still ignored.
     """
     tk.check_access('csunesco_join_approve', context, data_dict)
     data_dict = data_dict or {}
@@ -214,8 +257,13 @@ def csunesco_join_approve(context, data_dict):
             'Only pending memberships can be approved (current status: %s)'
         ) % member.status]})
 
-    db.set_member_status(project_id, user_id, 'active',
-                         reviewed_by=current_user_id(context))
+    reviewer_id, role, via, actor_name = _resolve_decider(
+        context, project_id, data_dict)
+    member = db.set_member_status(
+        project_id, user_id, C.MEMBER_STATUS_ACTIVE, reviewed_by=reviewer_id,
+        reviewed_role=role, reviewed_via=via)
+    db.append_member_event(member, 'approved', actor_id=reviewer_id,
+                           actor_name=actor_name, actor_role=role, via=via)
     db.ensure_stats(project_id)
     new_count = db.stats_increment(project_id, 'citizen_scientists', 1)
     model.Session.commit()
@@ -247,10 +295,17 @@ def csunesco_join_reject(context, data_dict):
     member = db.project_member(project_id, user_id)
     if member is None:
         raise tk.ObjectNotFound(tk._('Membership not found'))
-    was_active = member.status == 'active'
+    was_active = member.status == C.MEMBER_STATUS_ACTIVE
 
-    db.set_member_status(project_id, user_id, 'rejected',
-                         reviewed_by=current_user_id(context))
+    reviewer_id, role, via, actor_name = _resolve_decider(
+        context, project_id, data_dict)
+    member = db.set_member_status(
+        project_id, user_id, C.MEMBER_STATUS_REJECTED, reviewed_by=reviewer_id,
+        reviewed_role=role, reviewed_via=via)
+    db.append_member_event(
+        member, 'revoked' if was_active else 'rejected', actor_id=reviewer_id,
+        actor_name=actor_name, actor_role=role, via=via,
+        note=_clean_note(data_dict.get('reason')))
     if was_active:
         db.ensure_stats(project_id)
         db.stats_increment(project_id, 'citizen_scientists', -1)
@@ -297,10 +352,16 @@ def csunesco_project_manager_set(context, data_dict):
         model.Session.add(member)
     member.role = C.MEMBER_ROLE_PM
     member.status = C.MEMBER_STATUS_ACTIVE
-    # Assigning a manager is a decision: record who made it and when (the
-    # same audit pair a join decision carries), never silently.
-    member.reviewed_by = current_user_id(context)
+    # Assigning a manager is a decision: record who made it, as what, and
+    # when (the same audit trail a join decision carries), never silently.
+    reviewer_id, role, via, actor_name = _resolve_decider(
+        context, project.id, data_dict)
+    member.reviewed_by = reviewer_id
     member.reviewed_at = now
+    member.reviewed_role = role
+    member.reviewed_via = via
+    db.append_member_event(member, 'manager_assigned', actor_id=reviewer_id,
+                           actor_name=actor_name, actor_role=role, via=via)
 
     if tk.asbool(data_dict.get('replace', False)):
         others = (
@@ -312,8 +373,13 @@ def csunesco_project_manager_set(context, data_dict):
         )
         for other in others:
             other.role = C.MEMBER_ROLE_EDITOR
-            other.reviewed_by = current_user_id(context)
+            other.reviewed_by = reviewer_id
             other.reviewed_at = now
+            other.reviewed_role = role
+            other.reviewed_via = via
+            db.append_member_event(
+                other, 'manager_demoted', actor_id=reviewer_id,
+                actor_name=actor_name, actor_role=role, via=via)
     model.Session.commit()
     return db.member_dictize(member)
 

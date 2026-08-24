@@ -881,8 +881,17 @@ def my_projects():
     except Exception:
         log.warning('csunesco: joined projects could not be listed')
         projects = []
+    # What became of every request (pending / approved / rejected, and who
+    # decided). Fail-soft: the hub must render even if this band cannot.
+    try:
+        requests = tk.get_action('csunesco_my_join_requests')(
+            _context(), {}).get('requests') or []
+    except Exception:
+        log.warning('csunesco: join requests could not be listed')
+        requests = []
     return tk.render('csunesco/my_projects.html', extra_vars={
         'projects': _decorate_projects(projects),
+        'requests': requests,
         'app_url': _ofform_app_url(),
     })
 

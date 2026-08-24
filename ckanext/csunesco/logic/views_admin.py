@@ -279,6 +279,7 @@ def admin_dashboard():
         'can_review_pages': can_review_initiative,
         'project_requests': project_requests,
         'join_requests': data.get('join_requests', []),
+        'joins_moderated': data.get('joins_moderated', []),
         'content_requests': data.get('content_requests', []),
         'content_moderated': data.get('content_moderated', []),
         'data_requests': data.get('data_requests', []),

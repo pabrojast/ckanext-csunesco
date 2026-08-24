@@ -12,14 +12,42 @@
 #}
 {% set participation_closed = ctx.project.get('open_participation') is sameas false %}
 {% set qr = none if participation_closed else h.csunesco_qr_data_uri(project_link) %}
+{#
+  The visitor's own membership row, if any: a pending applicant is told the
+  request is awaiting review, a member who approved them and when. The bare
+  form used to render for everyone, so someone with a pending request could
+  only "request" again and be told they already had.
+#}
+{% set mine = h.csunesco_my_membership(ctx.project.id) if g.user else none %}
 <section class="cs-section cs-join" aria-labelledby="cs-join-title">
   <h2 id="cs-join-title" class="cs-section-title">{{ block.title or _("Join this project") }}</h2>
   {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
   <div class="cs-join-inner">
     <div class="cs-join-actions">
-      {% if participation_closed %}
+      {% if mine and mine.status == 'active' %}
+        <p>
+          <span class="cs-status-badge cs-status-approved">{{ _("You are part of this project") }}</span>
+          <span class="cs-chip">{{ h.csunesco_member_role_label(mine.role) }}</span>
+        </p>
+        {% if mine.reviewed_at %}
+          <p class="cs-hint">
+            {{ _("Approved by {who} ({role}) on {date}.").format(
+                 who=(mine.reviewed_by_name or _("the project team")),
+                 role=h.csunesco_approver_role_label(mine.reviewed_role),
+                 date=h.render_datetime(mine.reviewed_at, with_hours=True)) }}
+          </p>
+        {% endif %}
+      {% elif mine and mine.status == 'pending' %}
+        <p><span class="cs-status-badge">{{ _("Your request to join is awaiting review by the project manager.") }}</span></p>
+        <p class="cs-hint">{{ _("Requested on {date}.").format(date=h.render_datetime(mine.created, with_hours=True)) }}</p>
+      {% elif participation_closed %}
         <p>{{ _("This project is not currently open to new participants. Contact the project team if you would like to take part.") }}</p>
       {% elif g.user %}
+        {% if mine and mine.status == 'rejected' and mine.reviewed_at %}
+          <p class="cs-hint">
+            {{ _("Your previous request was not approved on {date}. You can ask again.").format(date=h.render_datetime(mine.reviewed_at, with_hours=True)) }}
+          </p>
+        {% endif %}
         <form method="post" action="{{ h.csunesco_join_url(ctx.project.slug) }}" class="cs-join-form">
           {{ h.csrf_input() }}
           {#

@@ -992,6 +992,9 @@ def test_auto_heal_covers_the_columns_added_after_each_table_shipped():
     for pair in [
         ('cs_project', 'trusted'),
         ('cs_project_member', 'reviewed_by'),
+        ('cs_project_member', 'reviewed_role'),
+        ('cs_project_member', 'reviewed_via'),
+        ('cs_project_member', 'history'),
         ('cs_content', 'slug'),
         ('cs_content', 'extras'),
         ('cs_project_stats', 'member_states'),

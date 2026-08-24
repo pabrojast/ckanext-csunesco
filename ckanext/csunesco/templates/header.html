@@ -56,7 +56,7 @@
         {{ _('My projects') }}
       </a>
     </li>
-  {% elif h.csunesco_has_joined_projects() %}
+  {% elif h.csunesco_has_joined_projects() or h.csunesco_has_join_requests() %}
     {# The PARTICIPANT'S hub (spec section 4): a citizen scientist with an
        approved membership gets their own "My projects", not the manager's
        review dashboard. #}

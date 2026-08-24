@@ -118,6 +118,11 @@ class CsunescoPlugin(p.SingletonPlugin):
             'csunesco_field_audience_ok': helpers.csunesco_field_audience_ok,
             'csunesco_has_joined_projects':
                 helpers.csunesco_has_joined_projects,
+            'csunesco_has_join_requests': helpers.csunesco_has_join_requests,
+            'csunesco_my_membership': helpers.csunesco_my_membership,
+            'csunesco_member_role_label': helpers.csunesco_member_role_label,
+            'csunesco_approver_role_label':
+                helpers.csunesco_approver_role_label,
             'csunesco_is_reviewer': helpers.csunesco_is_reviewer,
             # Content management: allowlisted Terria embed for cs-map pages.
             'csunesco_terria_embed_url': helpers.csunesco_terria_embed_url,

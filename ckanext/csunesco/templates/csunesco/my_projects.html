@@ -7,7 +7,10 @@
   there); the forum lives in the CS Toolbox app and is linked, not
   duplicated.
 
-  Vars: projects ([{id, slug, title, initiative_title, role}]), app_url.
+  Vars: projects ([{id, slug, title, initiative_title, role}]),
+        requests ([member dicts: project_title, project_slug, status,
+                   reviewed_by_name, reviewed_role, reviewed_via,
+                   reviewed_at, created]), app_url.
 #}
 
 {% block subtitle %}{{ _("My projects") }}{% endblock %}
@@ -19,12 +22,16 @@
     <p>{{ _("The citizen science projects you take part in.") }}</p>
   </section>
 
-  {% if not projects %}
+  {% if not projects and not requests %}
     <section class="cs-card" aria-label="{{ _('No projects yet') }}">
       <p>{{ _("You have not joined a project yet. Find one that suits you in the project explorer.") }}</p>
       <a class="cs-btn cs-btn-primary" href="{{ h.url_for('csunesco.project_list') }}">
         {{ _("Browse projects") }}
       </a>
+    </section>
+  {% elif not projects %}
+    <section class="cs-card" aria-label="{{ _('No projects yet') }}">
+      <p>{{ _("You are not part of a project yet. Your requests are listed below.") }}</p>
     </section>
   {% else %}
     <section class="cs-card" aria-label="{{ _('Your projects') }}">
@@ -60,6 +67,49 @@
           </a>
         </p>
       {% endif %}
+    </section>
+  {% endif %}
+
+  {#
+    What became of each request: its state and, once decided, who decided
+    it (name + role), when, and through which channel. A pending or rejected
+    applicant used to see nothing at all on this portal after the flash.
+  #}
+  {% if requests %}
+    <section class="cs-card" aria-labelledby="cs-myrequests-title">
+      <h2 id="cs-myrequests-title" class="cs-section-title">{{ _("Your join requests") }}</h2>
+      <ul class="cs-myprojects-list">
+        {% for r in requests %}
+          <li class="cs-myprojects-item">
+            <div>
+              <a class="cs-myprojects-title"
+                 href="{{ h.url_for('csunesco.project_landing', slug=r.project_slug) }}">
+                {{ r.project_title }}
+              </a>
+              {% if r.status == 'active' %}
+                <span class="cs-status-badge cs-status-approved">{{ _("Approved") }}</span>
+                <span class="cs-chip">{{ h.csunesco_member_role_label(r.role) }}</span>
+              {% elif r.status == 'rejected' %}
+                <span class="cs-status-badge cs-status-rejected">{{ _("Not approved") }}</span>
+              {% else %}
+                <span class="cs-status-badge">{{ _("Pending review") }}</span>
+              {% endif %}
+            </div>
+            <p class="cs-hint">
+              {% if r.status == 'pending' %}
+                {{ _("Requested on {date}. A project manager will review it.").format(date=h.render_datetime(r.created, with_hours=True)) }}
+              {% elif r.reviewed_at %}
+                {{ _("Decided by {who} ({role}) on {date}").format(
+                     who=(r.reviewed_by_name or _("the project team")),
+                     role=h.csunesco_approver_role_label(r.reviewed_role),
+                     date=h.render_datetime(r.reviewed_at, with_hours=True)) }}
+                {%- if r.reviewed_via == 'app' %} · {{ _("via the CS Toolbox app") }}
+                {%- elif r.reviewed_via == 'ckan' %} · {{ _("on the portal") }}{% endif %}
+              {% endif %}
+            </p>
+          </li>
+        {% endfor %}
+      </ul>
     </section>
   {% endif %}
 {% endblock %}
