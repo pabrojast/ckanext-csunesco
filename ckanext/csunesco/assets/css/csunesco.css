@@ -978,6 +978,43 @@
   height: auto;
 }
 
+/* Escala tipográfica del cuerpo saneado (allowlist: p/h3/h4/listas/quote/a).
+   Sin esto todo se pintaba al mismo tamaño de párrafo. */
+.cs-rich-text p {
+  margin: 0 0 0.9em;
+}
+
+.cs-rich-text h3 {
+  font-size: 1.25rem;
+  margin: 1.4em 0 0.5em;
+  color: var(--unesco-blue-dark);
+}
+
+.cs-rich-text h4 {
+  font-size: 1.05rem;
+  margin: 1.2em 0 0.4em;
+  color: var(--unesco-blue-dark);
+}
+
+.cs-rich-text ul,
+.cs-rich-text ol {
+  margin: 0 0 0.9em;
+  padding-left: 1.4rem;
+}
+
+.cs-rich-text blockquote {
+  margin: 1em 0;
+  padding: 0.5rem 1rem;
+  border-left: 4px solid var(--unesco-blue-light);
+  background: var(--unesco-blue-pale);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.cs-rich-text a {
+  color: var(--unesco-blue);
+  text-decoration: underline;
+}
+
 /* ---- Join block --------------------------------------------------------- */
 .cs-join {
   background: #fff;
@@ -1503,12 +1540,6 @@
   color: var(--unesco-blue-dark);
 }
 
-.cs-article-manage {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-}
-
 .cs-article-body {
   margin: var(--space-unit) 0;
 }
@@ -1581,33 +1612,124 @@
   word-break: break-word;
 }
 
-.cs-article-back {
+.cs-media-list li {
+  margin-bottom: 0.35rem;
+}
+
+/* Secciones del artículo (galería / enlaces) — la clase se usaba en las 4
+   plantillas de detalle sin ninguna regla. */
+.cs-article-media {
   margin-top: calc(var(--space-unit) * 1.5);
+  padding-top: var(--space-unit);
+  border-top: 1px solid var(--unesco-blue-pale);
 }
 
-/* ---- Editor preview + media inputs -------------------------------------- */
-.cs-preview-wrap {
-  margin-top: 0.6rem;
-  padding: 0.75rem;
-  background: var(--unesco-blue-pale);
-  border-radius: var(--radius);
-}
-
-.cs-preview-label {
-  margin: 0 0 0.4rem 0;
-  font-size: 0.8rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+/* Variantes del eyebrow por tipo (solo --event existía). */
+.cs-content-type-label--news {
   color: var(--unesco-blue-dark);
 }
 
-.cs-content-preview {
-  min-height: 3rem;
-  background: #fff;
-  padding: 0.6rem 0.75rem;
+.cs-content-type-label--publication {
+  color: #6a3e8e;
+}
+
+.cs-content-type-label--map {
+  color: #1f6b4a;
+}
+
+.cs-content-authors {
+  margin: 0.25rem 0 0;
+  font-style: italic;
+  color: #46586a;
+}
+
+.cs-content-doi {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: #5a6b7b;
+  word-break: break-word;
+}
+
+.cs-map-embed {
+  margin: calc(var(--space-unit) * 1.5) 0 0;
+}
+
+.cs-map-embed iframe {
+  width: 100%;
+  min-height: 560px;
+  border: 1px solid #cfd8e3;
   border-radius: var(--radius);
-  border: 1px solid #dbe6f2;
+}
+
+.cs-map-open {
+  margin: 0.5rem 0 0;
+}
+
+.cs-meta-item + .cs-meta-item::before {
+  content: "·";
+  margin-right: 0.6rem;
+  color: #9fb2c4;
+}
+
+/* ---- Content editor (form) ---------------------------------------------- */
+/* base.html emite <main class="primary col-sm-12 cs-main">; el tema del sitio
+   da a .primary un gutter de 30px SOLO a la izquierda en desktop, así que todo
+   bloque con margin:auto quedaba ~15px fuera de eje (mismo diagnóstico que el
+   comentario de .cs-register-page). Se iguala en NUESTRO elemento. */
+@media (min-width: 768px) {
+  .cs-main.primary {
+    padding-right: 30px;
+  }
+}
+
+/* El tema del portal añade ":" a todo <label>; en el form propio sobra
+   (mismo patrón de supresión que .cs-pb-toggle). */
+.cs-field label::after {
+  content: none !important;
+}
+
+.cs-form-header {
+  margin-bottom: var(--space-unit);
+}
+
+.cs-field input[type="file"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem;
+  border: 1px dashed #cfd8e3;
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.cs-field textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+/* Filas repetibles (galería / related links / attachment): cada celda lleva
+   su label pequeño encima — antes eran tres inputs pelados con placeholder. */
+.cs-repeat-list {
+  margin-top: 0.25rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.cs-repeat-row > span {
+  display: block;
+  min-width: 0;
+}
+
+.cs-repeat-row > span label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+  color: #46586a;
+}
+
+.cs-repeat-row input {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .cs-media-inputs {
@@ -2949,6 +3071,10 @@
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: baseline;
+  margin: 0.5rem 0 0;
+  padding: 0.45rem 0.75rem;
+  background: var(--unesco-blue-pale);
+  border-radius: var(--radius);
 }
 
 /* ===========================================================================
