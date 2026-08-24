@@ -83,6 +83,10 @@ ofform):
 
 - **Registration:** `csunesco_register_citizen_scientist` (server-to-server,
   sysadmin-gated).
+- **Not this plugin, but required by ofform:** `user_login` (`ckanext-auth`,
+  anonymous) for portal-password verification; core `user_show`, `user_list`
+  and `user_patch` (sysadmin token) for reset lookups and the password mirror —
+  see §5.
 - **Projects:** `csunesco_project_request_create`, `csunesco_project_approve`,
   `csunesco_project_reject`, `csunesco_project_list`, `csunesco_project_show`,
   `csunesco_project_stats_show`.
@@ -154,6 +158,23 @@ CS **projects** are mirrored as ofform `Programme` rows (`kind='cs_project'`), s
 join = `MembershipRequest(scope_type=programme)` and the project admin =
 `Membership(scope=programme, role=owner)`; `can_decide_request` already authorises
 the owner to approve.
+
+### Login and password reset for portal accounts
+
+None of this lives in `ckanext-csunesco`; ofform relies on CKAN core plus
+`ckanext-auth` (branch `ihp`, enabled in `production.ini` as `auth`):
+
+| Need | CKAN action | Auth | Used by ofform |
+|---|---|---|---|
+| Verify a portal password | `user_login` (`ckanext-auth`; accepts username **or** email as `id`; returns `success:true` with either the user dict or `result.errors.auth`) | none — anonymous POST | `POST /auth/login` fallback when the local password fails → creates/adopts a local **shadow user** (`services/ihpwins_identity.py`) with the same password |
+| Find the email of a portal-only account | `user_show {id}` / `user_list {email}` (the email is only returned to the service token) | sysadmin token | `POST /auth/forgot` → shadow user + ofform's own reset email (link on the app) |
+| Keep one password on both sides | `user_patch {id, password}` (core) | sysadmin token | after `/auth/reset` and change-password (best-effort, logged on failure) |
+
+Guardrails on the ofform side: `local_only` accounts (created by a PM inside the
+app), app admins and deactivated accounts are never matched against the portal;
+`users.ckan_id` pins a shadow to one portal account; a portal `sysadmin` does not
+become an app admin. The portal has no brute-force lockout of its own, so ofform
+only consults it after its own login throttle.
 
 ## 6. Workflow (from *Citizen Science Project workflow*)
 
