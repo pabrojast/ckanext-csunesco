@@ -155,6 +155,186 @@
       });
   }
 
+
+  // -------------------------------------------------------------------------
+  // Dropzones sin AJAX (patrón "water family" de ckanext-pages, accesible):
+  // la zona rellena el <input type="file"> EXISTENTE y dispara `change`, así
+  // que el preview del image picker reacciona solo y los ficheros viajan en
+  // el submit multipart de siempre. Sin JS la zona queda `hidden` y el input
+  // sigue visible. `multiple` ACUMULA entre drops reconstruyendo DataTransfer
+  // (Chrome 60+/FF 62+/Safari 14.1+); sin el constructor se degrada a
+  // asignación directa (el drop reemplaza) y, si ni eso, la zona delega en el
+  // picker nativo.
+  // -------------------------------------------------------------------------
+  var SUPPORTS_DT = (function () {
+    try { return !!new DataTransfer(); } catch (e) { return false; }
+  })();
+
+  function formatSize(bytes) {
+    if (!bytes && bytes !== 0) { return ""; }
+    if (bytes < 1024) { return bytes + " B"; }
+    if (bytes < 1048576) { return (bytes / 1024).toFixed(0) + " KB"; }
+    return (bytes / 1048576).toFixed(1) + " MB";
+  }
+
+  function fileAccepted(input, file) {
+    var accept = (input.getAttribute("accept") || "").trim();
+    if (!accept) { return true; }
+    var name = (file.name || "").toLowerCase();
+    var type = (file.type || "").toLowerCase();
+    return accept.split(",").some(function (rule) {
+      rule = rule.trim().toLowerCase();
+      if (!rule) { return false; }
+      if (rule.charAt(0) === ".") { return name.slice(-rule.length) === rule; }
+      if (rule.slice(-2) === "/*") { return type.indexOf(rule.slice(0, -1)) === 0; }
+      return type === rule;
+    });
+  }
+
+  function initDropzones() {
+    Array.prototype.forEach.call(
+      document.querySelectorAll("[data-dropzone]"), function (zone) {
+        if (zone.getAttribute("data-dz-ready")) { return; }
+        var input = document.getElementById(zone.getAttribute("data-for"));
+        if (!input || input.type !== "file") { return; }
+        zone.setAttribute("data-dz-ready", "1");
+        zone.hidden = false;
+        // display:none SÍ viaja en el submit (solo `disabled` lo excluiría).
+        input.classList.add("cs-dz-input-hidden");
+        zone.setAttribute("role", "button");
+        zone.setAttribute("tabindex", "0");
+
+        var mode = zone.getAttribute("data-preview") || "chip";
+        var removeLabel = zone.getAttribute("data-remove-label") || "×";
+        var error = document.createElement("p");
+        error.className = "cs-field-error cs-dz-error";
+        error.setAttribute("role", "alert");
+        error.hidden = true;
+        zone.parentNode.insertBefore(error, zone.nextSibling);
+        var preview = document.createElement("div");
+        preview.className = "cs-dz-preview";
+        zone.parentNode.insertBefore(preview, error.nextSibling);
+        var thumbs = [];
+
+        function showError(message) {
+          error.textContent = message || "";
+          error.hidden = !message;
+        }
+
+        function setFiles(list) {
+          var dt = new DataTransfer();
+          list.forEach(function (f) { dt.items.add(f); });
+          input.files = dt.files;
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+
+        function clearAll() {
+          input.value = "";
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+
+        function removeAt(index) {
+          if (!SUPPORTS_DT) { clearAll(); return; }
+          var kept = Array.prototype.slice.call(input.files);
+          kept.splice(index, 1);
+          setFiles(kept);
+        }
+
+        function renderPreview() {
+          thumbs.forEach(function (u) { URL.revokeObjectURL(u); });
+          thumbs = [];
+          preview.textContent = "";
+          var files = Array.prototype.slice.call(input.files || []);
+          if (!files.length) { return; }
+          if (mode === "none") { return; }
+          if (mode === "grid") {
+            var list = document.createElement("ul");
+            list.className = "cs-dz-grid";
+            files.forEach(function (file, index) {
+              var item = document.createElement("li");
+              item.className = "cs-dz-item";
+              if (file.type && file.type.indexOf("image/") === 0) {
+                var img = document.createElement("img");
+                var blobUrl = URL.createObjectURL(file);
+                thumbs.push(blobUrl);
+                img.src = blobUrl;
+                img.alt = "";
+                img.className = "cs-dz-thumb";
+                item.appendChild(img);
+              }
+              var meta = document.createElement("span");
+              meta.className = "cs-dz-meta";
+              meta.textContent = file.name + " · " + formatSize(file.size);
+              item.appendChild(meta);
+              var remove = document.createElement("button");
+              remove.type = "button";
+              remove.className = "cs-dz-remove";
+              remove.textContent = "×";
+              remove.setAttribute("aria-label", removeLabel + " " + file.name);
+              remove.addEventListener("click", function () { removeAt(index); });
+              item.appendChild(remove);
+              list.appendChild(item);
+            });
+            preview.appendChild(list);
+          } else {
+            var file = files[0];
+            var chip = document.createElement("span");
+            chip.className = "cs-dz-chip";
+            var label = document.createElement("span");
+            label.textContent = file.name + " · " + formatSize(file.size);
+            chip.appendChild(label);
+            var clear = document.createElement("button");
+            clear.type = "button";
+            clear.className = "cs-dz-remove";
+            clear.textContent = "×";
+            clear.setAttribute("aria-label", removeLabel + " " + file.name);
+            clear.addEventListener("click", clearAll);
+            chip.appendChild(clear);
+            preview.appendChild(chip);
+          }
+        }
+
+        zone.addEventListener("dragover", function (e) {
+          e.preventDefault();
+          zone.classList.add("is-dragover");
+        });
+        zone.addEventListener("dragleave", function () {
+          zone.classList.remove("is-dragover");
+        });
+        zone.addEventListener("drop", function (e) {
+          e.preventDefault();
+          zone.classList.remove("is-dragover");
+          var dropped = Array.prototype.slice.call(
+            (e.dataTransfer && e.dataTransfer.files) || []);
+          if (!dropped.length) { return; }  // drags de texto/URL: ignorar
+          var ok = dropped.filter(function (f) { return fileAccepted(input, f); });
+          showError(ok.length < dropped.length
+            ? zone.getAttribute("data-error-type") : "");
+          if (!ok.length) { return; }
+          if (!SUPPORTS_DT) {
+            try {
+              input.files = e.dataTransfer.files;
+              input.dispatchEvent(new Event("change", { bubbles: true }));
+            } catch (err) { input.click(); }
+            return;
+          }
+          var current = input.multiple
+            ? Array.prototype.slice.call(input.files) : [];
+          setFiles(input.multiple ? current.concat(ok) : [ok[0]]);
+        });
+        zone.addEventListener("click", function () { input.click(); });
+        zone.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            input.click();
+          }
+        });
+
+        // Fuente de verdad única: input.files (drop O picker nativo).
+        input.addEventListener("change", renderPreview);
+      });
+  }
+
   function initRichEditors() {
     var tools = [
       ["B", "bold", null, "Bold"], ["I", "italic", null, "Italic"],
@@ -327,11 +507,114 @@
     }
   }
 
+
+  // -------------------------------------------------------------------------
+  // Panel de progreso del editor (adaptación vanilla del water-form-
+  // enhancements de ckanext-pages): una tarjeta-botón por sección con estado
+  // pendiente/completo/a-revisar y scroll suave. A diferencia del original,
+  // se re-filtran las secciones [hidden] en CADA update — las secciones
+  // tipadas (news/publication) aparecen y desaparecen con el select de tipo.
+  // Solo corre si la página trae el aside #cs-editor-progress.
+  // -------------------------------------------------------------------------
+  function initFormProgress() {
+    var aside = document.getElementById("cs-editor-progress");
+    var form = document.getElementById("cs-content-form");
+    if (!aside || !form) { return; }
+    var labels = {
+      pending: aside.getAttribute("data-label-pending") || "",
+      complete: aside.getAttribute("data-label-complete") || "",
+      error: aside.getAttribute("data-label-error") || ""
+    };
+    var reduceMotion = window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function sections() {
+      return Array.prototype.filter.call(
+        form.querySelectorAll("fieldset.cs-editor-section"),
+        function (s) { return !s.hidden; });
+    }
+
+    function sectionState(section) {
+      if (section.querySelector(".cs-field-error") ||
+          section.querySelector(":invalid")) {
+        return "error";
+      }
+      var filled = Array.prototype.some.call(
+        section.querySelectorAll("input, textarea, select"),
+        function (field) {
+          if (field.type === "hidden" || field.type === "checkbox") {
+            return field.type === "checkbox" && field.checked;
+          }
+          if (field.type === "file") {
+            return field.files && field.files.length > 0;
+          }
+          return (field.value || "").trim() !== "";
+        });
+      return filled ? "complete" : "pending";
+    }
+
+    function render() {
+      aside.textContent = "";
+      sections().forEach(function (section, index) {
+        var legend = section.querySelector("legend");
+        var state = sectionState(section);
+        var card = document.createElement("button");
+        card.type = "button";
+        card.className = "cs-progress-card is-" + state;
+        var num = document.createElement("span");
+        num.className = "cs-progress-num";
+        num.textContent = String(index + 1);
+        card.appendChild(num);
+        var text = document.createElement("span");
+        text.className = "cs-progress-text";
+        var title = document.createElement("span");
+        title.className = "cs-progress-title";
+        title.textContent = legend ? legend.textContent.trim() : "";
+        text.appendChild(title);
+        var status = document.createElement("span");
+        status.className = "cs-progress-status";
+        status.textContent = labels[state] || state;
+        text.appendChild(status);
+        card.appendChild(text);
+        card.addEventListener("click", function () {
+          section.scrollIntoView(
+            reduceMotion ? {} : { behavior: "smooth", block: "start" });
+          var first = section.querySelector(
+            "input:not([type=hidden]), textarea, select, [contenteditable]");
+          if (first) { first.focus({ preventScroll: true }); }
+        });
+        aside.appendChild(card);
+      });
+      aside.hidden = false;
+    }
+
+    var scheduled = false;
+    function scheduleRender() {
+      if (scheduled) { return; }
+      scheduled = true;
+      window.requestAnimationFrame(function () {
+        scheduled = false;
+        render();
+      });
+    }
+
+    form.addEventListener("input", scheduleRender);
+    form.addEventListener("change", scheduleRender);
+    new MutationObserver(scheduleRender).observe(form, {
+      attributes: true,
+      attributeFilter: ["hidden"],
+      subtree: true
+    });
+    render();
+  }
+
   function init() {
     initTabs();
     initConfirms();
     initImagePickers();
+    initDropzones();
     initRichEditors();
+    initFormProgress();
     initEditor();
   }
 

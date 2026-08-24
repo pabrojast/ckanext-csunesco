@@ -17,6 +17,11 @@
   {% if h.csunesco_uploads_enabled() %}
     <div class="cs-field">
       <label for="{{ input_id }}-upload">{{ _("Upload image") }}</label>
+      {% snippet "csunesco/snippets/_dropzone.html",
+                 for_id=input_id ~ '-upload',
+                 text=_("Drop an image here or click to browse"),
+                 preview='chip',
+                 error_type=_("Only JPEG, PNG or WebP images are accepted.") %}
       <input type="file" id="{{ input_id }}-upload" name="{{ upload_name }}"
              accept="image/jpeg,image/png,image/webp" data-image-file>
       <p class="cs-hint">

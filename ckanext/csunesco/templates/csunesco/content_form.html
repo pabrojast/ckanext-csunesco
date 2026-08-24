@@ -44,7 +44,8 @@
 {% block cs_content %}
   {% snippet "csunesco/snippets/context_nav.html", url=cancel_url, label=cancel_label %}
 
-  <section class="cs-card cs-form-card cs-form-card--wide" aria-labelledby="cs-editor-title">
+  <div class="cs-editor-layout">
+  <section class="cs-card cs-form-card cs-form-card--wide cs-content-editor" aria-labelledby="cs-editor-title">
     <header class="cs-form-header">
       <h1 id="cs-editor-title" class="cs-form-heading">{{ _("Add content") if is_new else _("Edit content") }}</h1>
       {% if project %}
@@ -77,6 +78,10 @@
     <form method="post" action="{{ action_url }}" enctype="multipart/form-data" class="cs-form" id="cs-content-form" novalidate>
       {{ h.csrf_input() }}
 
+      {# ---- Basics: identidad, tipo y fechas --------------------------- #}
+      <fieldset class="cs-editor-section">
+        <legend>{{ _("Basics") }}</legend>
+        <div class="cs-editor-section-body">
       {# ---- Title ------------------------------------------------------ #}
       <div class="cs-field">
         <label for="cs-content-title">{{ _("Title") }} <span class="cs-req" aria-hidden="true">*</span></label>
@@ -132,10 +137,30 @@
         {% endif %}
       </div>
 
+      {# ---- Terria map URL (maps only) --------------------------------- #}
+      <div class="cs-field" id="cs-terria-field"
+           {% if data.content_type != 'cs-map' %}hidden{% endif %}>
+        <label for="cs-content-terria">{{ _("Map share link") }} <span class="cs-req" aria-hidden="true">*</span></label>
+        <input type="url" id="cs-content-terria" name="terria_url"
+               value="{{ data.terria_url or '' }}"
+               placeholder="https://…/terria/#share=…"
+               {% if errors.terria_url %}aria-invalid="true"{% endif %}
+               aria-describedby="cs-content-terria-hint{% if errors.terria_url %} cs-content-terria-error{% endif %}">
+        <p id="cs-content-terria-hint" class="cs-hint">
+          {{ _("Build your map scene in the IHP-WINS map viewer (Terria), use its Share button and paste the link here. Only links to the official map viewer are accepted.") }}
+        </p>
+        {% if errors.terria_url %}
+          <p id="cs-content-terria-error" class="cs-field-error" role="alert">{{ errors.terria_url | join(', ') }}</p>
+        {% endif %}
+      </div>
+        </div>
+      </fieldset>
+
       {# ---- WINS-compatible news fields -------------------------------- #}
-      <fieldset id="cs-news-fields" class="cs-content-type-fields"
+      <fieldset id="cs-news-fields" class="cs-content-type-fields cs-editor-section"
                 {% if data.content_type != 'cs-news' %}hidden{% endif %}>
         <legend>{{ _("News presentation") }}</legend>
+        <div class="cs-editor-section-body">
         <div class="cs-field">
           <label for="cs-content-excerpt">{{ _("Excerpt / summary") }}</label>
           <textarea id="cs-content-excerpt" name="excerpt" rows="3" maxlength="500">{{ data.excerpt or '' }}</textarea>
@@ -167,6 +192,12 @@
           <span class="cs-field-legend">{{ _("Image gallery") }}</span>
           {% if h.csunesco_uploads_enabled() %}
             <label class="cs-hint-inline" for="cs-news-gallery-upload">{{ _("Upload images") }}</label>
+            {% snippet "csunesco/snippets/_dropzone.html",
+                       for_id='cs-news-gallery-upload',
+                       text=_("Drop images here or click to browse"),
+                       hint=_("JPEG, PNG or WebP. Up to 12 are stored in selection order."),
+                       preview='grid',
+                       error_type=_("Only JPEG, PNG or WebP images are accepted.") %}
             <input type="file" id="cs-news-gallery-upload" name="gallery_upload" multiple accept="image/jpeg,image/png,image/webp">
             <p class="cs-hint">{{ _("Select multiple images. Up to 12 are stored in selection order.") }}</p>
           {% endif %}
@@ -212,6 +243,12 @@
           <span class="cs-field-legend">{{ _("News attachment") }}</span>
           {% if h.csunesco_uploads_enabled() %}
             <label class="cs-hint-inline" for="cs-news-attachment">{{ _("Upload a document") }}</label>
+            {% snippet "csunesco/snippets/_dropzone.html",
+                       for_id='cs-news-attachment',
+                       text=_("Drop a document here or click to browse"),
+                       hint=_("PDF or Word document."),
+                       preview='chip',
+                       error_type=_("Only PDF or Word documents are accepted.") %}
             <input type="file" id="cs-news-attachment" name="attachment_upload" accept=".pdf,.doc,.docx,application/pdf">
           {% endif %}
           <div class="cs-repeat-row">
@@ -226,12 +263,14 @@
           </div>
           {% if data.attachment_url %}<label class="cs-pb-toggle"><input type="checkbox" name="attachment_clear" value="on"> {{ _("Remove current attachment") }}</label>{% endif %}
         </div>
+        </div>
       </fieldset>
 
       {# ---- Publication details (publications only) -------------------- #}
-      <fieldset id="cs-publication-fields" class="cs-content-type-fields"
+      <fieldset id="cs-publication-fields" class="cs-content-type-fields cs-editor-section"
                 {% if data.content_type != 'cs-publication' %}hidden{% endif %}>
         <legend>{{ _("Publication details") }}</legend>
+        <div class="cs-editor-section-body">
         <div class="cs-field">
           <label for="cs-content-authors">{{ _("Authors") }}</label>
           <input type="text" id="cs-content-authors" name="authors"
@@ -245,26 +284,13 @@
                  placeholder="10.xxxx/xxxxx">
           <p class="cs-hint">{{ _("Optional. List the publication's authors and DOI if it has one.") }}</p>
         </div>
+        </div>
       </fieldset>
 
-      {# ---- Terria map URL (maps only) --------------------------------- #}
-      <div class="cs-field" id="cs-terria-field"
-           {% if data.content_type != 'cs-map' %}hidden{% endif %}>
-        <label for="cs-content-terria">{{ _("Map share link") }} <span class="cs-req" aria-hidden="true">*</span></label>
-        <input type="url" id="cs-content-terria" name="terria_url"
-               value="{{ data.terria_url or '' }}"
-               placeholder="https://…/terria/#share=…"
-               {% if errors.terria_url %}aria-invalid="true"{% endif %}
-               aria-describedby="cs-content-terria-hint{% if errors.terria_url %} cs-content-terria-error{% endif %}">
-        <p id="cs-content-terria-hint" class="cs-hint">
-          {{ _("Build your map scene in the IHP-WINS map viewer (Terria), use its Share button and paste the link here. Only links to the official map viewer are accepted.") }}
-        </p>
-        {% if errors.terria_url %}
-          <p id="cs-content-terria-error" class="cs-field-error" role="alert">{{ errors.terria_url | join(', ') }}</p>
-        {% endif %}
-      </div>
-
       {# ---- Body ------------------------------------------------------- #}
+      <fieldset class="cs-editor-section">
+        <legend>{{ _("Body") }}</legend>
+        <div class="cs-editor-section-body">
       <div class="cs-field">
         <label for="cs-content-body">{{ _("Body") }}</label>
         <p id="cs-content-body-guide" class="cs-hint">
@@ -273,7 +299,13 @@
         <textarea id="cs-content-body" name="body" rows="10" data-rich-editor
                   aria-describedby="cs-content-body-guide">{{ data.body or '' }}</textarea>
       </div>
+        </div>
+      </fieldset>
 
+      {# ---- Links & visibility ------------------------------------------ #}
+      <fieldset class="cs-editor-section">
+        <legend>{{ _("Links & visibility") }}</legend>
+        <div class="cs-editor-section-body">
       {# ---- Media URLs ------------------------------------------------- #}
       <div class="cs-field">
         <span class="cs-field-legend" id="cs-media-label"
@@ -324,6 +356,8 @@
           </label>
         </div>
       {% endif %}
+        </div>
+      </fieldset>
 
       <div class="cs-form-actions">
         <button type="submit" id="cs-content-submit" class="cs-btn cs-btn-primary">
@@ -334,6 +368,12 @@
       </div>
     </form>
   </section>
+  <aside id="cs-editor-progress" class="cs-editor-progress" hidden
+         aria-label="{{ _('Form progress') }}"
+         data-label-pending="{{ _('Pending') }}"
+         data-label-complete="{{ _('Complete') }}"
+         data-label-error="{{ _('Needs review') }}"></aside>
+  </div>
 {% endblock %}
 
 {% block scripts %}

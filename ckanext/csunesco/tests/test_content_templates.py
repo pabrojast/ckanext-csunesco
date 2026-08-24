@@ -105,3 +105,69 @@ def test_gallery_pages_load_the_view_bundle():
     base = _read(DETAIL_BASE)
     assert "cs-page-view-js" in base
     assert 'cs-page-view' in _read(WEBASSETS)
+
+
+# --------------------------------------------------------------------------- #
+# Dropzones + tarjetas de sección (editor v2, patrón "water family")           #
+# --------------------------------------------------------------------------- #
+
+IMAGE_PICKER = os.path.join(
+    TPL_DIR, 'blocks', 'edit', '_image_picker.html')
+DROPZONE_SNIPPET = os.path.join(TPL_DIR, 'snippets', '_dropzone.html')
+JS_FILE = os.path.join(PKG_DIR, 'assets', 'js', 'csunesco.js')
+
+
+def test_dropzone_snippet_is_progressive_enhancement():
+    """El div nace `hidden` (sin JS no existe) y declara su contrato data-*."""
+    source = _read(DROPZONE_SNIPPET)
+    assert 'data-dropzone' in source
+    assert 'hidden' in source
+    assert 'data-for=' in source and 'data-preview=' in source
+    assert 'cs-dropzone-content' in source
+
+
+def test_dropzones_target_existing_file_inputs():
+    """Cada dropzone apunta (data-for/for_id) a un input file del MISMO fuente
+    — un id colgando deja una zona muerta que no abre ningún picker."""
+    for path, pairs in (
+        (CONTENT_FORM, [("'cs-news-gallery-upload'", 'id="cs-news-gallery-upload"'),
+                        ("'cs-news-attachment'", 'id="cs-news-attachment"')]),
+        (IMAGE_PICKER, [("input_id ~ '-upload'", '{{ input_id }}-upload')]),
+    ):
+        source = _read(path)
+        for snippet_arg, input_id in pairs:
+            assert snippet_arg in source, \
+                'missing dropzone for %s in %s' % (input_id, os.path.basename(path))
+            assert input_id in source
+
+
+def test_dropzone_css_contract():
+    css = _read(CSS_FILE)
+    assert re.search(r'\.cs-dropzone[\s,{:.]', css)
+    assert re.search(
+        r'\.cs-dropzone-content\s*\{[^}]*pointer-events:\s*none', css), \
+        'sin pointer-events:none el dragleave parpadea sobre los hijos'
+    for name in ('cs-dz-grid', 'cs-dz-chip', 'cs-dz-input-hidden',
+                 'cs-editor-section', 'cs-editor-section-body',
+                 'cs-editor-progress', 'cs-progress-card'):
+        assert re.search(r'\.%s[\s,{:]' % re.escape(name), css), \
+            'class .%s has no CSS rule' % name
+
+
+def test_dropzone_js_contract():
+    js = _read(JS_FILE)
+    for token in ('data-dropzone', 'new DataTransfer', 'dispatchEvent',
+                  'initDropzones', 'initFormProgress'):
+        assert token in js, 'csunesco.js perdió %s' % token
+
+
+def test_editor_sections_structure():
+    """El form del editor está seccionado en tarjetas y trae el aside de
+    progreso; las secciones tipadas conservan sus ids/clases del toggle."""
+    source = _read(CONTENT_FORM)
+    assert source.count('cs-editor-section"') >= 3  # Basics, Body, Links
+    assert 'cs-content-editor' in source
+    assert 'cs-editor-layout' in source
+    assert 'id="cs-editor-progress"' in source
+    assert 'id="cs-news-fields" class="cs-content-type-fields cs-editor-section"' in source
+    assert 'id="cs-publication-fields" class="cs-content-type-fields cs-editor-section"' in source

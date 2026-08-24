@@ -1,0 +1,24 @@
+{#
+  Zona de drag & drop para un <input type="file"> EXISTENTE (progressive
+  enhancement, sin AJAX): initDropzones() en csunesco.js la revela, oculta el
+  input y rellena input.files al soltar — los ficheros viajan en el submit
+  multipart de siempre. Sin JS este div queda `hidden` y el input file sigue
+  visible: el formulario no pierde nada.
+
+  Vars:
+    for_id     -- id del input file al que sirve (obligatorio)
+    text       -- frase principal ("Drop images here or click to browse")
+    hint       -- línea secundaria (formatos/límite); opcional
+    preview    -- 'grid' (galería multi), 'chip' (archivo único) o 'none'
+    error_type -- mensaje cuando se sueltan archivos de tipo no aceptado
+#}
+<div class="cs-dropzone" data-dropzone data-for="{{ for_id }}" hidden
+     data-preview="{{ preview or 'chip' }}"
+     data-remove-label="{{ _('Remove') }}"
+     data-error-type="{{ error_type or _('Some files were skipped: this field does not accept that file type.') }}">
+  <div class="cs-dropzone-content">
+    <span class="cs-dz-icon" aria-hidden="true">&#8679;</span>
+    <p class="cs-dz-text">{{ text or _("Drop files here or click to browse") }}</p>
+    {% if hint %}<p class="cs-hint">{{ hint }}</p>{% endif %}
+  </div>
+</div>
