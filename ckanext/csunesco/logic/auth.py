@@ -19,6 +19,8 @@ Citizen Scientist self-registration keeps reusing CKAN's own ``user_create``
 auth (increment 2) and is intentionally not duplicated here.
 """
 import ckan.plugins.toolkit as tk
+
+from ckanext.csunesco import constants as C
 import ckan.model as model
 
 
@@ -60,8 +62,8 @@ def _is_project_admin(context, project_id):
     from ckanext.csunesco import db
     member = db.project_member(project_id, user_obj.id)
     return bool(member
-                and member.role == 'admin'
-                and member.status == 'active')
+                and member.role == C.MEMBER_ROLE_PM
+                and member.status == C.MEMBER_STATUS_ACTIVE)
 
 
 def _is_project_editor(context, project_id):
@@ -79,8 +81,8 @@ def _is_project_editor(context, project_id):
     from ckanext.csunesco import db
     member = db.project_member(project_id, user_obj.id)
     return bool(member
-                and member.role == 'editor'
-                and member.status == 'active')
+                and member.role == C.MEMBER_ROLE_EDITOR
+                and member.status == C.MEMBER_STATUS_ACTIVE)
 
 
 def is_reviewer(context):

@@ -8,6 +8,7 @@ is created -- all in one transaction that commits exactly once.
 """
 import datetime
 import json
+import logging
 import re
 
 import ckan.plugins.toolkit as tk
@@ -15,10 +16,13 @@ import ckan.model as model
 import sqlalchemy as sa
 
 from ckanext.csunesco import constants
+from ckanext.csunesco import constants as C
 from ckanext.csunesco import db
 from ckanext.csunesco.logic import auth
 from ckanext.csunesco.logic import schema as cs_schema
 from ckanext.csunesco.logic.action import current_user_id
+
+log = logging.getLogger(__name__)
 
 # Server-side paging defaults for csunesco_project_list.
 DEFAULT_LIST_LIMIT = 20
@@ -157,7 +161,7 @@ def _sync_editor_members(project_id, editors, now):
     existing = (
         model.Session.query(db.CsProjectMember)
         .filter(db.CsProjectMember.project_id == project_id)
-        .filter(db.CsProjectMember.role == 'editor')
+        .filter(db.CsProjectMember.role == C.MEMBER_ROLE_EDITOR)
         .all()
     )
     seen = set()
@@ -174,7 +178,7 @@ def _sync_editor_members(project_id, editors, now):
         member = db.CsProjectMember()
         member.project_id = project_id
         member.user_id = user_id
-        member.role = 'editor'
+        member.role = C.MEMBER_ROLE_EDITOR
         member.status = 'active'
         member.source = 'ckan'
         member.created = now
@@ -282,6 +286,40 @@ def _can_view_unapproved(context, project):
     return auth._is_project_initiative_admin(context, project.id)
 
 
+def _resolve_creator(context, data_dict):
+    """Who the project is FOR: the caller, or the PM a sysadmin acts for.
+
+    The CS Toolbox app files every project request through ONE sysadmin
+    service token and names the real requester in ``requested_by``. Until
+    2026-08 that key was dropped, so ``created_by`` was the service account
+    and, on approval, the service account became the project manager while
+    the person who asked for the project got nothing (the app then mirrored
+    "no owner" and nobody could approve the project's join requests).
+
+    Honoured ONLY for a sysadmin caller -- the same trusted-proxy rule as
+    ``members._resolve_actor``. Unlike a join, an unknown username is NOT a
+    hard error: the project is still worth creating, so it falls back to the
+    token and the username is kept in ``extras['requested_by_username']`` so
+    a reviewer can hand it over with ``csunesco_project_manager_set``.
+
+    Returns ``(user_id, unresolved_username_or_None)``.
+    """
+    username = ((data_dict or {}).get('requested_by') or '').strip()
+    if username and auth._is_sysadmin(context):
+        try:
+            user = model.User.get(username)
+        except Exception:
+            # An unreadable user table must not cost the project: same
+            # fallback as an unknown name, and the name is still recorded.
+            log.warning('csunesco: requested_by %r could not be resolved',
+                        username)
+            user = None
+        if user is not None:
+            return user.id, None
+        return current_user_id(context), username
+    return current_user_id(context), None
+
+
 def csunesco_project_request_create(context, data_dict):
     """Create a project request under an authorized CKAN organization.
 
@@ -332,13 +370,17 @@ def csunesco_project_request_create(context, data_dict):
                                else _resolve_lead_organisation(data))
     # The staged form's extra detail fields. No migration: they ride in the
     # existing JSON column and project_dictize merges them back on read.
-    project.extras = json.dumps(_project_extras(data))
+    creator_id, unresolved_requester = _resolve_creator(context, data_dict)
+    extras = _project_extras(data)
+    if unresolved_requester:
+        extras['requested_by_username'] = unresolved_requester
+    project.extras = json.dumps(extras)
     # The web form's "Save for later" path creates a DRAFT (visible only to
     # its creator, absent from every queue and listing) instead of filing a
     # review request. Only the view sets the flag -- the API/outbox path
     # always files pending, unchanged.
     project.status = 'draft' if context.get('csunesco_draft') else 'pending'
-    project.created_by = current_user_id(context)
+    project.created_by = creator_id
     project.created = now
     project.modified = now
     model.Session.add(project)
@@ -643,14 +685,19 @@ def csunesco_project_approve(context, data_dict):
 
     # SAME session, no intermediate commit: make the creator a project admin
     # (idempotently) and ensure the counter row exists, then commit once.
+    # The PM row is itself a decision (spec: "an administrative role is
+    # assigned to the individual as Project Manager"), so it carries the
+    # same audit pair as a join: who approved the project, and when.
     if db.project_member(project.id, project.created_by) is None:
         member = db.CsProjectMember()
         member.project_id = project.id
         member.user_id = project.created_by
-        member.role = 'admin'
-        member.status = 'active'
-        member.source = 'ckan'
+        member.role = C.MEMBER_ROLE_PM
+        member.status = C.MEMBER_STATUS_ACTIVE
+        member.source = C.MEMBER_SOURCE_PORTAL
         member.created = now
+        member.reviewed_by = current_user_id(context)
+        member.reviewed_at = now
         model.Session.add(member)
     db.ensure_stats(project.id)
     # Seed the derived member-states counter from the declared countries; the
@@ -840,22 +887,33 @@ def csunesco_project_show(context, data_dict):
     if not data_dict.get('include_geojson'):
         result.pop('region_geojson', None)
     result['stats'] = _stats_dict(project.id)
-    # Usernames of the project's admins (PM) + its initiative admins (ADM). The
-    # CS Toolbox app mirrors these as programme owners when the project syncs.
-    # Usernames only (public CKAN identifiers) -- never emails.
-    admin_ids = set(db.project_admin_user_ids(project.id))
-    admin_ids.update(db.initiative_admin_user_ids(project.initiative_group))
-    admins = []
-    if admin_ids:
-        users = (
-            model.Session.query(model.User)
-            .filter(model.User.id.in_(admin_ids))
-            .filter(model.User.state == 'active')
-            .all()
-        )
-        admins = sorted(u.name for u in users)
-    result['admins'] = admins
+    # Usernames of the project's managers (PM: active ``admin`` members) and,
+    # SEPARATELY, its initiative admins (ADM). The CS Toolbox app mirrors
+    # ``project_managers`` as the project's owners; ``admins`` (the union) is
+    # kept for older app builds that only read that key. Usernames only
+    # (public CKAN identifiers) -- never emails.
+    pm_ids = set(db.project_admin_user_ids(project.id))
+    adm_ids = set(db.initiative_admin_user_ids(project.initiative_group))
+    names = _active_usernames(pm_ids | adm_ids)
+    result['project_managers'] = sorted(names[i] for i in pm_ids if i in names)
+    result['initiative_admins'] = sorted(
+        names[i] for i in adm_ids if i in names)
+    result['admins'] = sorted(
+        set(result['project_managers']) | set(result['initiative_admins']))
     return result
+
+
+def _active_usernames(user_ids):
+    """``{user_id: username}`` for the ACTIVE accounts among ``user_ids``."""
+    if not user_ids:
+        return {}
+    users = (
+        model.Session.query(model.User)
+        .filter(model.User.id.in_(list(user_ids)))
+        .filter(model.User.state == 'active')
+        .all()
+    )
+    return {u.id: u.name for u in users}
 
 
 @tk.side_effect_free

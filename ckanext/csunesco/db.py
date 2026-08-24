@@ -35,6 +35,8 @@ import sqlalchemy as sa
 from ckan.model.meta import metadata, mapper, Session  # noqa: F401
 from ckan.model.domain_object import DomainObject
 
+from ckanext.csunesco.constants import CS_INITIATIVES, MEMBER_ROLE_PM
+
 from ckanext.csunesco import constants
 
 log = logging.getLogger(__name__)
@@ -1363,7 +1365,7 @@ def admin_project_ids(user_id):
     rows = (
         Session.query(CsProjectMember.project_id)
         .filter(CsProjectMember.user_id == user_id)
-        .filter(CsProjectMember.role == 'admin')
+        .filter(CsProjectMember.role == MEMBER_ROLE_PM)
         .filter(CsProjectMember.status == 'active')
         .all()
     )
@@ -1459,7 +1461,7 @@ def projects_administered(user_id, limit=100):
         .outerjoin(CsProjectMember, sa.and_(
             CsProjectMember.project_id == CsProject.id,
             CsProjectMember.user_id == user_id,
-            CsProjectMember.role == 'admin',
+            CsProjectMember.role == MEMBER_ROLE_PM,
             CsProjectMember.status == 'active'))
         .filter(sa.or_(CsProjectMember.id.isnot(None),
                        CsProject.created_by == user_id))
@@ -1493,7 +1495,7 @@ def user_has_any_project(user_id):
         Session.query(CsProjectMember.id)
         .filter(CsProjectMember.project_id == CsProject.id)
         .filter(CsProjectMember.user_id == user_id)
-        .filter(CsProjectMember.role == 'admin')
+        .filter(CsProjectMember.role == MEMBER_ROLE_PM)
         .filter(CsProjectMember.status == 'active')
         .exists()
     )
@@ -1512,7 +1514,7 @@ def project_admin_user_ids(project_id):
     rows = (
         Session.query(CsProjectMember.user_id)
         .filter(CsProjectMember.project_id == project_id)
-        .filter(CsProjectMember.role == 'admin')
+        .filter(CsProjectMember.role == MEMBER_ROLE_PM)
         .filter(CsProjectMember.status == 'active')
         .all()
     )
@@ -1548,7 +1550,6 @@ def admin_initiative_groups(user_id):
     if not user_id:
         return []
     import ckan.model as model
-    from ckanext.csunesco.constants import CS_INITIATIVES
     names = [i['name'] for i in CS_INITIATIVES]
     rows = (
         model.Session.query(model.Group.name)

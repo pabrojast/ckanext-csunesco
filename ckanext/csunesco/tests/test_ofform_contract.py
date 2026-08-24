@@ -155,6 +155,99 @@ def test_the_outbox_reads_back_a_slug_it_can_store(service, session):
 
 
 # --------------------------------------------------------------------------- #
+# csunesco_project_request_create -- who becomes the project manager           #
+# ofform/backend/app/services/cs_details.py:478-507 sends ``requested_by``     #
+# --------------------------------------------------------------------------- #
+
+def test_project_request_from_the_app_names_the_pm_as_creator(
+        service, session, monkeypatch):
+    """The app files projects through one sysadmin token and names the real
+    PM in ``requested_by``. Dropping it made the SERVICE ACCOUNT the creator
+    -- and, on approval, the project manager -- while the person who asked
+    got nothing; the app then mirrored a project with no owner at all."""
+    import ckan.model as model
+    monkeypatch.setattr(model.User, 'get',
+                        staticmethod(lambda name: _ckan_user(session, name)))
+    out = projects_action.csunesco_project_request_create(
+        _service_ctx(), _project_payload(requested_by='maria'))
+    assert db.get_project(out['id']).created_by == 'user-maria'
+
+
+def test_an_unknown_requested_by_falls_back_to_the_token_but_is_recorded(
+        service, session, monkeypatch):
+    """Unlike a join, a project is still worth creating when the PM has no
+    portal account yet (demo accounts, local-only PMs): it falls back to
+    the token and keeps the username so a reviewer can hand it over."""
+    import ckan.model as model
+    monkeypatch.setattr(model.User, 'get', staticmethod(lambda name: None))
+    out = projects_action.csunesco_project_request_create(
+        _service_ctx(), _project_payload(requested_by='ghost'))
+    row = db.get_project(out['id'])
+    assert row.created_by == 'cs-toolbox-service'
+    assert db._load_json(row.extras, {})['requested_by_username'] == 'ghost'
+
+
+def test_a_non_sysadmin_requested_by_is_ignored(session, monkeypatch):
+    monkeypatch.setattr(tk, 'check_access', lambda *a, **k: True)
+    monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: False)
+    ctx = {'user': 'mallory', 'auth_user_obj': _User('mallory')}
+    out = projects_action.csunesco_project_request_create(
+        ctx, _project_payload(requested_by='maria'))
+    assert db.get_project(out['id']).created_by == 'mallory'
+
+
+def test_approving_an_app_requested_project_makes_the_named_pm_its_admin(
+        service, session, monkeypatch):
+    """PM == owner, end to end: the named requester ends up the project's
+    active ``admin`` member, and that row records who approved and when."""
+    import ckan.model as model
+    monkeypatch.setattr(model.User, 'get',
+                        staticmethod(lambda name: _ckan_user(session, name)))
+    out = projects_action.csunesco_project_request_create(
+        _service_ctx(), _project_payload(requested_by='maria'))
+    projects_action.csunesco_project_approve(_service_ctx(), {'id': out['id']})
+    assert db.project_admin_user_ids(out['id']) == ['user-maria']
+    member = db.project_member(out['id'], 'user-maria')
+    assert member.reviewed_by == 'cs-toolbox-service'
+    assert member.reviewed_at is not None
+
+
+def test_project_show_separates_project_managers_from_initiative_admins(
+        service, session, monkeypatch):
+    """``admins`` used to be the UNION of PMs and initiative admins: the app
+    could not tell who actually manages the project and mirrored every ADM
+    as an owner (or, when none matched a local account, nobody)."""
+    import ckan.model as model
+    monkeypatch.setattr(model.User, 'get',
+                        staticmethod(lambda name: _ckan_user(session, name)))
+    monkeypatch.setattr(projects_action, '_active_usernames',
+                        lambda ids: {i: i for i in ids})
+    monkeypatch.setattr(db, 'initiative_admin_user_ids', lambda group: ['adm-1'])
+    out = projects_action.csunesco_project_request_create(
+        _service_ctx(), _project_payload(requested_by='maria',
+                                         initiative='riverwatch'))
+    projects_action.csunesco_project_approve(_service_ctx(), {'id': out['id']})
+    shown = projects_action.csunesco_project_show(
+        _service_ctx(), {'id': out['id']})
+    assert shown['project_managers'] == ['user-maria']
+    assert shown['initiative_admins'] == ['adm-1']
+    assert shown['admins'] == ['adm-1', 'user-maria']   # legacy union, sorted
+
+
+def test_project_manager_set_records_who_assigned_and_when(
+        service, session, project, monkeypatch):
+    import ckan.model as model
+    monkeypatch.setattr(model.User, 'get',
+                        staticmethod(lambda name: _ckan_user(session, name)))
+    out = members_action.csunesco_project_manager_set(
+        _service_ctx(), {'project_slug': 'douro-basin', 'username': 'pedro'})
+    assert out['role'] == 'admin' and out['status'] == 'active'
+    assert out['reviewed_by'] == 'cs-toolbox-service'
+    assert out['reviewed_at'] is not None
+    assert db.project_admin_user_ids(project.id) == ['user-pedro']
+
+
+# --------------------------------------------------------------------------- #
 # csunesco_join_request_create                                                 #
 # ofform/backend/app/routers/cs_projects.py:973-982                            #
 # --------------------------------------------------------------------------- #

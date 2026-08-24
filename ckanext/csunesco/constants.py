@@ -322,3 +322,32 @@ SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF
 TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI
 VN VU WF WS YE YT ZA ZM ZW
 '''.split())
+
+
+# --- Project membership model (``cs_project_member``) ------------------------
+# Three human roles, the same three the CS Toolbox app uses: platform admin
+# (CKAN sysadmin), project manager (an active ``admin`` member of the project)
+# and citizen scientist. ``editor`` is the spec's "additional users who can
+# co-edit the project details" -- NOT a manager: it never approves joins.
+MEMBER_ROLE_PM = 'admin'
+MEMBER_ROLE_EDITOR = 'editor'
+MEMBER_ROLE_CS = 'scientist'
+MEMBER_ROLES = (MEMBER_ROLE_PM, MEMBER_ROLE_EDITOR, MEMBER_ROLE_CS)
+
+MEMBER_STATUS_PENDING = 'pending'
+MEMBER_STATUS_ACTIVE = 'active'
+MEMBER_STATUS_REJECTED = 'rejected'
+
+# Where a membership row was born: a click on the portal, or the CS Toolbox
+# app acting through its service token.
+MEMBER_SOURCE_PORTAL = 'ckan'
+MEMBER_SOURCE_APP = 'app'
+
+# The role the decider held when a join was approved/rejected or a manager
+# was assigned -- recorded in the audit trail so "who approved" reads as
+# "Charlene (Project manager)" rather than a bare user id.
+APPROVER_ROLE_PLATFORM_ADMIN = 'platform_admin'
+APPROVER_ROLE_PROJECT_MANAGER = 'project_manager'
+APPROVER_ROLE_INITIATIVE_ADMIN = 'initiative_admin'
+APPROVER_ROLES = (APPROVER_ROLE_PLATFORM_ADMIN, APPROVER_ROLE_PROJECT_MANAGER,
+                  APPROVER_ROLE_INITIATIVE_ADMIN)

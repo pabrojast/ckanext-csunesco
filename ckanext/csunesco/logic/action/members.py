@@ -11,6 +11,7 @@ import re
 import ckan.plugins.toolkit as tk
 import ckan.model as model
 
+from ckanext.csunesco import constants as C
 from ckanext.csunesco import db
 from ckanext.csunesco.logic.action import current_user_id
 
@@ -154,7 +155,7 @@ def csunesco_join_request_create(context, data_dict):
     member = db.CsProjectMember()
     member.project_id = project.id
     member.user_id = user_id
-    member.role = 'scientist'
+    member.role = C.MEMBER_ROLE_CS
     member.status = 'pending'
     member.source = source
     # The applicant's own words. Until this column existed a reviewer had a
@@ -294,19 +295,25 @@ def csunesco_project_manager_set(context, data_dict):
         member.source = 'ckan'
         member.created = now
         model.Session.add(member)
-    member.role = 'admin'
-    member.status = 'active'
+    member.role = C.MEMBER_ROLE_PM
+    member.status = C.MEMBER_STATUS_ACTIVE
+    # Assigning a manager is a decision: record who made it and when (the
+    # same audit pair a join decision carries), never silently.
+    member.reviewed_by = current_user_id(context)
+    member.reviewed_at = now
 
     if tk.asbool(data_dict.get('replace', False)):
         others = (
             model.Session.query(db.CsProjectMember)
             .filter(db.CsProjectMember.project_id == project.id)
-            .filter(db.CsProjectMember.role == 'admin')
+            .filter(db.CsProjectMember.role == C.MEMBER_ROLE_PM)
             .filter(db.CsProjectMember.user_id != user.id)
             .all()
         )
         for other in others:
-            other.role = 'editor'
+            other.role = C.MEMBER_ROLE_EDITOR
+            other.reviewed_by = current_user_id(context)
+            other.reviewed_at = now
     model.Session.commit()
     return db.member_dictize(member)
 
