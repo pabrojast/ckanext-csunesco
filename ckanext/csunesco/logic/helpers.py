@@ -328,6 +328,37 @@ def csunesco_content_image(media):
     return None
 
 
+def csunesco_link_label(url):
+    """Human-readable link text for a bare URL: ``host — last-segment``.
+
+    The content pages used to print raw 120-char URLs as the link text.
+    Pure string work (never fetches), unit-testable, and falls back to a
+    truncated URL rather than breaking the page on weird input.
+    """
+    try:
+        from urllib.parse import urlparse, unquote
+    except ImportError:  # pragma: no cover - py2 leftover guard
+        from urlparse import urlparse
+        from urllib import unquote
+    raw = (url or '').strip()
+    if not raw:
+        return ''
+    try:
+        parsed = urlparse(raw)
+        host = (parsed.netloc or '').replace('www.', '', 1)
+        segment = unquote((parsed.path or '').rstrip('/').rsplit('/', 1)[-1])
+        segment = segment.replace('-', ' ').replace('_', ' ').strip()
+        if len(segment) > 40:
+            segment = segment[:37].rstrip() + '…'
+        if host and segment:
+            return u'{0} — {1}'.format(host, segment)
+        if host:
+            return host
+    except Exception:
+        pass
+    return raw if len(raw) <= 60 else raw[:57] + '…'
+
+
 def csunesco_format_number(value):
     """Group a count for reading: 1605 -> "1,605" in the request's locale.
 

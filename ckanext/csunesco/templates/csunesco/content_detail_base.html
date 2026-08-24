@@ -1,0 +1,121 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  Shared skeleton for the four content detail pages (news / events /
+  publications / maps). The four templates carried divergent copies of the
+  same article: the owner link appeared on one of them, the view bundle on
+  one, three "back" links on the same page, and the editorial blocks (header
+  image, gallery, related links, attachment) only on news even though the
+  model stores them for every type. Here everything renders CONDITIONALLY
+  from one copy, and each child only sets its identity and overrides the
+  pieces that genuinely differ.
+
+  content.body was SANITIZED server-side (single restrictive allowlist)
+  BEFORE storage, so it is the ONLY value rendered with `| safe`. Every other
+  `{{ ... }}` is autoescaped.
+
+  Child contract (top-level {% set %} before any block):
+    type_slug   -- 'news' | 'event' | 'publication' | 'map' (CSS variant)
+    type_label  -- translated eyebrow label
+    index_route -- route name of the listing page
+    index_label -- translated listing label ("All news", ...)
+    media_section_title (optional) -- heading of the links section
+  Blocks: article_dateline (default: single publish date),
+          article_extra_meta (default: empty; publications add authors/DOI),
+          article_extra (default: empty; maps add the Terria embed).
+
+  Vars: content (full dict from csunesco_content_show, decorated with
+  owner_kind/owner_title/owner_url by the view).
+#}
+
+{% block subtitle %}{{ content.title }}{% endblock %}
+
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+{% block scripts %}
+  {{ super() }}
+  {% if content.gallery %}{% asset 'csunesco/cs-page-view-js' %}{% endif %}
+{% endblock %}
+
+{% block cs_content %}
+  {% set can_manage = h.csunesco_can_manage_project(content.project_id) %}
+  {# UN solo "back" (el índice del tipo): el enlace al proyecto/organización
+     dueño vive en la línea de meta, no duplicado aquí. #}
+  {% snippet "csunesco/snippets/context_nav.html", url=h.url_for(index_route), label=index_label %}
+  <article class="cs-article">
+    <header class="cs-article-header">
+      <p class="cs-content-type-label cs-content-type-label--{{ type_slug }}">{{ type_label }}</p>
+      <h1 class="cs-article-title">{{ content.title }}</h1>
+      {% block article_dateline %}
+        {% if content.publish_date %}
+          <p class="cs-content-date">
+            <time datetime="{{ content.publish_date }}">{{ content.publish_date[:10] }}</time>
+          </p>
+        {% endif %}
+      {% endblock %}
+      {% block article_extra_meta %}{% endblock %}
+      {% snippet "csunesco/snippets/content_meta.html", content=content %}
+      {% if can_manage %}
+        {% snippet "csunesco/snippets/content_manage_bar.html", content=content %}
+      {% endif %}
+    </header>
+
+    {% if content.header_image_url %}
+      <figure class="cs-article-hero">
+        <img src="{{ content.header_image_url }}"
+             alt="{{ content.header_image_alt or '' }}"
+             style="object-position: {{ content.header_focal_x or 50 }}% {{ content.header_focal_y or 50 }}%">
+      </figure>
+    {% endif %}
+
+    {# body is sanitized server-side before storage -> safe. #}
+    <div class="cs-rich-text cs-article-body">{{ content.body | safe }}</div>
+
+    {% block article_extra %}{% endblock %}
+
+    {% if content.gallery %}
+      <section class="cs-article-media" aria-labelledby="cs-article-gallery-title">
+        <h2 id="cs-article-gallery-title" class="cs-section-title">{{ _("Gallery") }}</h2>
+        <div class="cs-gallery cs-gallery-carousel" data-carousel tabindex="0" aria-roledescription="carousel">
+          {% for image in content.gallery %}
+            <figure class="cs-gallery-item">
+              <img src="{{ image.url }}" alt="{{ image.alt or '' }}" loading="lazy">
+              {% if image.caption %}<figcaption>{{ image.caption }}</figcaption>{% endif %}
+            </figure>
+          {% endfor %}
+          {% if content.gallery | length > 1 %}
+            <div class="cs-carousel-controls">
+              <button type="button" class="cs-btn cs-btn-secondary" data-carousel-prev aria-label="{{ _('Previous image') }}">&larr;</button>
+              <span data-carousel-status aria-live="polite">1 / {{ content.gallery | length }}</span>
+              <button type="button" class="cs-btn cs-btn-secondary" data-carousel-next aria-label="{{ _('Next image') }}">&rarr;</button>
+            </div>
+          {% endif %}
+        </div>
+      </section>
+    {% endif %}
+
+    {% if content.related_links or content.media %}
+      {% set links_title = media_section_title | default(_("Related links")) %}
+      <section class="cs-article-media" aria-label="{{ links_title }}">
+        <h2 class="cs-section-title">{{ links_title }}</h2>
+        <ul class="cs-media-list">
+          {% for link in content.related_links or [] %}
+            <li><a href="{{ link.url }}" rel="noopener noreferrer">{{ link.label or h.csunesco_link_label(link.url) }}</a></li>
+          {% endfor %}
+          {# media son URLs pelados: el texto del enlace es una etiqueta
+             legible (dominio + documento), no la URL cruda de 120 chars. #}
+          {% for url in content.media %}
+            <li><a href="{{ url }}" rel="noopener noreferrer">{{ h.csunesco_link_label(url) }}</a></li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+    {% if content.attachment_url %}
+      <p class="cs-article-download">
+        <a class="cs-btn cs-btn-secondary" href="{{ content.attachment_url }}">
+          {{ content.attachment_label or _("Download attachment") }}
+        </a>
+      </p>
+    {% endif %}
+  </article>
+{% endblock %}

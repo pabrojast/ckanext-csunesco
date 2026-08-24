@@ -1,98 +1,10 @@
-{% extends "csunesco/base.html" %}
+{% extends "csunesco/content_detail_base.html" %}
 
-{#
-  News detail page (increment 5).
+{# News detail page: the shared article skeleton with the news identity.
+   Everything else (hero, gallery, links, attachment) renders conditionally
+   in content_detail_base.html. #}
 
-  content.body was SANITIZED server-side (single restrictive allowlist) BEFORE
-  storage, so it is the ONLY value rendered with `| safe`. Every other
-  `{{ ... }}` is autoescaped. Managers additionally see the status badge + an
-  edit link (the content may be pending).
-
-  Vars: content (full dict incl. body + media list).
-#}
-
-{% block subtitle %}{{ content.title }}{% endblock %}
-
-{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
-{% block scripts %}{{ super() }}{% asset 'csunesco/cs-page-view-js' %}{% endblock %}
-
-{% block cs_content %}
-  {% set can_manage = h.csunesco_can_manage_project(content.project_id) %}
-  {% snippet "csunesco/snippets/context_nav.html", items=[
-    {'url': content.owner_url, 'label': content.owner_title} if content.owner_url else None,
-    {'url': h.url_for('csunesco.cs_news_index'), 'label': _("All news")}
-  ] %}
-  <article class="cs-article">
-    <header class="cs-article-header">
-      <p class="cs-content-type-label cs-content-type-label--news">{{ _("News") }}</p>
-      <h1 class="cs-article-title">{{ content.title }}</h1>
-      {% if content.publish_date %}
-        <p class="cs-content-date">
-          <time datetime="{{ content.publish_date }}">{{ content.publish_date[:10] }}</time>
-        </p>
-      {% endif %}
-      {% snippet "csunesco/snippets/content_meta.html", content=content %}
-      {% if can_manage %}
-        {% snippet "csunesco/snippets/content_manage_bar.html", content=content %}
-      {% endif %}
-    </header>
-
-    {% if content.header_image_url %}
-      <figure class="cs-article-hero">
-        <img src="{{ content.header_image_url }}"
-             alt="{{ content.header_image_alt or '' }}"
-             style="object-position: {{ content.header_focal_x or 50 }}% {{ content.header_focal_y or 50 }}%">
-      </figure>
-    {% endif %}
-
-    {# body is sanitized server-side before storage -> safe. #}
-    <div class="cs-rich-text cs-article-body">{{ content.body | safe }}</div>
-
-    {% if content.gallery %}
-      <section class="cs-article-media" aria-labelledby="cs-news-gallery-title">
-        <h2 id="cs-news-gallery-title" class="cs-section-title">{{ _("Gallery") }}</h2>
-        <div class="cs-gallery cs-gallery-carousel" data-carousel tabindex="0" aria-roledescription="carousel">
-          {% for image in content.gallery %}
-            <figure class="cs-gallery-item">
-              <img src="{{ image.url }}" alt="{{ image.alt or '' }}" loading="lazy">
-              {% if image.caption %}<figcaption>{{ image.caption }}</figcaption>{% endif %}
-            </figure>
-          {% endfor %}
-          {% if content.gallery | length > 1 %}
-            <div class="cs-carousel-controls">
-              <button type="button" class="cs-btn cs-btn-secondary" data-carousel-prev aria-label="{{ _('Previous image') }}">&larr;</button>
-              <span data-carousel-status aria-live="polite">1 / {{ content.gallery | length }}</span>
-              <button type="button" class="cs-btn cs-btn-secondary" data-carousel-next aria-label="{{ _('Next image') }}">&rarr;</button>
-            </div>
-          {% endif %}
-        </div>
-      </section>
-    {% endif %}
-
-    {% if content.related_links or content.media %}
-      <section class="cs-article-media" aria-label="{{ _('Related links') }}">
-        <h2 class="cs-section-title">{{ _("Related links") }}</h2>
-        <ul class="cs-media-list">
-          {% for link in content.related_links or [] %}
-            <li><a href="{{ link.url }}" rel="noopener noreferrer">{{ link.label or link.url }}</a></li>
-          {% endfor %}
-          {% for url in content.media %}
-            <li><a href="{{ url }}" rel="noopener noreferrer">{{ url }}</a></li>
-          {% endfor %}
-        </ul>
-      </section>
-    {% endif %}
-
-    {% if content.attachment_url %}
-      <p class="cs-article-download">
-        <a class="cs-btn cs-btn-secondary" href="{{ content.attachment_url }}">
-          {{ content.attachment_label or _("Download attachment") }}
-        </a>
-      </p>
-    {% endif %}
-
-    <p class="cs-article-back">
-      <a class="cs-link" href="{{ h.url_for('csunesco.cs_news_index') }}">&larr; {{ _("Back to all news") }}</a>
-    </p>
-  </article>
-{% endblock %}
+{% set type_slug = 'news' %}
+{% set type_label = _("News") %}
+{% set index_route = 'csunesco.cs_news_index' %}
+{% set index_label = _("All news") %}

@@ -1116,6 +1116,26 @@ def test_content_image_picks_first_image_url():
 
 
 # --------------------------------------------------------------------------- #
+# csunesco_link_label: texto legible para una URL pelada (heurística pura)     #
+# --------------------------------------------------------------------------- #
+def test_link_label_builds_readable_text():
+    from ckanext.csunesco.logic.helpers import csunesco_link_label
+    assert csunesco_link_label(
+        'https://www.unesco.org/en/articles/unesco-trains-youth-ghana-flood'
+    ) == u'unesco.org — unesco trains youth ghana flood'
+    # Sin path: solo el dominio.
+    assert csunesco_link_label('https://example.org/') == 'example.org'
+    # Segmentos larguísimos se truncan con elipsis.
+    long_url = 'https://example.org/' + 'a' * 80
+    label = csunesco_link_label(long_url)
+    assert label.startswith(u'example.org — ') and label.endswith(u'…')
+    # Entradas raras no revientan y devuelven algo mostrable.
+    assert csunesco_link_label('') == ''
+    assert csunesco_link_label(None) == ''
+    assert csunesco_link_label('not a url') == 'not a url'
+
+
+# --------------------------------------------------------------------------- #
 # The staged project form: new fields, the step map and the ofform contract    #
 # --------------------------------------------------------------------------- #
 
