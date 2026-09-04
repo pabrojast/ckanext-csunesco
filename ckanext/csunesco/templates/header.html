@@ -3,15 +3,18 @@
 {#
   ckanext-csunesco header override (nav wiring only).
 
-  Adds a "Citizen Science" entry to CKAN's main navigation and -- for reviewers
-  only -- a link to the approval dashboard, carrying a count badge when there is
-  anything pending. We super() the core block so nothing is removed.
+  The masthead entry for the citizen-science section is Citizens4Water's now
+  (added by ckanext-c4w, which loads after this plugin); /citizen-science-portal
+  remains the landing page and links onward, so this override no longer adds a
+  "Citizen Science" tab of its own. We super() the core block so nothing is
+  removed.
 
-  Not gated on "is the count above zero": that made the whole panel vanish the
-  moment a reviewer cleared their queue, and /citizen-science/admin is linked
-  from nowhere else, so it became a URL you had to remember. Its five tabs all
-  render proper empty states precisely because it is meant to be visited when
-  there is nothing pending.
+  What it still adds is the per-user dashboard entry. Not gated on "is the
+  count above zero": that made the whole panel vanish the moment a reviewer
+  cleared their queue, and /citizen-science/admin is linked from nowhere else,
+  so it became a URL you had to remember. Its five tabs all render proper empty
+  states precisely because it is meant to be visited when there is nothing
+  pending.
 
   But the panel's own auth is no longer the right gate for the LABEL either.
   It now admits anyone with a project of their own -- deliberately, so the
@@ -22,24 +25,18 @@
   So the tab is offered to both, and named for what it holds: "Review" with a
   count for an actual reviewer, "My projects" for someone who only has their
   own. h.csunesco_pending_count() is still paid for by reviewers only.
+
+  Markup is a bare <li><a> on purpose: the active theme (theme_ejemplo)
+  replaces core's header outright and renders this block as plain list items,
+  so nav-item/nav-link classes would render unstyled next to their neighbours.
 #}
 {% block header_site_navigation_tabs %}
   {{ super() }}
 
-  {% set cs_active = request and request.blueprint == 'csunesco' %}
-  <li class="nav-item">
-    <a class="nav-link{{ ' active' if cs_active }}"
-       href="{{ h.url_for('csunesco.index') }}"
-       {% if cs_active %}aria-current="page"{% endif %}>
-      {{ _('Citizen Science') }}
-    </a>
-  </li>
-
   {% if h.csunesco_is_reviewer() %}
     {% set cs_pending = h.csunesco_pending_count() %}
-    <li class="nav-item">
-      <a class="nav-link"
-         href="{{ h.url_for('csunesco.admin_dashboard') }}"
+    <li>
+      <a href="{{ h.url_for('csunesco.admin_dashboard') }}"
          {% if cs_pending %}
            aria-label="{{ _('Citizen Science: %(count)s items awaiting review', count=cs_pending) }}"
          {% endif %}>
@@ -51,8 +48,8 @@
       </a>
     </li>
   {% elif h.check_access('csunesco_admin_pending_list') %}
-    <li class="nav-item">
-      <a class="nav-link" href="{{ h.url_for('csunesco.admin_dashboard') }}">
+    <li>
+      <a href="{{ h.url_for('csunesco.admin_dashboard') }}">
         {{ _('My projects') }}
       </a>
     </li>
@@ -60,8 +57,8 @@
     {# The PARTICIPANT'S hub (spec section 4): a citizen scientist with an
        approved membership gets their own "My projects", not the manager's
        review dashboard. #}
-    <li class="nav-item">
-      <a class="nav-link" href="{{ h.url_for('csunesco.my_projects') }}">
+    <li>
+      <a href="{{ h.url_for('csunesco.my_projects') }}">
         {{ _('My projects') }}
       </a>
     </li>
