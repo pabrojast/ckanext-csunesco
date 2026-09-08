@@ -24,4 +24,6 @@ def get_actions():
     actions.update(page.get_actions())
     actions.update(chat.get_actions())
     actions.update(structure.get_actions())
+    from ckanext.csunesco.logic import portal
+    actions.update(portal.get_actions())
     return actions

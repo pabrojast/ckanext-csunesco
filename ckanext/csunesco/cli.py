@@ -283,3 +283,11 @@ def seed_initiatives():
             click.echo('failed:  %s (%s)' % (name, exc))
         except Exception:
             click.echo('failed:  %s (unexpected error)' % name)
+
+
+@csunesco.command('portal-refresh')
+def portal_refresh():
+    """Repair approved observation snapshots (schedule every five minutes)."""
+    import json
+    from ckanext.csunesco.logic import snapshots
+    click.echo(json.dumps(snapshots.refresh_all()))

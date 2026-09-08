@@ -13,6 +13,7 @@ from flask import request
 
 import ckan.plugins.toolkit as tk
 import ckan.model as model
+from ckanext.csunesco import db
 
 log = logging.getLogger(__name__)
 
@@ -337,6 +338,11 @@ def _detail_url(content):
 
 
 def content_new(slug):
+    from ckanext.csunesco.logic import portal
+    row = db.get_project(slug)
+    if row and portal.managed(row):
+        return tk.redirect_to(portal.editor_url(row))
+
     """GET the editor for a new item under project ``slug``; POST creates it."""
     if not tk.g.user:
         return _not_authorized_response()
@@ -468,6 +474,12 @@ def org_content_new(org):
 
 
 def content_edit(id):
+    from ckanext.csunesco.logic import portal
+    content = db.get_content(id)
+    row = db.get_project(content.project_id) if content and content.project_id else None
+    if row and portal.managed(row):
+        return tk.redirect_to(portal.editor_url(row))
+
     """GET the editor pre-filled for content ``id``; POST updates it."""
     if not tk.g.user:
         return _not_authorized_response()

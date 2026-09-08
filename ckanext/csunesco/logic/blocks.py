@@ -654,6 +654,16 @@ _n_initiative_content = _n_site_news
 # The registry                                                                #
 # --------------------------------------------------------------------------- #
 
+def _n_project_fields(raw, report=None):
+    from ckanext.csunesco.logic import portal
+    allowed = (portal.FACT_FIELDS if raw.get('type') == 'project_facts'
+               else portal.STRUCTURE_FIELDS)
+    fields = raw.get('fields', list(allowed))
+    if not isinstance(fields, list):
+        fields = []
+    return {'fields': list(dict.fromkeys(k for k in fields if k in allowed))}
+
+
 class BlockType(object):
     """One entry in the registry. ``label``/``description`` are English source
     strings; templates translate them. ``icon`` is a slug resolved by the
@@ -710,6 +720,10 @@ class BlockType(object):
 
 
 _TYPES = [
+    BlockType('project_facts', u'Project facts', u'doc', _n_project_fields,
+              u'Choose and order public project details.', max_instances=1, addable=False, has_editor=False),
+    BlockType('project_structure', u'Project structure', u'layers', _n_project_fields,
+              u'Choose and order public project setup fields.', max_instances=1, addable=False, has_editor=False),
     # --- author-added -----------------------------------------------------
     BlockType('rich_text', u'Text', u'text', _n_rich_text,
               u'A paragraph of formatted text.', max_instances=20,

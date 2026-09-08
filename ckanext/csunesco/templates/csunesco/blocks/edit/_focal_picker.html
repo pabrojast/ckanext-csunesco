@@ -16,6 +16,7 @@
     <label>{{ _("Vertical") }}
       <input type="range" min="0" max="100" step="1" name="{{ y_name }}" value="{{ y }}" data-focal-y>
     </label>
+    {% if zoom_name %}<label>{{ _('Zoom') }}<input type="range" min="100" max="300" step="1" name="{{ zoom_name }}" value="100" data-focal-zoom></label><button type="button" class="cs-btn cs-btn-secondary" data-focal-reset>{{ _('Reset') }}</button>{% endif %}
   </div>
   <p class="cs-hint">{{ _("Click or drag the marker to choose which part remains visible when the image is cropped.") }}</p>
 </div>

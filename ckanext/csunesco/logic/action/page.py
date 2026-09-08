@@ -192,6 +192,9 @@ def csunesco_project_page_update(context, data_dict):
     tk.check_access('csunesco_project_page_update', context, data_dict)
     data_dict = data_dict or {}
     project = _require_project(data_dict)
+    from ckanext.csunesco.logic import portal
+    if portal.managed(project) and not context.get('csunesco_portal_sync'):
+        raise tk.NotAuthorized('Edit this project page in the CS Toolbox')
 
     # Defence in depth: re-check on the RESOLVED project, not on whatever id
     # the caller put in the auth payload.
@@ -275,9 +278,20 @@ def csunesco_project_page_submit(context, data_dict):
     cover_changed = (draft_cover is not _MISSING
                      and (draft_cover or None) != project.image_url)
     requirements = _review_requirements(blocks, cover_changed)
+    candidate = extras.get('draft_portal_payload') or {}
+    contents = candidate.get('contents') or []
+    from ckanext.csunesco.logic import portal
+    # Real authors retain the current trusted policy. The technical account
+    # was removed from context at the integration boundary.
+    content_review = any(item.get('content_type') not in ('cs-news', 'cs-event')
+                         or not project.trusted for item in contents)
+    if content_review:
+        requirements.append('project_content')
+    if candidate.get('project', {}).get('heading_image_url') != project.heading_image_url:
+        cover_changed = True
     status = blocks_module.page_initial_status(
         auth._is_sysadmin(context), bool(project.trusted), blocks,
-        additional_review=cover_changed)
+        additional_review=cover_changed or content_review)
 
     now = _utcnow()
     user_id = current_user_id(context)
@@ -293,6 +307,9 @@ def csunesco_project_page_submit(context, data_dict):
     page.modified = now
     if status == 'approved':
         page.published_json = page.draft_json
+        from ckanext.csunesco.logic import portal
+        page.reviewed_by = user_id
+        portal.publish_candidate(project, page)
         _publish_project_cover(project, extras)
         page.published_at = now
         page.reviewed_by = user_id
@@ -326,6 +343,9 @@ def csunesco_project_page_approve(context, data_dict):
         raise tk.ObjectNotFound(tk._('No page is awaiting review'))
 
     expected = data_dict.get('draft_hash')
+    from ckanext.csunesco.logic import portal
+    if portal.managed(project) and not expected:
+        raise tk.ValidationError({'draft_hash': ['The reviewed publication hash is required']})
     if expected and expected != page.draft_hash:
         raise tk.ValidationError({'draft_hash': [tk._(
             'This page changed after you opened the review. Look at it again '
@@ -334,6 +354,8 @@ def csunesco_project_page_approve(context, data_dict):
     now = _utcnow()
     extras = _page_extras(page)
     page.published_json = page.draft_json
+    page.reviewed_by = current_user_id(context)
+    portal.publish_candidate(project, page)
     _publish_project_cover(project, extras)
     page.published_at = now
     page.status = u'approved'
@@ -343,6 +365,7 @@ def csunesco_project_page_approve(context, data_dict):
     page.modified = now
     db.Session.add(page)
     db.Session.commit()
+    portal.callback(project)
     return db.page_dictize(page)
 
 
@@ -367,7 +390,12 @@ def csunesco_project_page_reject(context, data_dict):
     page.reviewed_at = now
     page.modified = now
     db.Session.add(page)
+    from ckanext.csunesco.logic import portal
+    if portal.managed(project):
+        portal.mark_review(project, page, False)
     db.Session.commit()
+    if portal.managed(project):
+        portal.callback(project)
     return db.page_dictize(page)
 
 

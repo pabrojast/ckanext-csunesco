@@ -134,6 +134,7 @@
             enctype="multipart/form-data"
             class="cs-form cs-wizard" id="cs-project-form" novalidate>
         {{ h.csrf_input() }}
+        {% if is_new %}<input type="hidden" name="request_nonce" value="{{ request_nonce }}">{% endif %}
         {% if return_to == 'review' %}<input type="hidden" name="return_to" value="review">{% endif %}
 
         {#
@@ -204,6 +205,7 @@
             {{ field_error('short_description') }}
           </div>
 
+          {% if not is_new %}
           <div class="cs-field">
             <span class="cs-field-legend">{{ _("Cover / thumbnail image") }}</span>
             {% snippet "csunesco/blocks/edit/_image_picker.html",
@@ -222,6 +224,8 @@
                        x_name="image_focal_x", y_name="image_focal_y", focal_x=data.image_focal_x, focal_y=data.image_focal_y %}
           </div>
 
+          {% endif %}
+          {% if not is_new %}
           <div class="cs-field">
             <span class="cs-field-legend">{{ _("Project logo") }}</span>
             {% snippet "csunesco/blocks/edit/_image_picker.html",
@@ -236,6 +240,7 @@
                        upload_field="logo_upload" %}
             <p class="cs-hint">{{ _("Optional. Reduced to fit within 1200×1200 without cropping; logos are displayed with their full proportions.") }}</p>
             {{ field_error('logo_url') }}
+            {% snippet "csunesco/blocks/edit/_focal_picker.html", input_id="cs-f-logo", image_url=data.logo_url, x_name="logo_focal_x", y_name="logo_focal_y", focal_x=data.logo_focal_x, focal_y=data.logo_focal_y, zoom_name="logo_zoom" %}
           </div>
 
           <div class="cs-field">
@@ -253,9 +258,10 @@
             <p class="cs-hint">{{ _("Optional. Reduced to fit within 2000×1200 without cropping. Choose the focal point used by the wide profile banner.") }}</p>
             {{ field_error('heading_image_url') }}
             {% snippet "csunesco/blocks/edit/_focal_picker.html", input_id="cs-f-heading", image_url=data.heading_image_url,
-                       x_name="heading_focal_x", y_name="heading_focal_y", focal_x=data.heading_focal_x, focal_y=data.heading_focal_y %}
+                       x_name="heading_focal_x", y_name="heading_focal_y", focal_x=data.heading_focal_x, focal_y=data.heading_focal_y, zoom_name="heading_zoom" %}
           </div>
 
+          {% endif %}
           <div class="cs-wizard-nav" hidden>
             <button type="button" class="cs-btn cs-btn-primary cs-wizard-next">{{ _("Next") }}</button>
           </div>
@@ -692,6 +698,49 @@
             <button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _("Back") }}</button>
           </div>
 
+          {% if is_new %}
+          <div class="cs-wizard-nav" hidden><button type="button" class="cs-btn cs-btn-primary cs-wizard-next">{{ _('Next') }}</button></div>
+        </section>
+        <section class="cs-step{% if open_step == 7 %} is-active{% endif %}" data-step="7" role="group" aria-labelledby="cs-step-7-title">
+          <h3 class="cs-step-title" id="cs-step-7-title" tabindex="-1">{{ _('Step 7 of 7 — Brand images') }}</h3>
+          <p class="cs-hint">{{ _('Choose a project logo and a profile header. Upload an image or paste its URL, then adjust its position and zoom.') }}</p>
+          <div class="cs-field">
+            <span class="cs-field-legend">{{ _("Project logo") }}</span>
+            {% snippet "csunesco/blocks/edit/_image_picker.html",
+                       input_id="cs-f-logo",
+                       url_name="logo_url",
+                       upload_name="logo_upload",
+                       clear_name="logo_clear",
+                       value=data.logo_url,
+                       label=_("Logo address"),
+                       clear_label=_("Remove the current logo"),
+                       url_field="logo_url",
+                       upload_field="logo_upload" %}
+            <p class="cs-hint">{{ _("Optional. Reduced to fit within 1200×1200 without cropping; logos are displayed with their full proportions.") }}</p>
+            {{ field_error('logo_url') }}
+            {% snippet "csunesco/blocks/edit/_focal_picker.html", input_id="cs-f-logo", image_url=data.logo_url, x_name="logo_focal_x", y_name="logo_focal_y", focal_x=data.logo_focal_x, focal_y=data.logo_focal_y, zoom_name="logo_zoom" %}
+          </div>
+
+          <div class="cs-field">
+            <span class="cs-field-legend">{{ _("Profile heading image") }}</span>
+            {% snippet "csunesco/blocks/edit/_image_picker.html",
+                       input_id="cs-f-heading",
+                       url_name="heading_image_url",
+                       upload_name="heading_upload",
+                       clear_name="heading_clear",
+                       value=data.heading_image_url,
+                       label=_("Heading image address"),
+                       clear_label=_("Remove the current heading image"),
+                       url_field="heading_image_url",
+                       upload_field="heading_upload" %}
+            <p class="cs-hint">{{ _("Optional. Reduced to fit within 2000×1200 without cropping. Choose the focal point used by the wide profile banner.") }}</p>
+            {{ field_error('heading_image_url') }}
+            {% snippet "csunesco/blocks/edit/_focal_picker.html", input_id="cs-f-heading", image_url=data.heading_image_url,
+                       x_name="heading_focal_x", y_name="heading_focal_y", focal_x=data.heading_focal_x, focal_y=data.heading_focal_y, zoom_name="heading_zoom" %}
+          </div>
+
+          <div class="cs-wizard-nav" hidden><button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _('Back') }}</button></div>
+          {% endif %}
           <div class="cs-form-actions">
             {% if is_new %}
               <button type="submit" id="cs-req-submit" class="cs-btn cs-btn-primary">

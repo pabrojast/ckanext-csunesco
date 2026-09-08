@@ -61,7 +61,7 @@
   padding: calc(var(--space-unit) * 2.5) calc(var(--space-unit) * 1.5);
   background: var(--unesco-blue-dark)
     var(--cs-project-hero-img, url('/csunesco/images/project-hero.png'))
-    var(--cs-hero-x, 50%) var(--cs-hero-y, 50%) / cover no-repeat;
+    var(--cs-hero-x, 50%) var(--cs-hero-y, 50%) / var(--cs-hero-size, cover) no-repeat;
 }
 
 .cs-project-hero::before {
@@ -692,7 +692,7 @@
      (set inline by its template from a charset-restricted URL). */
   background: var(--unesco-blue-dark)
     var(--cs-site-hero-img, url('/csunesco/images/cs-hero.png'))
-    var(--cs-hero-x, 50%) var(--cs-hero-y, 50%) / cover no-repeat;
+    var(--cs-hero-x, 50%) var(--cs-hero-y, 50%) / var(--cs-hero-size, cover) no-repeat;
 }
 
 .section-title-overlay {
@@ -4532,3 +4532,6 @@
     transform: none;
   }
 }
+
+.cs-project-logo-frame { width: 120px; height: 80px; overflow: hidden; margin-bottom: 16px; }
+.cs-project-logo { width: 100%; height: 100%; object-fit: contain; transform-origin: center; }

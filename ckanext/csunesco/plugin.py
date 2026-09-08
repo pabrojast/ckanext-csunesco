@@ -57,6 +57,8 @@ class CsunescoPlugin(p.SingletonPlugin):
             from ckanext.csunesco import db
             db.ensure_tables()
             _tables_ensured = True
+            from ckanext.csunesco.logic import snapshots
+            snapshots.start_worker()
         except Exception:
             log.error("ckanext-csunesco: could not initialize database tables")
 
@@ -92,6 +94,8 @@ class CsunescoPlugin(p.SingletonPlugin):
         from ckanext.csunesco.logic import helpers
         return {
             'csunesco_version': lambda: __version__,
+            'csunesco_portal_public_field': helpers.csunesco_portal_public_field,
+            'csunesco_portal_field_value': helpers.csunesco_portal_field_value,
             # Public reCAPTCHA v3 site key (read lazily from config). Returns
             # None when reCAPTCHA is not configured, so templates can render the
             # widget conditionally.

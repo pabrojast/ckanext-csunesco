@@ -394,6 +394,9 @@ def csunesco_content_create(context, data_dict):
 
     content_type = (data_dict.get('content_type') or '').strip()
     data = _validated_content(context, data_dict, content_type)
+    from ckanext.csunesco.logic import portal
+    if project is not None and portal.managed(project):
+        raise tk.NotAuthorized('Edit project content in the CS Toolbox')
     source = _resolve_source(data_dict)
 
     is_sysadmin = auth._is_sysadmin(context)
@@ -456,6 +459,9 @@ def csunesco_content_update(context, data_dict):
     content = db.get_content(data_dict.get('id'))
     if content is None:
         raise tk.ObjectNotFound(tk._('Content not found'))
+    from ckanext.csunesco.logic import portal
+    if content.project_id and portal.managed(db.get_project(content.project_id)):
+        raise tk.NotAuthorized('Edit project content in the CS Toolbox')
 
     # The owning scope is IMMUTABLE (like the slug): incoming project/org
     # references are ignored, authorization runs against the STORED scope.

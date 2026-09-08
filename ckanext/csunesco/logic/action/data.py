@@ -189,6 +189,19 @@ def csunesco_data_source_approve(context, data_dict):
     project = db.get_project(data_source.project_id)
     if project is None:
         raise tk.ValidationError({'project_id': [tk._('Project not found')]})
+    from ckanext.csunesco.logic import portal, snapshots
+    if portal.managed(project):
+        # Stage a first complete bundle before the source/package becomes public.
+        # The row is still pending in the database until approval commits.
+        source_status = data_source.status
+        data_source.status = 'approved'
+        try:
+            if not snapshots.refresh_form(data_source, force=True, defer_commit=True):
+                raise ValueError('Data is not public')
+        except Exception:
+            raise tk.ValidationError({'data': ['The public data snapshot is not available. Approval remains pending.']})
+        finally:
+            data_source.status = source_status
     is_sysadmin = auth._is_sysadmin(context)
     override_org = (data_dict.get('owner_org') or '').strip() or None
     if override_org and not is_sysadmin:
@@ -235,6 +248,12 @@ def csunesco_data_source_approve(context, data_dict):
     data_source.modified = now
     model.Session.commit()
     result = db.data_source_dictize(data_source)
+    from ckanext.csunesco.logic import snapshots
+    if tk.config.get('ckan.storage_path') or tk.config.get('ckanext.csunesco.portal_storage_path'):
+        try:
+            snapshots.refresh_form(data_source, force=True)
+        except Exception:
+            log.warning('Data snapshot refresh pending for %s', data_source.id)
     # Newly approved data should reflect in the At-a-Glance counters right
     # away (the probe already warmed the cache). Never fails the approval.
     try:

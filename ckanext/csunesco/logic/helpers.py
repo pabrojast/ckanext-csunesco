@@ -583,3 +583,16 @@ def csunesco_member_state_titles(names):
         log.warning('csunesco: member-state titles unavailable')
         titles = {}
     return [{'name': name, 'title': titles.get(name, name)} for name in names]
+
+
+def csunesco_portal_public_field(field, kind):
+    from ckanext.csunesco.logic import portal
+    return field in (portal.FACT_FIELDS if kind == 'project_facts' else portal.STRUCTURE_FIELDS)
+
+
+def csunesco_portal_field_value(value):
+    if isinstance(value, dict):
+        return '; '.join('%s: %s' % (k, csunesco_portal_field_value(v)) for k, v in value.items())
+    if isinstance(value, list):
+        return ', '.join(csunesco_portal_field_value(v) for v in value)
+    return str(value) if value is not None else ''

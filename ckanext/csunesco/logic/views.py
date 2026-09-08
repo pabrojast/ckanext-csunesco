@@ -273,6 +273,11 @@ def project_list():
 
 
 def project_landing(slug):
+    from ckanext.csunesco.logic import portal
+    from ckanext.csunesco import db
+    row = db.get_project(slug)
+    if row and portal.withdrawn(row):
+        return tk.abort(404, tk._('Project not found'))
     """Public project landing page (hero, stats, region map, join block)."""
     try:
         project = tk.get_action('csunesco_project_show')(
@@ -333,7 +338,13 @@ def _published_blocks(project_id):
         return blocks_module.default_blocks()
     published = page.get('published_blocks')
     if published is None:
-        return blocks_module.default_blocks()
+        default = blocks_module.default_blocks()
+        from ckanext.csunesco.logic import portal
+        from ckanext.csunesco import db
+        if portal.managed(db.get_project(project_id)):
+            default = [blocks_module.normalize_block({'type': key}) for key in (
+                'project_facts', 'project_structure')] + default
+        return default
     return published
 
 
@@ -416,6 +427,12 @@ def _render_project_form(data, errors, success=False, mode='new',
     for its content form.
     """
     choices, states_available = _member_state_choices()
+    steps = [dict(step) for step in constants.PROJECT_FORM_STEPS]
+    if mode == 'new':
+        steps[0]['fields'] = tuple(k for k in steps[0]['fields'] if k not in ('image_url', 'logo_url', 'heading_image_url'))
+        steps.append({'step': 7, 'title': 'Brand images', 'hint': 'Project logo and profile header.',
+                      'fields': ('logo_url', 'heading_image_url')})
+    open_step = next((step['step'] for step in steps if set(errors).intersection(step['fields'])), 1)
     return tk.render('csunesco/project_request.html', extra_vars={
         'mode': mode,
         'project': project,
@@ -425,8 +442,9 @@ def _render_project_form(data, errors, success=False, mode='new',
         'initiatives': constants.CS_INITIATIVES,
         'member_states': choices,
         'member_states_available': states_available,
-        'steps': constants.PROJECT_FORM_STEPS,
-        'open_step': _first_error_step(errors),
+        'steps': steps,
+        'request_nonce': _request_nonce(),
+        'open_step': open_step,
         'return_to': return_to if return_to == 'review' else None,
         # Spec phase-1 option lists (all from constants; single source).
         'water_types': constants.WATER_TYPES,
@@ -637,6 +655,14 @@ def _project_to_form(project):
     }
 
 
+def _request_nonce():
+    from flask import session
+    import secrets
+    if 'cs_project_request_nonce' not in session:
+        session['cs_project_request_nonce'] = secrets.token_urlsafe(24)
+    return session['cs_project_request_nonce']
+
+
 def project_new():
     """GET the project-request form; POST creates a PENDING project request."""
     # Login is required at ENTRY, not discovered on submit. An anonymous
@@ -659,12 +685,20 @@ def project_new():
 
     # --- POST ---------------------------------------------------------------
 
+    from flask import session
+    from ckanext.csunesco import db
+    from ckanext.csunesco.logic import portal
+    nonce = request.form.get('request_nonce')
+    if nonce and nonce == session.get('cs_project_request_saved_nonce'):
+        return tk.redirect_to('csunesco.project_new', submitted=1)
     data_dict = _read_project_form()
     save_draft = bool(request.form.get('save_draft'))
     batch, problems = _resolve_cover(request.form, request.files)
     if problems:
         return _render_project_form(data_dict, {'image_url': [UPLOAD_ERROR]})
     _apply_image_urls(data_dict, batch)
+    from ckanext.csunesco.logic import snapshots
+    intake_media = snapshots.privatize_intake_uploads(data_dict, batch, tk.g.user)
 
     context = _context()
     if save_draft:
@@ -697,6 +731,26 @@ def project_new():
         log.warning('csunesco: project request could not be created')
         return _render_project_form(data_dict, {'message': GENERIC_ERROR})
 
+    # This durable pending intake is retried without recreating the CKAN row.
+    row = db.get_project(created['id'])
+    snapshots.bind_intake_media(row, intake_media)
+    extras = dict(db._load_json(row.extras, {}))
+    extras['_portal_intake'] = {'pending': True}
+    for key in ('logo_focal_x', 'logo_focal_y', 'logo_zoom', 'heading_zoom'):
+        try:
+            extras[key] = max(0, min(300 if 'zoom' in key else 100, float(request.form.get(key) or (100 if 'zoom' in key else 50))))
+        except ValueError:
+            pass
+    row.extras = portal.canonical(extras)
+    model.Session.commit()
+    session['cs_project_request_saved_nonce'] = nonce
+    session.pop('cs_project_request_nonce', None)
+    try:
+        portal.send_initial_request(row)
+    except Exception:
+        log.warning('Initial app setup pending for project %s', row.id)
+        tk.h.flash_notice(tk._('Your project request is saved. The CS Toolbox workspace is waiting to synchronize.'))
+
     if save_draft:
         tk.h.flash_success(tk._(
             'Draft saved. You can keep editing and submit it for review '
@@ -710,6 +764,15 @@ def project_new():
 
 
 def project_edit(slug):
+    from ckanext.csunesco.logic import portal
+    from ckanext.csunesco import db
+    row = db.get_project(slug)
+    if row and portal.managed(row):
+        destination = portal.editor_url(row)
+        if destination:
+            return tk.redirect_to(destination)
+        return tk.abort(503, 'Project editor is not configured')
+
     """GET the staged form pre-filled for ``slug``; POST saves the changes.
 
     Reuses the very same template as ``project_new`` in ``mode='edit'`` -- the

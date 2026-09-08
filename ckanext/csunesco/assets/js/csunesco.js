@@ -624,3 +624,23 @@
     init();
   }
 })();
+
+(function () {
+  "use strict";
+  function init() {
+    document.querySelectorAll('[data-focal-picker]').forEach(function (picker) {
+      var zoom = picker.querySelector('[data-focal-zoom]');
+      var reset = picker.querySelector('[data-focal-reset]');
+      var preview = picker.querySelector('[data-focal-preview]');
+      if (!zoom || !preview) return;
+      function draw() { preview.style.backgroundSize = zoom.value === '100' ? 'cover' : zoom.value + '% auto'; }
+      zoom.addEventListener('input', draw);
+      reset.addEventListener('click', function () {
+        zoom.value = '100';
+        ['x', 'y'].forEach(function (key) { var field = picker.querySelector('[data-focal-' + key + ']'); field.value = '50'; field.dispatchEvent(new Event('input', {bubbles: true})); });
+        draw();
+      });
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+}());

@@ -604,5 +604,62 @@ csunesco_bp.add_url_rule(
     initiative_page_preview, methods=['GET'])
 
 
+
+def portal_preview(ticket):
+    from ckanext.csunesco.logic import portal
+    return portal.preview_view(ticket)
+
+
+def portal_media(project_id, digest):
+    from ckanext.csunesco.logic import snapshots
+    return snapshots.asset_view(project_id, digest)
+
+
+csunesco_bp.add_url_rule('/portal/preview/<ticket>', 'portal_preview', portal_preview, methods=['GET'])
+csunesco_bp.add_url_rule('/portal/media/<project_id>/<digest>', 'portal_media', portal_media, methods=['GET'])
+
+
+
+def portal_preview_media(ticket, digest):
+    from ckanext.csunesco.logic import portal
+    return portal.preview_media_view(ticket, digest)
+
+csunesco_bp.add_url_rule('/portal/preview-media/<ticket>/<digest>', 'portal_preview_media', portal_preview_media, methods=['GET'])
+
+
+
+def portal_preview_region(ticket):
+    from ckanext.csunesco.logic import portal
+    return portal.preview_region_view(ticket)
+
+csunesco_bp.add_url_rule('/portal/preview-region/<ticket>', 'portal_preview_region', portal_preview_region, methods=['GET'])
+
+
 def get_blueprints():
     return [csunesco_bp]
+
+
+def portal_data_media(form_id, digest):
+    from ckanext.csunesco.logic import snapshots
+    return snapshots.observation_asset_view(form_id, digest)
+
+csunesco_bp.add_url_rule('/portal/data-media/<int:form_id>/<digest>', 'portal_data_media', portal_data_media, methods=['GET'])
+
+
+def portal_intake_media(ticket, digest):
+    from ckanext.csunesco.logic import snapshots
+    return snapshots.intake_asset_view(ticket, digest)
+
+csunesco_bp.add_url_rule('/portal/intake-media/<ticket>/<digest>', 'portal_intake_media', portal_intake_media, methods=['GET'])
+
+
+@csunesco_bp.before_app_request
+def guard_migrated_local_assets():
+    from ckanext.csunesco.logic import snapshots
+    return snapshots.guard_legacy_upload()
+
+
+@csunesco_bp.after_app_request
+def prevent_migrated_asset_caching(response):
+    from ckanext.csunesco.logic import snapshots
+    return snapshots.no_cache_legacy_upload(response)

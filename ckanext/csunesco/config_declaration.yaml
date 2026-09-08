@@ -14,3 +14,25 @@ groups:
         type: int
         default: 20
         description: Maximum size in MiB for a news PDF, DOC or DOCX attachment.
+  - annotation: CS Toolbox project portal
+    options:
+      - key: ckanext.csunesco.portal_service_user
+        type: base
+        default: ''
+        description: CKAN service account allowed to submit project projections. It cannot be the author.
+      - key: ckanext.csunesco.portal_storage_path
+        type: base
+        default: ''
+        description: Persistent private publication directory; falls back to ckan.storage_path.
+      - key: ckanext.csunesco.portal_preview_origin
+        type: base
+        default: ''
+        description: Exact CS Toolbox web origin allowed to embed private read-only previews.
+      - key: ckanext.csunesco.ofform_callback_token
+        type: base
+        default: ''
+        description: Server-only credential for project intake, review callbacks and observation snapshots.
+      - key: ckanext.csunesco.portal_sync_enabled
+        type: bool
+        default: false
+        description: Repair approved snapshots and callbacks every 300 seconds using shared persistent storage.

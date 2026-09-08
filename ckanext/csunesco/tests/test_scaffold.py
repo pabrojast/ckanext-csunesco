@@ -137,7 +137,9 @@ def test_form_stages_match_the_step_map():
             if 'PROJECT_FORM_STEPS' in names:
                 steps = ast.literal_eval(node.value)
     assert steps, 'PROJECT_FORM_STEPS not found in constants.py'
-    assert rendered == {str(step['step']) for step in steps}
+    # Existing six-step editor plus the new-request-only brand image stage.
+    assert rendered == {str(step['step']) for step in steps} | {'7'}
+    assert 'Step 7 of 7 — Brand images' in source
 
     # And every field named by the step map has an input in the template --
     # either a literal control or a multi_select macro invocation (the macro

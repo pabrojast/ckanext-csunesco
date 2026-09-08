@@ -12,7 +12,7 @@
     <h2 id="cs-map-title" class="cs-section-title">{{ block.title or _("Project Region") }}</h2>
     {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
     <div id="cs-map" class="cs-map"
-         data-geojson-url="{{ h.csunesco_project_url(ctx.project.slug) }}/geojson"
+         data-geojson-url="{{ ctx.region_url or h.csunesco_project_url(ctx.project.slug) ~ '/geojson' }}"
          role="img" aria-label="{{ _('Map of the project region') }}">
       <div class="cs-map-skeleton" aria-hidden="true">
         <span class="cs-map-skeleton-text">{{ _("Loading map…") }}</span>

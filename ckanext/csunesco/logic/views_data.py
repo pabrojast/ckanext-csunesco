@@ -24,7 +24,7 @@ GENERIC_ERROR = 'Something went wrong. Please try again.'
 
 # Matches the proxy TTL: downstream caches (browser/Terria) may hold a response
 # for this long, which keeps repeat map interactions cheap.
-_CACHE_CONTROL = 'public, max-age=60'
+_CACHE_CONTROL = 'no-store'
 
 # Machine-readable failure reasons in the JSON error envelope. The HTTP status
 # stays 502 for BOTH -- the request really did fail at the gateway, and 503

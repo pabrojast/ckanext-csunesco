@@ -1088,7 +1088,12 @@ def project_dictize(project):
     extras = _load_json(project.extras, {})
     if isinstance(extras, dict):
         for key, value in extras.items():
+            if key.startswith('_'):
+                continue
             result.setdefault(key, value)
+        portal = extras.get('_portal') or {}
+        result['portal_managed'] = bool(portal.get('app_project_id'))
+        result['app_project_id'] = portal.get('app_project_id')
     return result
 
 

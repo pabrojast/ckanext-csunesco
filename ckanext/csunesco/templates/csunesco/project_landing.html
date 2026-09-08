@@ -31,10 +31,10 @@
     <p class="cs-preview-banner" role="status">
       <strong>{{ _("Draft preview.") }}</strong>
       {{ _("This is your unpublished version — the public still sees the published page.") }}
-      <a class="cs-btn cs-btn-secondary cs-btn-sm"
+      {% if not portal_readonly_preview %}<a class="cs-btn cs-btn-secondary cs-btn-sm"
          href="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
         {{ _("Back to the editor") }}
-      </a>
+      </a>{% endif %}
     </p>
   {% endif %}
 
@@ -45,11 +45,12 @@
   {% set hero_y = project.heading_focal_y if project.heading_image_url else project.image_focal_y %}
   <section class="cs-hero cs-project-hero" aria-labelledby="cs-project-title"
            {%- if hero_image %}
-           style="--cs-project-hero-img: url('{{ hero_image }}'); --cs-hero-x: {{ hero_x or 50 }}%; --cs-hero-y: {{ hero_y or 50 }}%"
+           style="--cs-project-hero-img: url('{{ hero_image }}'); --cs-hero-x: {{ hero_x or 50 }}%; --cs-hero-y: {{ hero_y or 50 }}%;{% if project.heading_zoom and project.heading_zoom > 100 %} --cs-hero-size: {{ project.heading_zoom }}% auto{% endif %}"
            {%- endif %}>
     {% if project.initiative_title %}
       <p class="cs-project-hero-initiative">{{ project.initiative_title }}</p>
     {% endif %}
+    {% if project.logo_url %}<div class="cs-project-logo-frame"><img class="cs-project-logo" src="{{ project.logo_url }}" alt="{{ project.title }}" style="object-position: {{ project.logo_focal_x if project.get('logo_focal_x') is not none else 50 }}% {{ project.logo_focal_y if project.get('logo_focal_y') is not none else 50 }}%;{% if project.logo_zoom and project.logo_zoom > 100 %}transform:scale({{ project.logo_zoom / 100 }});{% endif %}"></div>{% endif %}
     <h1 id="cs-project-title">{{ project.title }}</h1>
     {% if project.short_description %}
       <p class="cs-project-hero-desc">{{ project.short_description | striptags }}</p>
@@ -61,13 +62,13 @@
         not composed page content, and a manager must not be able to hide the
         countries or the contact address by reordering their page. Renders
         nothing when the project has none of these fields set. --------- #}
-  {% snippet "csunesco/snippets/project_facts.html", project=project %}
+  {% if not project.portal_managed %}{% snippet "csunesco/snippets/project_facts.html", project=project %}{% endif %}
 
   {# ---- Phase-2 structure mirror (spec section 7), pushed by the CS Toolbox
         app. Also OUTSIDE the block loop: audience filtering (public vs
         participants-only) is enforced by the snippet itself and must not be
         bypassable by page composition. Renders nothing without data. ---- #}
-  {% snippet "csunesco/snippets/project_structure.html", project=project %}
+  {% if not project.portal_managed %}{% snippet "csunesco/snippets/project_structure.html", project=project %}{% endif %}
 
   {# ---- Trusted toggle (sysadmin-only policy lever, P2): trusted projects
         publish news/events without review. Deliberately OUTSIDE the block

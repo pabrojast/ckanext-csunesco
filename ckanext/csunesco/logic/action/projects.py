@@ -437,6 +437,9 @@ def csunesco_project_update(context, data_dict):
     project = db.get_project(data_dict.get('id') or data_dict.get('slug'))
     if project is None:
         raise tk.ObjectNotFound(tk._('Project not found'))
+    from ckanext.csunesco.logic import portal
+    if portal.managed(project):
+        raise tk.NotAuthorized('Save a project publication in the CS Toolbox')
     tk.check_access('csunesco_project_update', context,
                     dict(data_dict, id=project.id, project_id=project.id))
     # Defence in depth: the auth function is a cheap pre-check that lets an
@@ -789,6 +792,12 @@ def csunesco_project_list(context, data_dict):
     offset = _positive_int(data_dict.get('offset'), default=0)
 
     query = model.Session.query(db.CsProject)
+    if not auth._is_sysadmin(context):
+        # Portal metadata is canonical JSON written by set_metadata. This
+        # private marker survives replacement drafts until approval commits.
+        query = query.filter(sa.or_(db.CsProject.extras.is_(None), sa.and_(
+            ~db.CsProject.extras.like('%"_portal_withdrawn":true%'),
+            ~db.CsProject.extras.like('%"status":"withdrawn"%'))))
     if status:
         query = query.filter(db.CsProject.status == status)
     if initiative:
@@ -888,6 +897,9 @@ def csunesco_project_show(context, data_dict):
         raise tk.ObjectNotFound(tk._('Project not found'))
     if project.status != 'approved' and not _can_view_unapproved(context, project):
         raise tk.NotAuthorized(tk._('Not authorized to view this project'))
+    from ckanext.csunesco.logic import portal
+    if portal.withdrawn(project) and not _can_view_unapproved(context, project):
+        raise tk.ObjectNotFound(tk._('Project not found'))
 
     result = db.project_dictize(project)
     if not data_dict.get('include_geojson'):

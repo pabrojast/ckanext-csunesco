@@ -272,6 +272,13 @@ def can_manage_project(context, project_id):
     docstring and the ``csunesco_data_source_create`` auth function; pinned now
     by ``test_initiative_admin.py``.)
     """
+    if context.get('csunesco_portal_sync'):
+        from ckanext.csunesco import db
+        project = db.get_project(project_id)
+        if project and project.status in ('draft', 'pending', 'rejected'):
+            user = model.User.get(context.get('user'))
+            if user and project.created_by == user.id:
+                return True
     return (_is_sysadmin(context)
             or _is_project_admin(context, project_id)
             or _is_project_initiative_admin(context, project_id))
@@ -981,3 +988,12 @@ def get_auth_functions():
         'csunesco_project_structure_upsert':
             csunesco_project_structure_upsert,
     }
+
+
+_legacy_get_auth_functions = get_auth_functions
+
+def get_auth_functions():
+    from ckanext.csunesco.logic import portal
+    registered = _legacy_get_auth_functions()
+    registered.update({name: portal.service_auth for name in portal.get_actions()})
+    return registered

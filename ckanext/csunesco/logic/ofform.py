@@ -197,6 +197,13 @@ def _fetch(path, timeout=REQUEST_TIMEOUT):
 
 
 def fetch_dashboard_data(form_id, timeout=REQUEST_TIMEOUT):
+    from ckanext.csunesco.logic import snapshots
+    try:
+        saved = snapshots.saved_form(form_id)
+    except Exception:
+        saved = None
+    if saved is not None:
+        return saved['dashboard']
     """The public dashboard-data JSON for a form (TTL-cached dict)."""
     form_id = _coerce_form_id(form_id)
     key = ('dashboard', form_id)
@@ -233,6 +240,13 @@ def fetch_dashboard_data(form_id, timeout=REQUEST_TIMEOUT):
 
 
 def fetch_csv(form_id):
+    from ckanext.csunesco.logic import snapshots
+    try:
+        saved = snapshots.saved_form(form_id)
+    except Exception:
+        saved = None
+    if saved is not None:
+        return saved['csv']
     """The public CSV export for a form (TTL-cached text)."""
     form_id = _coerce_form_id(form_id)
     key = ('csv', form_id)

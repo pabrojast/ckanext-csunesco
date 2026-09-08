@@ -152,6 +152,9 @@ def csunesco_project_structure_upsert(context, data_dict):
     if project is None:
         raise tk.ObjectNotFound(tk._('Project not found'))
 
+    from ckanext.csunesco.logic import portal
+    if portal.managed(project):
+        return {'project_id': project.id, 'slug': project.slug, 'staged_in_app': True}
     extras = db._load_json(project.extras, {})
     extras = dict(extras) if isinstance(extras, dict) else {}
     # REPLACE semantics: the app pushes the whole snapshot every time, so a

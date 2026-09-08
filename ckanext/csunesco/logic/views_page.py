@@ -167,6 +167,15 @@ def _take_drops(project_id):
 
 
 def project_page_edit(slug):
+    from ckanext.csunesco.logic import portal
+    from ckanext.csunesco import db
+    row = db.get_project(slug)
+    if row and portal.managed(row):
+        destination = portal.editor_url(row)
+        if destination:
+            return tk.redirect_to(destination)
+        return tk.abort(503, 'Project editor is not configured')
+
     """GET the page editor for ``slug``; POST applies one operation and saves."""
     if not tk.g.user:
         return _not_authorized_response()
@@ -329,6 +338,17 @@ def project_page_preview(slug):
     project.pop('region_geojson', None)
 
     page = _load_page(project['id'])
+    from ckanext.csunesco.logic import portal
+    page_row = db.get_project_page(project['id'])
+    candidate = portal.candidate_preview(project, page_row)
+    if candidate:
+        # The same frozen candidate renderer also resolves its private assets
+        # and geometry; reviewing the legacy public URLs would show stale media.
+        extras = db._load_json(page_row.extras, {})
+        ticket = portal.create_preview_ticket(db.get_project(project['id']), candidate,
+                                             {'username': tk.g.user},
+                                             extras.get('draft_portal_revision'))
+        return tk.redirect_to(ticket['url'])
     if page and 'draft_project_image_url' in page:
         project['image_url'] = page.get('draft_project_image_url') or None
     # The preview shows HIDDEN blocks too, marked -- otherwise a manager
@@ -338,6 +358,8 @@ def project_page_preview(slug):
     ctx = page_render.build_context(
         _context(), project, blocks, has_region=has_region,
         can_manage=True, preview=True)
+    if candidate:
+        ctx['news_events'] = candidate.get('contents', [])
 
     return tk.render('csunesco/project_landing.html', extra_vars={
         'project': project,
