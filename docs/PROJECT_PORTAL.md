@@ -119,6 +119,20 @@ are copied with their observation rows; their public hash routes consult the
 current approved source and snapshot manifest on every request.
 The ticket is project/revision-scoped and author capabilities are rechecked on use.
 
+Only the actual CKAN sysadmin author can change standard section titles and
+introductions. This covers the six default project builtins and the title of
+`project_facts` and `project_structure`. Managers can edit canonical content,
+including `builtin_about.html`, and the titles and bodies of custom sections.
+`capabilities` accepts the delegated actor and returns
+`can_edit_standard_sections`, `standard_sections` with protected fields and the
+existing draft/published baseline, and matching metadata per registry entry.
+Without a delegated actor the capability is false. Transport credentials do not
+grant authoring permission. Existing legacy labels can be preserved unchanged.
+An app-only admin label change must first arrive as an admin-authored `draft`
+projection before a manager can preview or submit it against that new baseline.
+Saving a draft, applying a projection and creating a preview enforce the same
+policy. Home and initiative editors retain their existing scope and permissions.
+
 ## Activation
 
 Import/export and compare each project first. Preserve CKAN IDs and URLs; do not

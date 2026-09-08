@@ -135,6 +135,9 @@
         {% if errors.end_date %}
           <p id="cs-content-end-error" class="cs-field-error" role="alert">{{ errors.end_date | join(', ') }}</p>
         {% endif %}
+        <label for="cs-content-location">{{ _("Location") }}</label>
+        <input type="text" id="cs-content-location" name="location" maxlength="500"
+               value="{{ data.location or '' }}">
       </div>
 
       {# ---- Terria map URL (maps only) --------------------------------- #}

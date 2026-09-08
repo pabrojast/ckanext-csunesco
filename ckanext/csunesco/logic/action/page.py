@@ -216,6 +216,7 @@ def csunesco_project_page_update(context, data_dict):
     else:
         blocks = blocks_module.normalize_blocks(raw_blocks)
     blocks = blocks_module.ensure_builtins(blocks)
+    portal.validate_standard_sections(context, project, blocks)
     _validate_policy(blocks)
     if blocks_module.oversized(blocks):
         raise tk.ValidationError({'blocks': [tk._(

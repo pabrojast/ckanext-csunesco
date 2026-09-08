@@ -34,6 +34,48 @@ STRUCTURE_FIELDS = ('aim', 'focus_areas', 'engagement_activities', 'target_group
                     'how_to_participate', 'water_parameters')
 
 
+def standard_sections(project=None):
+    """Existing authored labels are the baseline, including legacy overrides."""
+    saved = {}
+    page = db.get_project_page(project.id) if project else None
+    if page:
+        for raw in (page.published_json, page.draft_json):
+            for item in blocks.blocks_from_json(raw, default=[]):
+                saved[item['type']] = item
+    result = []
+    for key in tuple(blocks.DEFAULT_BLOCK_TYPES) + ('project_facts', 'project_structure'):
+        item = blocks.BLOCK_TYPES[key]
+        baseline = saved.get(key) or blocks.normalize_block({'type': key})
+        fields = ['title', 'intro'] if key in blocks.DEFAULT_BLOCK_TYPES else ['title']
+        result.append({'type': key, 'label': item.label, 'protected_fields': fields,
+                       'baseline': {field: baseline.get(field, '') for field in fields}})
+    return result
+
+
+def can_edit_standard_sections(context):
+    # The service account never acquires authoring rights through its sysadmin bit.
+    return bool(context.get('user') != tk.config.get('ckanext.csunesco.portal_service_user')
+                and auth._is_sysadmin(context))
+
+
+def validate_standard_sections(context, project, candidate_blocks):
+    if can_edit_standard_sections(context):
+        return
+    standards = {item['type']: item for item in standard_sections(project)}
+    for candidate in candidate_blocks:
+        policy = standards.get(candidate.get('type'))
+        if not policy:
+            continue
+        for field in policy['protected_fields']:
+            old = policy['baseline'].get(field) or ''
+            new = candidate.get(field) or ''
+            # Empty title means the registry's translated label in the renderer.
+            if field == 'title':
+                old, new = old or policy['label'], new or policy['label']
+            if old != new:
+                raise tk.NotAuthorized('Only a CKAN administrator may change standard section titles or introductions')
+
+
 def canonical(value):
     return json.dumps(value, sort_keys=True, ensure_ascii=False,
                       separators=(',', ':'), allow_nan=False)
@@ -221,6 +263,7 @@ def validate_payload(raw):
         values['app_content_id'] = str(item.get('app_content_id') or item['id'])
         values['ckan_id'] = item.get('ckan_id')
         values['extras'] = _type_extras(item, body=values['body'])
+        values['location'] = values['extras'].get('location')
         for key in ('publish_date', 'end_date'):
             if isinstance(values.get(key), datetime.datetime):
                 values[key] = values[key].isoformat()
@@ -394,6 +437,10 @@ def block_fields(item, default):
 
 def capabilities(context, data):
     require_service(context)
+    project = resolve_project(data) if (data.get('project') or data.get('project_id') or data.get('project_slug')) else None
+    effective = actor_context(context, data, project) if project and data.get('actor') else None
+    standards = standard_sections(project)
+    standards_by_type = {item['type']: item for item in standards}
     registry = []
     for item in blocks._TYPES:
         if 'project' not in item.scopes:
@@ -403,6 +450,8 @@ def capabilities(context, data):
         selected = FACT_FIELDS if item.key == 'project_facts' else STRUCTURE_FIELDS
         registry.append({'key': item.key, 'type': item.key, 'label': item.label,
                          'description': item.description, 'builtin': item.builtin,
+                         'standard_section': item.key in standards_by_type,
+                         'protected_fields': standards_by_type.get(item.key, {}).get('protected_fields', []),
                          'addable': item.addable or item.key in ('project_facts', 'project_structure'), 'max_instances': item.max_instances,
                          'requires_review': item.requires_review, 'default': default,
                          'fields': fields,
@@ -421,6 +470,8 @@ def capabilities(context, data):
                 if field.get('options_source') == 'data_sources':
                     field['options'] = [{'value': source['id'], 'label': source.get('title') or str(source['form_id'])} for source in sources]
     return {'schema_version': SCHEMA_VERSION, 'capabilities_version': 'project-portal-1',
+            'can_edit_standard_sections': bool(effective and can_edit_standard_sections(effective)),
+            'standard_sections': standards,
             'blocks': registry, 'data_sources': sources, 'datasets': datasets,
             'project_fields': [{'key': k, 'label': k.replace('_', ' ').capitalize()} for k in FACT_FIELDS],
             'structure_fields': [{'key': k, 'label': k.replace('_', ' ').capitalize()} for k in STRUCTURE_FIELDS],
@@ -454,6 +505,7 @@ def apply(context, data):
         model.Session.commit()
         return dict(status(project), accepted=True)
     candidate = validate_payload(data['payload'])
+    validate_standard_sections(effective, project, candidate['blocks'])
     meta.update(app_project_id=app_id, revision=revision, checksum=data['checksum'],
                 status='draft', intent=intent, updated_at=datetime.datetime.utcnow().isoformat())
     set_metadata(project, meta)
@@ -496,6 +548,7 @@ def export(context, data):
 def preview(context, data):
     project, effective, revision, app_id = validate_envelope(context, data)
     candidate = validate_payload(data['payload'])
+    validate_standard_sections(effective, project, candidate['blocks'])
     return create_preview_ticket(project, candidate, data['actor'], revision)
 
 

@@ -50,7 +50,7 @@
     {% if project.initiative_title %}
       <p class="cs-project-hero-initiative">{{ project.initiative_title }}</p>
     {% endif %}
-    {% if project.logo_url %}<div class="cs-project-logo-frame"><img class="cs-project-logo" src="{{ project.logo_url }}" alt="{{ project.title }}" style="object-position: {{ project.logo_focal_x if project.get('logo_focal_x') is not none else 50 }}% {{ project.logo_focal_y if project.get('logo_focal_y') is not none else 50 }}%;{% if project.logo_zoom and project.logo_zoom > 100 %}transform:scale({{ project.logo_zoom / 100 }});{% endif %}"></div>{% endif %}
+    {% if project.logo_url %}<div class="cs-project-logo-frame"><img class="cs-project-logo" src="{{ project.logo_url }}" alt="{{ project.title }}" style="object-position: {{ project.logo_focal_x if project.get('logo_focal_x') is not none else 50 }}% {{ project.logo_focal_y if project.get('logo_focal_y') is not none else 50 }}%;{% if project.logo_zoom and project.logo_zoom > 100 %}transform:scale({{ project.logo_zoom / 100 }});transform-origin: {{ project.logo_focal_x if project.get('logo_focal_x') is not none else 50 }}% {{ project.logo_focal_y if project.get('logo_focal_y') is not none else 50 }}%;{% endif %}"></div>{% endif %}
     <h1 id="cs-project-title">{{ project.title }}</h1>
     {% if project.short_description %}
       <p class="cs-project-hero-desc">{{ project.short_description | striptags }}</p>

@@ -113,6 +113,18 @@ def test_app_contract_payload_still_queues(actions, session, monkeypatch):
     assert out['reviewed_by'] is None
 
 
+def test_event_location_round_trip_and_type_switch_removes_it(actions, session):
+    _approved_project(session)
+    payload = dict(APP_PAYLOAD, content_type='cs-event', publish_date='2026-09-09T09:15',
+                   end_date='2026-09-09T10:30', location='<b>River bridge</b>')
+    out = actions.csunesco_content_create(_ctx('u1'), payload)
+    assert out['location'] == 'River bridge'
+    assert out['publish_date'] == '2026-09-09T09:15:00'
+    payload.update(id=out['id'], content_type='cs-news')
+    changed = actions.csunesco_content_update(_ctx('u1'), payload)
+    assert not changed.get('location')
+
+
 def test_wins_news_fields_round_trip_and_are_sanitized(actions, session,
                                                        monkeypatch):
     _approved_project(session)

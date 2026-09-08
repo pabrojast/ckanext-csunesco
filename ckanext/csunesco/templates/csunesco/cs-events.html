@@ -10,10 +10,13 @@
 {% block article_dateline %}
   {% if content.publish_date %}
     <p class="cs-content-date">
-      <time datetime="{{ content.publish_date }}">{{ content.publish_date[:10] }}</time>
+      <time datetime="{{ content.publish_date }}">{{ content.publish_date | replace('T', ' ') }}</time>
       {% if content.end_date %}
-        &ndash; <time datetime="{{ content.end_date }}">{{ content.end_date[:10] }}</time>
+        &ndash; <time datetime="{{ content.end_date }}">{{ content.end_date | replace('T', ' ') }}</time>
       {% endif %}
     </p>
+  {% endif %}
+  {% if content.location %}
+    <p class="cs-content-owner">{{ _("Location") }}: {{ content.location }}</p>
   {% endif %}
 {% endblock %}

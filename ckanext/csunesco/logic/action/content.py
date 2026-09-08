@@ -333,6 +333,8 @@ def _type_extras(data, body=None):
     content_type = data.get('content_type')
     is_news = content_type == 'cs-news'
     return {
+        'location': (_plain(data.get('location'), 500) or None
+                     if content_type == 'cs-event' else None),
         'terria_url': (data.get('terria_url') or None
                        if content_type == 'cs-map' else None),
         'doi': (data.get('doi') or None

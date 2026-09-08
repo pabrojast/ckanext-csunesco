@@ -52,7 +52,7 @@ def test_content_form_carries_the_contract_names():
     """The name= set mirrors _read_content_form (views_content.py) and the
     payload the app outbox posts -- renaming one silently drops data."""
     source = _read(CONTENT_FORM)
-    for name in ('title', 'content_type', 'body', 'publish_date', 'end_date',
+    for name in ('title', 'content_type', 'body', 'publish_date', 'end_date', 'location',
                  'media', 'visibility', 'terria_url', 'doi', 'authors',
                  'excerpt', 'author', 'source_url', 'header_image_alt',
                  'gallery_url', 'gallery_alt', 'gallery_caption',
@@ -82,6 +82,29 @@ def test_detail_templates_extend_the_shared_base():
         source = _read(path)
         assert '{% extends "csunesco/content_detail_base.html" %}' in source, \
             '%s must extend the shared article skeleton' % os.path.basename(path)
+
+
+def test_event_card_and_detail_render_time_and_escape_location():
+    from types import SimpleNamespace
+    from jinja2 import Environment, FileSystemLoader, ChoiceLoader, DictLoader
+    env = Environment(autoescape=True, loader=ChoiceLoader([
+        DictLoader({'csunesco/content_detail_base.html': '{% block article_dateline %}{% endblock %}'}),
+        FileSystemLoader(os.path.dirname(TPL_DIR)),
+    ]))
+    env.globals.update(_=lambda value: value, h=SimpleNamespace(
+        url_for=lambda *a, **k: '/event', csunesco_content_image=lambda media: None))
+    event = {'content_type': 'cs-event', 'title': 'Sampling', 'slug': 'sampling',
+             'publish_date': '2026-09-09T14:30:00', 'end_date': '2026-09-09T16:45:00',
+             'location': '<script>unsafe</script>', 'media': []}
+    for name in ('csunesco/snippets/content_card.html', 'csunesco/cs-events.html'):
+        html = env.get_template(name).render(item=event, content=event)
+        assert '2026-09-09 14:30:00' in html and '2026-09-09 16:45:00' in html
+        assert '&lt;script&gt;unsafe&lt;/script&gt;' in html
+        assert '<script>' not in html
+    news = dict(event, content_type='cs-news')
+    html = env.get_template('csunesco/snippets/content_card.html').render(item=news)
+    assert '>2026-09-09</time>' in html
+    assert 'Location' not in html
 
 
 def test_detail_classes_have_css_rules():

@@ -63,6 +63,24 @@ def test_transport_never_autoapproves(store):
     assert 'private field' not in json.dumps(db.page_dictize(page))
 
 
+@pytest.mark.parametrize('x,y,expected', [(0, 100, '0% 100%'), (100, 0, '100% 0%'),
+                                        (None, None, '50% 50%')])
+def test_landing_logo_zoom_uses_saved_focal_point_as_transform_origin(x, y, expected):
+    from pathlib import Path
+    from jinja2 import Environment
+    source = (Path(__file__).parents[1] / 'templates/csunesco/project_landing.html').read_text()
+    # Render the actual logo style (including its zoom conditional) without
+    # needing unrelated page navigation, blocks or a running CKAN server.
+    logo = source.split('<img class="cs-project-logo"', 1)[1].split('"></div>', 1)[0]
+    html = Environment(autoescape=True).from_string(logo).render(project={
+        'title': 'Square logo', 'logo_url': '/logo.png', 'logo_zoom': 175,
+        'logo_focal_x': x, 'logo_focal_y': y,
+    })
+    assert 'transform:scale(1.75)' in html
+    assert 'object-position: ' + expected + ';' in html
+    assert 'transform-origin: ' + expected + ';' in html
+
+
 def test_effective_actor_capability_and_identity_checked(store):
     project, _ = store
     for actor in ({'username': 'outsider'}, {'username': 'author', 'ckan_id': 'reviewer'}, {'username': 'missing'}):
@@ -113,6 +131,31 @@ def test_exact_approval_freezes_public_fields_without_private_values(store):
     assert 'workplan' not in public
     assert portal.status(project)['published_revision'] == 1
     assert portal.status(project)['status'] == 'approved'
+
+
+def test_event_snapshot_preserves_location_and_time_without_changing_before_approval(store):
+    project, _ = store
+    data = envelope(project)
+    event = {'app_content_id': 'event-1', 'content_type': 'cs-event', 'title': 'River sampling',
+             'body': '<p>Join the sampling team.</p>', 'publish_date': '2026-09-09T14:30',
+             'end_date': '2026-09-09T16:45', 'location': '<b>River station</b> & bridge'}
+    data['payload']['contents'] = [event]
+    data['checksum'] = portal.checksum(data['payload'])
+    result = portal.apply(ctx(), data)
+    assert db.Session.query(db.CsContent).count() == 0
+    candidate = db._load_json(db.get_project_page(project.id).extras, {})['draft_portal_payload']['contents'][0]
+    assert candidate['location'] == 'River station & bridge'
+    page_actions.csunesco_project_page_approve(ctx('reviewer'), {'project_id': project.id, 'draft_hash': result['draft_hash']})
+    stored = db.content_dictize(db.Session.query(db.CsContent).one())
+    assert stored['location'] == 'River station & bridge'
+    assert stored['publish_date'] == '2026-09-09T14:30:00'
+    assert stored['end_date'] == '2026-09-09T16:45:00'
+    changed = copy.deepcopy(data)
+    changed['revision'] = 2
+    changed['payload']['contents'][0]['location'] = 'Different place'
+    changed['checksum'] = portal.checksum(changed['payload'])
+    portal.apply(ctx(), changed)
+    assert db.content_dictize(db.Session.query(db.CsContent).one())['location'] == stored['location']
 
 
 def test_rejection_preserves_last_published_page(store):
@@ -168,6 +211,73 @@ def test_public_field_registry_does_not_advertise_private_fields(store):
     registry = portal.capabilities(ctx(), {})
     assert not set(portal.FACT_FIELDS).intersection(portal.constants.FIELD_AUDIENCE)
     assert {'project_facts', 'project_structure'} <= {item['key'] for item in registry['blocks']}
+
+
+@pytest.mark.parametrize('kind,field', [('builtin_about', 'title'), ('builtin_data', 'intro'),
+                                      ('project_facts', 'title'), ('project_structure', 'title')])
+def test_standard_headings_require_real_ckan_admin_for_apply_and_preview(store, kind, field):
+    project, _ = store
+    data = envelope(project)
+    data['payload']['blocks'] = [blocks.normalize_block({'type': kind, field: 'Unauthorized label'})]
+    data['checksum'] = portal.checksum(data['payload'])
+    for operation in (portal.apply, portal.preview):
+        with pytest.raises(tk.NotAuthorized, match='Only a CKAN administrator'):
+            operation(ctx(), data)
+    assert db.get_project_page(project.id) is None
+    assert not portal.metadata(project)
+
+
+def test_standard_heading_capability_uses_delegated_actor_not_transport(store):
+    project, _ = store
+    for name, allowed in [('author', False), ('reviewer', True)]:
+        value = portal.capabilities(ctx(), {'project_id': project.id, 'actor': {'username': name}})
+        assert value['can_edit_standard_sections'] is allowed
+        assert len(value['standard_sections']) == 8
+        assert next(item for item in value['blocks'] if item['key'] == 'rich_text')['standard_section'] is False
+    assert portal.capabilities(ctx(), {'project_id': project.id})['can_edit_standard_sections'] is False
+    with pytest.raises(tk.NotAuthorized):
+        portal.capabilities(ctx(), {'project_id': project.id, 'actor': {'username': 'transport'}})
+
+
+def test_manager_preserves_legacy_standard_labels_and_edits_canonical_and_custom_content(store):
+    project, _ = store
+    initial = envelope(project, actor={'username': 'reviewer'}, intent='draft')
+    about = next(item for item in initial['payload']['blocks'] if item['type'] == 'builtin_about')
+    about.update(title='Existing legacy heading', intro='Existing introduction')
+    initial['checksum'] = portal.checksum(initial['payload'])
+    portal.apply(ctx(), initial)
+    newer = copy.deepcopy(initial)
+    newer.update(revision=2, actor={'username': 'author'}, intent='submit')
+    next(item for item in newer['payload']['blocks'] if item['type'] == 'builtin_about')['html'] = '<p>New canonical description</p>'
+    newer['payload']['blocks'].append(blocks.normalize_block({'type': 'rich_text', 'title': 'Manager extra', 'html': '<p>Custom content</p>'}))
+    newer['checksum'] = portal.checksum(newer['payload'])
+    assert portal.apply(ctx(), newer)['status'] == 'pending'
+    draft = blocks.blocks_from_json(db.get_project_page(project.id).draft_json)
+    assert next(item for item in draft if item['type'] == 'builtin_about')['html'] == '<p>New canonical description</p>'
+
+
+def test_direct_ckan_page_save_cannot_change_standard_intro_as_manager(store):
+    project, _ = store
+    candidate = blocks.default_blocks()
+    candidate[0]['intro'] = 'Manager override'
+    with pytest.raises(tk.NotAuthorized, match='Only a CKAN administrator'):
+        page_actions.csunesco_project_page_update(ctx('author'), {'project_id': project.id, 'blocks': candidate})
+    page_actions.csunesco_project_page_update(ctx('reviewer'), {'project_id': project.id, 'blocks': candidate})
+    page_actions.csunesco_project_page_update(ctx('author'), {'project_id': project.id, 'blocks': candidate})
+
+
+def test_published_legacy_heading_baseline_used_when_no_draft(store):
+    project, _ = store
+    page = db.get_or_create_project_page(project.id, created_by='reviewer')
+    candidate = blocks.default_blocks()
+    candidate[0]['title'] = 'Legacy translated heading'
+    page.published_json = blocks.blocks_to_json(candidate)
+    page.draft_json = None
+    db.Session.commit()
+    portal.validate_standard_sections(ctx('author'), project, candidate)
+    candidate[0]['title'] = 'Renamed'
+    with pytest.raises(tk.NotAuthorized):
+        portal.validate_standard_sections(ctx('author'), project, candidate)
 
 
 def test_asset_fetch_auth_is_pinned_to_app_endpoint(store, monkeypatch):

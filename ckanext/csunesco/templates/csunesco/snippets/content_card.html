@@ -36,11 +36,14 @@
     <h3 class="cs-card-title">{{ item.title }}</h3>
     {% if item.publish_date %}
       <p class="cs-content-date">
-        <time datetime="{{ item.publish_date }}">{{ item.publish_date[:10] }}</time>
+        <time datetime="{{ item.publish_date }}">{{ item.publish_date | replace('T', ' ') if is_event else item.publish_date[:10] }}</time>
         {% if is_event and item.end_date %}
-          &ndash; <time datetime="{{ item.end_date }}">{{ item.end_date[:10] }}</time>
+          &ndash; <time datetime="{{ item.end_date }}">{{ item.end_date | replace('T', ' ') }}</time>
         {% endif %}
       </p>
+    {% endif %}
+    {% if is_event and item.location %}
+      <p class="cs-content-owner">{{ _("Location") }}: {{ item.location }}</p>
     {% endif %}
     {% if item.excerpt %}
       <p class="cs-content-excerpt">{{ item.excerpt }}</p>
