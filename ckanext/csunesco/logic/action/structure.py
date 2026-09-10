@@ -37,7 +37,7 @@ _TAG_RE = re.compile(r'<[^>]*>')
 # The structure keys the mirror accepts, by shape.
 _TEXT_FIELDS = ('aim', 'how_to_participate', 'indigenous_knowledge_notes')
 _LIST_FIELDS = ('focus_areas', 'engagement_activities', 'target_groups',
-                'incentives')
+                'incentives', 'expected_outcomes')
 _CHOICE_FIELDS = ('engagement_level', 'training_level',
                   'duration_of_involvement')
 _BOOL_FIELDS = ('local_govt_engagement', 'indigenous_knowledge')

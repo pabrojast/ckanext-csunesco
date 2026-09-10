@@ -504,46 +504,7 @@
             {{ field_error('activity_status') }}
           </div>
 
-          <div class="cs-field">
-            <label for="cs-f-start_date">{{ _("Start date") }}</label>
-            <input type="date" id="cs-f-start_date" name="start_date"
-                   value="{{ data.start_date or '' }}"
-                   {% if errors.start_date %}aria-invalid="true"{% endif %}
-                   {{- described_by('start_date', true) }}>
-            <p id="cs-f-start_date-hint" class="cs-hint">{{ _("Optional. When the project started, or is due to start.") }}</p>
-            {{ field_error('start_date') }}
-          </div>
-
-          <div class="cs-field">
-            <label for="cs-f-end_date">{{ _("End date") }}</label>
-            <input type="date" id="cs-f-end_date" name="end_date"
-                   value="{{ data.end_date or '' }}"
-                   data-cs-msg-end-before-start="{{ _('End date must not be before the start date') }}"
-                   {% if errors.end_date %}aria-invalid="true"{% endif %}
-                   {{- described_by('end_date', true) }}>
-            <p id="cs-f-end_date-hint" class="cs-hint">{{ _("Optional. Leave empty for an ongoing project. A single-day project may use the same date twice.") }}</p>
-            {{ field_error('end_date') }}
-          </div>
-
-          <div class="cs-field">
-            <label for="cs-f-how_to_participate">{{ _("How to take part") }}</label>
-            <textarea id="cs-f-how_to_participate" name="how_to_participate" rows="4" data-rich-editor
-                      maxlength="4000"
-                      {% if errors.how_to_participate %}aria-invalid="true"{% endif %}
-                      {{- described_by('how_to_participate', true) }}>{{ data.how_to_participate or '' }}</textarea>
-            <p id="cs-f-how_to_participate-hint" class="cs-hint">{{ _("Optional. What a volunteer actually does, and what they need to bring or install.") }}</p>
-            {{ field_error('how_to_participate') }}
-          </div>
-
-          <div class="cs-field">
-            <label for="cs-f-target_group">{{ _("Who it is for") }}</label>
-            <textarea id="cs-f-target_group" name="target_group" rows="3" data-rich-editor
-                      maxlength="4000"
-                      {% if errors.target_group %}aria-invalid="true"{% endif %}
-                      {{- described_by('target_group', true) }}>{{ data.target_group or '' }}</textarea>
-            <p id="cs-f-target_group-hint" class="cs-hint">{{ _("Optional. The communities, age groups or professions this project is aimed at.") }}</p>
-            {{ field_error('target_group') }}
-          </div>
+          <p class="cs-hint">{{ _("Set the project dates, target group and participation instructions in Project structure after submission.") }}</p>
 
           <div class="cs-wizard-nav" hidden>
             <button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _("Back") }}</button>

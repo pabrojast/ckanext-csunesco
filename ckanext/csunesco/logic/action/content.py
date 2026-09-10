@@ -531,6 +531,9 @@ def csunesco_content_approve(context, data_dict):
     content = db.get_content(data_dict.get('id'))
     if content is None:
         raise tk.ObjectNotFound(tk._('Content not found'))
+    from ckanext.csunesco.logic import content_reviews
+    if content_reviews.metadata(content):
+        return content_reviews.decide(context, content, True, featured=data_dict.get('featured'))
     if content.status not in ('pending', 'rejected'):
         raise tk.ValidationError({'status': [tk._(
             'Only pending or rejected content can be approved '
@@ -563,6 +566,9 @@ def csunesco_content_reject(context, data_dict):
         raise tk.ObjectNotFound(tk._('Content not found'))
 
     reason = sanitize_html((data_dict.get('reason') or '').strip()) or None
+    from ckanext.csunesco.logic import content_reviews
+    if content_reviews.metadata(content):
+        return content_reviews.decide(context, content, False, reason=reason)
     content.status = 'rejected'
     content.extras = json.dumps(
         _merge_extras(content, rejection_reason=reason))
@@ -811,6 +817,9 @@ def csunesco_content_show(context, data_dict):
         raise tk.ValidationError({'id': [tk._('Missing value')]})
     content = db.get_content(id_or_slug)
     if content is None:
+        raise tk.ObjectNotFound(tk._('Content not found'))
+    from ckanext.csunesco.logic import portal
+    if content.project_id and portal.withdrawn(db.get_project(content.project_id)) and not _can_view_unapproved(context, content):
         raise tk.ObjectNotFound(tk._('Content not found'))
     if (content.status != 'approved'
             and not _can_view_unapproved(context, content)):

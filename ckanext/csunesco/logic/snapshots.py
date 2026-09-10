@@ -348,6 +348,9 @@ def withdraw_project(project):
     for source in sources:
         withdraw_source(source)
     for content in db.Session.query(db.CsContent).filter(db.CsContent.project_id == project.id).all():
+        extras = db._load_json(content.extras, {})
+        if extras.get('independent_content') or extras.get('_app_content_review'):
+            continue
         if content.source == 'app' or db._load_json(content.extras, {}).get('app_content_id'):
             content.status = 'rejected'
             content.rejection_reason = 'Project publication withdrawn'

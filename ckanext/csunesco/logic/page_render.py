@@ -81,7 +81,7 @@ def build_context(context, project, blocks, has_region=False,
         # it pulls in Chart.js too -- one flag, or a page whose only data block
         # is the chat would load the chat script and then have nothing to draw
         # with.
-        'has_charts': bool(types & {'chart', 'data_chat'}),
+        'has_charts': bool(types & {'chart', 'data_chat', 'builtin_data'}),
         'has_chat': 'data_chat' in types,
         'has_lightbox': any(block.get('type') == 'image'
                             and block.get('lightbox')
@@ -94,6 +94,16 @@ def build_context(context, project, blocks, has_region=False,
         'edit_url': (_edit_url(project, initiative)
                      if can_manage and not preview else None),
     }
+
+    ctx['contacts'] = {}
+    if project is not None and context.get('user'):
+        from ckanext.csunesco import db
+        from ckanext.csunesco.logic import portal
+        stored = db.get_project(project['id'])
+        if stored and portal.managed(stored):
+            ctx['contacts'] = db._load_json(stored.extras, {}).get('_portal_contacts', {})
+        else:
+            ctx['contacts'] = {k: project.get(k) for k in ('contact_person', 'contact_email')}
 
     if project is not None and types & _DATA_BLOCKS:
         data_sources = _list_data_sources(context, project['id'])

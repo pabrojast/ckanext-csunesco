@@ -55,8 +55,7 @@ PROJECT_FORM_STEPS = [
     {'step': 4, 'key': 'participation', 'title': u'Participation',
      'hint': u'Who can take part, when the project runs and who benefits.',
      'fields': ('participation_mode', 'allowed_participants', 'languages',
-                'stakeholders', 'activity_status', 'start_date', 'end_date',
-                'how_to_participate', 'target_group')},
+                'stakeholders', 'activity_status')},
     {'step': 5, 'key': 'leadership', 'title': u'Leadership and contact',
      'hint': u'The institutions behind the project and who to reach.',
      'fields': ('lead_partner_type', 'lead_organisation',
@@ -160,8 +159,6 @@ FIELD_AUDIENCE = {
     'local_govt_engagement': 'participants',
     'indigenous_knowledge': 'participants',
     'indigenous_knowledge_notes': 'participants',
-    'timeframe_start': 'participants',
-    'timeframe_end': 'participants',
     'duration_of_involvement': 'participants',
     'workplan': 'participants',
 }

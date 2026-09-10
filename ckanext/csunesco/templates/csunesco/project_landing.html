@@ -99,9 +99,22 @@
   {# ---- The project's blocks ------------------------------------------
         Managers see hidden blocks too when previewing their draft; the
         public render skips them (logic/page_render.visible_blocks). ----- #}
-  {% for block in blocks %}
+  {% if project.keywords %}<div class="cs-project-tags" aria-label="{{ _('Keywords') }}">{% for keyword in project.keywords %}<span>{{ keyword }}</span>{% endfor %}</div>{% endif %}
+  {% for block in blocks if block.type == 'builtin_at_a_glance' %}
     {% snippet "csunesco/snippets/block_render.html", block=block, ctx=ctx %}
   {% endfor %}
+  <div class="cs-project-columns">
+    <div class="cs-project-main">
+      {% for block in blocks if block.type not in ['builtin_at_a_glance', 'builtin_region_map', 'project_facts', 'builtin_join'] %}
+        {% snippet "csunesco/snippets/block_render.html", block=block, ctx=ctx %}
+      {% endfor %}
+    </div>
+    <aside class="cs-project-sidebar" aria-label="{{ _('Project information') }}">
+      {% for block in blocks if block.type in ['builtin_region_map', 'project_facts', 'builtin_join'] %}
+        {% snippet "csunesco/snippets/block_render.html", block=block, ctx=ctx %}
+      {% endfor %}
+    </aside>
+  </div>
 
   {% if ctx.can_manage and not is_draft_preview %}
     <p class="cs-page-edit-bar">
@@ -115,6 +128,9 @@
 
 {% block scripts %}
   {{ super() }}
+  {% if portal_readonly_preview and preview_parent_origin %}
+  <script>window.parent.postMessage({type: 'cs-portal-preview-ready'}, {{ preview_parent_origin | tojson }});</script>
+  {% endif %}
   {# Leaflet loaded from CDN with SRI + crossorigin, lazily, ONLY on this page. #}
   <link rel="stylesheet"
         href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"

@@ -557,6 +557,17 @@ def _n_builtin(raw, report=None):
     return {'intro': _plain(raw.get('intro'), MAX_SECTION_INTRO)}
 
 
+def _n_builtin_data(raw, report=None):
+    payload = _n_builtin(raw, report)
+    payload['parameter_charts'] = [{
+        'parameter': _plain(item.get('parameter'), 200),
+        'data_source_id': _ref(item.get('data_source_id')),
+        'field': _field_name(item.get('field')),
+        'automatic': item.get('automatic') is not False,
+    } for item in _items(raw.get('parameter_charts'), 50) if item.get('parameter')]
+    return payload
+
+
 def _n_builtin_about(raw, report=None):
     """Page-owned long project description with a legacy render fallback."""
     payload = _n_builtin(raw, report)
@@ -661,6 +672,10 @@ def _n_project_fields(raw, report=None):
     fields = raw.get('fields', list(allowed))
     if not isinstance(fields, list):
         fields = []
+    if raw.get('type') == 'project_structure' and set(fields) == set(allowed) - {'expected_outcomes', 'timeframe_start', 'timeframe_end'}:
+        # Extend the complete legacy default selection with the new fields.
+        # Explicit subsets (including an empty list) keep their selection.
+        fields = list(allowed)
     return {'fields': list(dict.fromkeys(k for k in fields if k in allowed))}
 
 
@@ -786,7 +801,7 @@ _TYPES = [
               _n_builtin_about,
               u'The editable long description shown in the project page.',
               builtin=True, addable=False, has_editor=True),
-    BlockType('builtin_data', u'Data', u'layers', _n_builtin,
+    BlockType('builtin_data', u'Data', u'layers', _n_builtin_data,
               u'Every set of app data on this project, with its map and '
               u'download links.', builtin=True, addable=False),
     BlockType('builtin_news_events', u'News, Events & More', u'news',

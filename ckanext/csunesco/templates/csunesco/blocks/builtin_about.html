@@ -1,16 +1,19 @@
-{#
-  Built-in block: the page-owned full project description. New edits live in
-  block.html; legacy landing_content remains a sanitized fallback so older
-  projects keep their copy until a manager saves this section. Both values are
-  sanitized server-side before the `| safe` render.
-
-  Vars: block, ctx.
-#}
-{% set about_html = block.html or ctx.project.landing_content %}
-{% if about_html %}
-  <section class="cs-section cs-project-description" aria-labelledby="cs-desc-title">
-    <h2 id="cs-desc-title" class="cs-section-title">{{ block.title or _("About this project") }}</h2>
-    {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
-    <div class="cs-rich-text">{{ about_html | safe }}</div>
-  </section>
-{% endif %}
+{% set project = ctx.project %}
+<section class="cs-section cs-project-description" aria-labelledby="cs-desc-title">
+  <h2 id="cs-desc-title" class="cs-section-title">{{ block.title or _("About this project") }}</h2>
+  {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
+  {% set about_html = block.html or project.landing_content %}
+  {% if about_html %}<div class="cs-rich-text">{{ about_html | safe }}</div>{% elif project.short_description %}<p>{{ project.short_description }}</p>{% endif %}
+  <dl class="cs-portal-info-grid">
+    {% if project.countries %}<div><dt>{{ _('Country') }}</dt><dd>{% for state in h.csunesco_member_state_titles(project.countries) %}{{ state.title }}{{ ', ' if not loop.last }}{% endfor %}</dd></div>{% endif %}
+    {% set dates = project.structure or {} %}
+    {% if dates.timeframe_start or dates.timeframe_end %}<div><dt>{{ _('Duration') }}</dt><dd>{{ h.csunesco_portal_field_value(dates.timeframe_start) }} – {{ h.csunesco_portal_field_value(dates.timeframe_end) }}</dd></div>{% endif %}
+    <div><dt>{{ _('Taking part') }}</dt><dd>{{ _('Limited to a select group') if project.open_participation is sameas false else _('Open to any participant') }}</dd></div>
+    {% if project.stakeholders %}<div><dt>{{ _("Who's involved") }}</dt><dd>{{ h.csunesco_portal_field_value(project.stakeholders) }}</dd></div>{% endif %}
+  </dl>
+  <div class="cs-project-tags">
+    {% if project.initiative_title %}<span>{{ project.initiative_title }}</span>{% endif %}
+    {% for water in project.water_type or [] %}<span>{{ water }}</span>{% endfor %}
+    {% if project.biosphere_reserve %}<span>{{ project.biosphere_reserve }}</span>{% endif %}
+  </div>
+</section>

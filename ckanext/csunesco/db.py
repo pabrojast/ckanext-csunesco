@@ -1425,7 +1425,7 @@ def list_content(content_type=None, project_id=None, status=None,
     if date_to is not None:
         query = query.filter(effective_date <= date_to)
     if upcoming:
-        query = query.filter(CsContent.end_date >= _utcnow())
+        query = query.filter(sa.func.coalesce(CsContent.end_date, CsContent.publish_date, CsContent.created) >= _utcnow())
     if created_by:
         query = query.filter(CsContent.created_by == created_by)
     if source:
@@ -1436,6 +1436,9 @@ def list_content(content_type=None, project_id=None, status=None,
         else:
             query = query.filter(CsContent.source == source)
     if public_only:
+        withdrawn_projects = Session.query(CsProject.id).filter(
+            sa.func.replace(CsProject.extras, ' ', '').like('%"_portal_withdrawn":true%'))
+        query = query.filter(sa.or_(CsContent.project_id.is_(None), ~CsContent.project_id.in_(withdrawn_projects)))
         # Authenticated callers additionally see 'logged-in' rows (spec's
         # middle visibility tier); anonymous callers are pinned to public.
         clauses = [_public_visibility_clause() if include_logged_in

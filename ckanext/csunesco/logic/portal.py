@@ -16,7 +16,7 @@ from ckanext.csunesco import db, constants
 from ckanext.csunesco.logic import auth, blocks, schema, sanitize
 
 KEY = '_portal'
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MAX_PAYLOAD = 4_000_000
 PROJECT_FIELDS = tuple(dict.fromkeys(
     ['title', 'short_description', 'biosphere_reserve', 'countries',
@@ -31,7 +31,10 @@ FACT_FIELDS = tuple(k for k in PROJECT_FIELDS if k not in constants.FIELD_AUDIEN
                                   'image_focal_x', 'image_focal_y', 'initiative'))
 STRUCTURE_FIELDS = ('aim', 'focus_areas', 'engagement_activities', 'target_groups',
                     'incentives', 'engagement_level', 'training_level',
-                    'how_to_participate', 'water_parameters')
+                    'how_to_participate', 'water_parameters', 'expected_outcomes', 'timeframe_start', 'timeframe_end')
+LEADERSHIP_FIELDS = ('lead_partner_type', 'lead_organisation', 'other_organisations',
+                     'funding_body', 'funding_programme', 'international_frameworks', 'project_document_url')
+ENGAGEMENT_FIELDS = tuple(k for k in STRUCTURE_FIELDS if k not in ('water_parameters', 'timeframe_start', 'timeframe_end'))
 
 
 def standard_sections(project=None):
@@ -161,7 +164,7 @@ def actor_context(context, data, project):
 def validate_payload(raw):
     if not isinstance(raw, dict) or len(canonical(raw).encode('utf-8')) > MAX_PAYLOAD:
         raise tk.ValidationError({'payload': ['Invalid or oversized publication']})
-    unknown = set(raw) - {'project', 'structure', 'workplan', 'blocks', 'contents', 'media', 'layout', 'capabilities_version'}
+    unknown = set(raw) - {'project', 'structure', 'workplan', 'blocks', 'contents', 'media', 'layout', 'capabilities_version', 'content_review_version'}
     if unknown:
         raise tk.ValidationError({'payload': ['Unsupported fields: ' + ', '.join(sorted(unknown))]})
     if raw.get('capabilities_version') not in (None, 1, 'project-portal-1'):
@@ -274,7 +277,7 @@ def validate_payload(raw):
 
 def validate_envelope(context, data):
     require_service(context)
-    if data.get('schema_version') != SCHEMA_VERSION:
+    if data.get('schema_version') not in (1, SCHEMA_VERSION):
         raise tk.ValidationError({'schema_version': ['Unsupported schema version']})
     project = resolve_project(data)
     effective = actor_context(context, data, project)
@@ -344,12 +347,17 @@ def publish_candidate(project, page):
                                   if k not in constants.FIELD_AUDIENCE}
     # Private workplan remains in the protected draft/export only.
     public_extras.pop('workplan', None)
+    public_extras['_portal_contacts'] = {k: candidate.get('project', {}).get(k) for k in ('contact_person', 'contact_email')}
+    for key in ('contact_person', 'contact_email', 'editors', 'allowed_participants'):
+        public_extras.pop(key, None)
     meta = dict(public_extras.get(KEY, {}))
     meta.update(status='approved', published_revision=meta.get('revision'),
                 published_checksum=meta.get('checksum'),
                 updated_at=datetime.datetime.utcnow().isoformat())
     public_extras[KEY] = meta
-    publish_contents(project, page, candidate)
+    public_extras.pop('_portal_withdrawn', None)
+    if candidate.get('content_review_version') != 2 and not tk.asbool(tk.config.get('ckanext.csunesco.independent_content_reviews', False)):
+        publish_contents(project, page, candidate)
     project.extras = canonical(public_extras)
     snapshots.publish_media_manifest(project, candidate)
 
@@ -393,7 +401,7 @@ def block_fields(item, default):
         enums['layout'] = ('grid', 'list')
     if item.key == 'datasets_list':
         enums['source'] = ('project', 'organization', 'ids')
-    readonly = {'id', 'type', 'provider', 'video_id'}
+    readonly = {'id', 'type', 'provider', 'video_id', 'parameter_charts'}
     result = []
     for key, value in default.items():
         if key in readonly:
@@ -447,7 +455,7 @@ def capabilities(context, data):
             continue
         default = blocks.normalize_block({'type': item.key})
         fields = block_fields(item, default)
-        selected = FACT_FIELDS if item.key == 'project_facts' else STRUCTURE_FIELDS
+        selected = LEADERSHIP_FIELDS if item.key == 'project_facts' else ENGAGEMENT_FIELDS
         registry.append({'key': item.key, 'type': item.key, 'label': item.label,
                          'description': item.description, 'builtin': item.builtin,
                          'standard_section': item.key in standards_by_type,
@@ -537,9 +545,11 @@ def export(context, data):
     content_rows = model.Session.query(db.CsContent).filter(db.CsContent.project_id == project.id).all()
     sources = model.Session.query(db.CsDataSource).filter(db.CsDataSource.project_id == project.id).all()
     result = db.project_dictize(project)
+    result.update(db._load_json(project.extras, {}).get('_portal_contacts', {}))
     return {'schema_version': SCHEMA_VERSION, 'project': result,
             'page': db.page_dictize(page, include_draft=True) if page else None,
-            'content': [db.content_dictize(row) for row in content_rows],
+            'content': [db.content_dictize(row) for row in content_rows if not db._load_json(row.extras, {}).get('_app_content_review')],
+            'content_reviews': [db.content_dictize(row) for row in content_rows if db._load_json(row.extras, {}).get('_app_content_review')],
             'data_sources': [db.data_source_dictize(row) for row in sources],
             'structure': result.get('structure', {}), 'workplan': result.get('workplan', []),
             'portal': status(project), 'exported_at': datetime.datetime.utcnow().isoformat()}
@@ -591,11 +601,13 @@ def preview_view(ticket):
     public['portal_managed'] = True
     ctx = page_render.build_context({'user': None}, public, candidate['blocks'],
                                    has_region=bool(public.get('region_geojson')), can_manage=False, preview=True)
+    ctx['contacts'] = {k: candidate.get('project', {}).get(k) for k in ('contact_person', 'contact_email')}
     ctx['region_url'] = '/citizen-science/portal/preview-region/' + ticket
     ctx['news_events'] = candidate.get('contents', [])
     body = tk.render('csunesco/project_landing.html', extra_vars={
         'project': public, 'blocks': candidate['blocks'], 'ctx': ctx,
-        'is_draft_preview': True, 'portal_readonly_preview': True})
+        'is_draft_preview': True, 'portal_readonly_preview': True,
+        'preview_parent_origin': tk.config.get('ckanext.csunesco.portal_preview_origin')})
     response = Response(body)
     origin = tk.config.get('ckanext.csunesco.portal_preview_origin') or ''
     if not origin or urlsplit(origin).scheme not in ('https', 'http'):
@@ -609,7 +621,9 @@ def preview_view(ticket):
 
 
 def get_actions():
-    return {'csunesco_project_portal_capabilities': capabilities,
+    from ckanext.csunesco.logic import content_reviews
+    return {'csunesco_project_content_apply': content_reviews.apply,
+            'csunesco_project_content_status': content_reviews.status,'csunesco_project_portal_capabilities': capabilities,
             'csunesco_project_portal_apply': apply,
             'csunesco_project_portal_status': portal_status,
             'csunesco_project_portal_export': export,
@@ -640,7 +654,8 @@ def publish_contents(project, page, candidate):
     now = datetime.datetime.utcnow()
     existing = db.Session.query(db.CsContent).filter(db.CsContent.project_id == project.id).all()
     mapping = {str(db._load_json(row.extras, {}).get('app_content_id')): row for row in existing
-               if db._load_json(row.extras, {}).get('app_content_id') is not None}
+               if db._load_json(row.extras, {}).get('app_content_id') is not None
+               and not db._load_json(row.extras, {}).get('independent_content')}
     kept = set()
     for item in candidate.get('contents', []):
         app_id = item['app_content_id']
@@ -649,6 +664,8 @@ def publish_contents(project, page, candidate):
             row = db.get_content(item['ckan_id'])
             if row is None or row.project_id != project.id:
                 raise tk.ValidationError({'contents': ['Content belongs to a different project']})
+        if row is not None and db._load_json(row.extras, {}).get('independent_content'):
+            continue
         if row is None:
             row = db.CsContent()
             row.slug = db.unique_content_slug(item['title'])

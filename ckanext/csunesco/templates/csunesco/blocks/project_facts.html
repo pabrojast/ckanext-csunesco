@@ -1,12 +1,11 @@
-{% set data = ctx.project.structure if block.type == 'project_structure' else ctx.project %}
 <section class="cs-card cs-project-selected-fields">
-  <h2>{{ block.title or (_('Project structure') if block.type == 'project_structure' else _('Project facts')) }}</h2>
-  <dl class="cs-project-facts">
-  {% for field in block.fields %}
-    {% if h.csunesco_portal_public_field(field, block.type) and data and data.get(field) is not none %}
-      <div><dt>{{ _(field | replace('_', ' ') | capitalize) }}</dt>
-      <dd>{{ h.csunesco_portal_field_value(data.get(field)) }}</dd></div>
+  <h2>{{ block.title or _('Leadership & funding') }}</h2>
+  <dl class="cs-portal-info-grid">
+  {% for field in ['lead_partner_type', 'lead_organisation', 'other_organisations', 'funding_body', 'funding_programme', 'international_frameworks', 'project_document_url'] %}
+    {% if (block.fields is not defined or field in block.fields) and ctx.project.get(field) %}
+      <div><dt>{{ _(field | replace('_', ' ') | capitalize) }}</dt><dd>{% if field == 'project_document_url' %}<a href="{{ ctx.project.get(field) }}" target="_blank" rel="noopener noreferrer">{{ _('Project document') }}</a>{% else %}{{ h.csunesco_portal_field_value(ctx.project.get(field)) }}{% endif %}</dd></div>
     {% endif %}
   {% endfor %}
+  {% if ctx.contacts.contact_person or ctx.contacts.contact_email %}<div><dt>{{ _('Contact') }}</dt><dd>{{ ctx.contacts.contact_person or '' }}{% if ctx.contacts.contact_email %} <a href="mailto:{{ ctx.contacts.contact_email }}">{{ ctx.contacts.contact_email }}</a>{% endif %}</dd></div>{% endif %}
   </dl>
 </section>

@@ -30,7 +30,17 @@
   </div>
   {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
   {% set approved_sources = ctx.data_sources | selectattr('status', 'equalto', 'approved') | list %}
+  {% for group, parameters in (ctx.project.structure or {}).get('water_parameters', {}).items() %}
+    <details class="cs-parameter-group" open><summary>{{ group }}</summary><div class="cs-project-tags">{% for parameter in parameters %}<span>{{ parameter }}</span>{% endfor %}</div>
+    {% for binding in block.parameter_charts or [] if binding.parameter in parameters and binding.field %}
+      {% set chart = {'id': block.id ~ '-parameter-' ~ loop.index ~ '-' ~ binding.field, 'type': 'chart', 'data_source_id': binding.data_source_id, 'field': binding.field, 'title': binding.parameter, 'mode': 'numeric', 'chart': 'line', 'agg': 'mean', 'group_by': 'auto', 'bucket': 'month', 'range': 'all', 'height': 260} %}
+      {% snippet 'csunesco/blocks/chart.html', block=chart, ctx=ctx %}
+    {% endfor %}
+    </details>
+  {% endfor %}
   {% for ds in approved_sources %}
+    {% set count_chart = {'id': block.id ~ '-observations-' ~ ds.id, 'type': 'chart', 'data_source_id': ds.id, 'title': _('Observations by month'), 'mode': 'count', 'chart': 'bar', 'agg': 'count', 'group_by': 'auto', 'bucket': 'month', 'range': 'all', 'height': 220} %}
+    {% snippet 'csunesco/blocks/chart.html', block=count_chart, ctx=ctx %}
     <article class="cs-data-source">
       <h3 class="cs-data-source-title">{{ ds.title }}</h3>
       {% if ds.description %}

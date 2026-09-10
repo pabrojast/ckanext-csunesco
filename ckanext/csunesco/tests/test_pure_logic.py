@@ -1313,7 +1313,8 @@ def test_project_form_steps_cover_the_schema_exactly():
     # ``open_participation`` is the one schema field with no input of its own:
     # the form posts the spec's ``participation_mode`` choice and the action
     # derives the boolean from it (see ``_sync_participation``).
-    expected = set(schema.project_request_schema()) - {'open_participation'}
+    # Historical clients retain these aliases; the wizard now uses Structure.
+    expected = set(schema.project_request_schema()) - {'open_participation', 'start_date', 'end_date', 'how_to_participate', 'target_group'}
     assert placed == expected, (
         'only in steps: %s / only in schema: %s'
         % (sorted(placed - expected), sorted(expected - placed)))
