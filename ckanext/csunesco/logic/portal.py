@@ -575,6 +575,13 @@ def _app_preview_access(grant, project=None):
             raise ValueError()
         if project and (claims.get('scope') != 'project' or claims.get('project_slug') != project.slug):
             raise ValueError()
+        if claims.get('institutional_ckan_id'):
+            user = model.User.get(claims['institutional_ckan_id'])
+            if (claims.get('scope') not in ('site', 'initiative') or not user
+                    or user.state != 'active' or not user.sysadmin
+                    or user.name != claims.get('institutional_username')
+                    or user.name == tk.config.get('ckanext.csunesco.portal_service_user')):
+                raise ValueError()
         return claims
     except Exception:
         raise tk.NotAuthorized('Preview permission expired or revoked') from None

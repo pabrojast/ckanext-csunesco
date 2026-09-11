@@ -92,3 +92,21 @@ def test_editor_links_use_matching_app_sections(store, monkeypatch):
     assert editorial_owner.editor_link('csunesco.project_edit', slug=project.slug) == 'https://app.example/projects/42/space/details'
     assert editorial_owner.editor_link('csunesco.content_new', slug=project.slug).endswith('/space/news')
     assert editorial_owner.editor_link('csunesco.site_page_edit').endswith('/admin/portal-pages/site/home')
+
+
+def test_institutional_preview_rechecks_native_role_without_nested_callback(store, monkeypatch):
+    _, users = store
+    claims = {'purpose': 'portal-preview', 'expires': time.time() + 120,
+              'scope': 'site', 'key': 'home', 'institutional_ckan_id': 'reviewer',
+              'institutional_username': 'reviewer'}
+    calls = []
+    monkeypatch.setattr(snapshots, 'app_request', lambda *args: calls.append(args) or claims)
+    assert portal._app_preview_access('grant') == claims
+    assert len(calls) == 1
+    users['reviewer'].sysadmin = False
+    with pytest.raises(tk.NotAuthorized): portal._app_preview_access('grant')
+    users['reviewer'].sysadmin = True
+    users['reviewer'].state = 'deleted'
+    with pytest.raises(tk.NotAuthorized): portal._app_preview_access('grant')
+    claims.update(institutional_ckan_id='transport', institutional_username='transport')
+    with pytest.raises(tk.NotAuthorized): portal._app_preview_access('grant')

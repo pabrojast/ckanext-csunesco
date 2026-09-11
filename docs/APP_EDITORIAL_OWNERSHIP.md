@@ -8,6 +8,11 @@ and public rendering. Project content and project pages keep their existing
 review queues. Authorized Home/initiative administrators publish directly
 through the app, with CKAN checking the real author's permissions.
 
+An active CKAN sysadmin with a bound app identity can use the page editors
+without receiving app-wide administrator rights. Local-only administrators
+can save and preview; publishing requires signing in with an authorized
+IHP-WINS account. Initiative administrators retain their scoped permissions.
+
 ## Preview
 
 The app authorizes each preview with its current project/initiative permissions
@@ -16,6 +21,9 @@ CKAN verifies the grant through `/internal/ckan/preview-access`, including when
 the ticket or its media are viewed. The app manager does not need a CKAN account
 to preview. Publication still requires an active authorized CKAN author; a
 transport account cannot act as that author. Preview cannot publish a draft.
+For institutional administrators, the callback checks the current app identity
+and CKAN checks its current native role locally, avoiding recursive HTTP calls
+back into occupied preview workers.
 
 The parent and iframe exchange an origin-checked, source-checked, correlated
 readiness message. Tickets renew before the supplied expiry. Missing images
