@@ -251,13 +251,14 @@ def _search_datasets(query, limit):
 
 def _edit_url(project, initiative=None):
     """The editor URL for this page's scope, or None (fail-soft)."""
+    from ckanext.csunesco.logic.editorial_owner import editor_link
     try:
         if initiative is not None:
-            return tk.url_for('csunesco.initiative_page_edit',
+            return editor_link('csunesco.initiative_page_edit',
                               name=initiative['name'])
         if project is None:
-            return tk.url_for('csunesco.site_page_edit')
-        return tk.url_for('csunesco.project_page_edit',
+            return editor_link('csunesco.site_page_edit')
+        return editor_link('csunesco.project_page_edit',
                           slug=project['slug'])
     except Exception:
         return None

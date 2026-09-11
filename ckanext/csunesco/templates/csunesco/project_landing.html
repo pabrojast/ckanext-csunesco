@@ -32,7 +32,7 @@
       <strong>{{ _("Draft preview.") }}</strong>
       {{ _("This is your unpublished version — the public still sees the published page.") }}
       {% if not portal_readonly_preview %}<a class="cs-btn cs-btn-secondary cs-btn-sm"
-         href="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
+         href="{{ h.csunesco_editor_link('csunesco.project_page_edit', slug=project.slug) }}">
         {{ _("Back to the editor") }}
       </a>{% endif %}
     </p>
@@ -118,9 +118,9 @@
 
   {% if ctx.can_manage and not is_draft_preview %}
     <p class="cs-page-edit-bar">
-      <a class="cs-btn cs-btn-secondary cs-btn-sm" href="{{ h.url_for('csunesco.project_page_edit', slug=project.slug) }}">{{ _("Edit page sections") }}</a>
+      <a class="cs-btn cs-btn-secondary cs-btn-sm" href="{{ h.csunesco_editor_link('csunesco.project_page_edit', slug=project.slug) }}">{{ _("Edit page sections") }}</a>
       {% if h.csunesco_can_edit_project(project) %}
-        <a class="cs-btn cs-btn-secondary cs-btn-sm" href="{{ h.url_for('csunesco.project_edit', slug=project.slug) }}">{{ _("Edit project details") }}</a>
+        <a class="cs-btn cs-btn-secondary cs-btn-sm" href="{{ h.csunesco_editor_link('csunesco.project_edit', slug=project.slug) }}">{{ _("Edit project details") }}</a>
       {% endif %}
     </p>
   {% endif %}
@@ -128,16 +128,7 @@
 
 {% block scripts %}
   {{ super() }}
-  {% if portal_readonly_preview and preview_parent_origin %}
-  <script>
-    window.addEventListener('message', function (event) {
-      if (event.origin === {{ preview_parent_origin | tojson }} && event.source === window.parent &&
-          event.data && event.data.type === 'cs-portal-preview-check' && event.data.path === window.location.pathname) {
-        window.parent.postMessage({type: 'cs-portal-preview-ready', requestId: event.data.requestId}, event.origin);
-      }
-    });
-  </script>
-  {% endif %}
+  {% snippet 'csunesco/snippets/preview_ready.html', portal_readonly_preview=portal_readonly_preview, preview_parent_origin=preview_parent_origin %}
   {# Leaflet loaded from CDN with SRI + crossorigin, lazily, ONLY on this page. #}
   <link rel="stylesheet"
         href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"

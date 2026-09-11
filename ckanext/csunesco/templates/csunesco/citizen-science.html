@@ -15,12 +15,12 @@
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
-  {% if is_draft_preview %}
+  {% if is_draft_preview and not portal_readonly_preview %}
     <p class="cs-preview-banner" role="status">
       <strong>{{ _("Draft preview.") }}</strong>
       {{ _("This is your unpublished version — the public still sees the published page.") }}
       <a class="cs-btn cs-btn-secondary cs-btn-sm"
-         href="{{ h.url_for('csunesco.site_page_edit') }}">
+         href="{{ h.csunesco_editor_link('csunesco.site_page_edit') }}">
         {{ _("Back to the editor") }}
       </a>
     </p>
@@ -33,7 +33,7 @@
   {% if ctx.can_manage and not is_draft_preview %}
     <p class="cs-page-edit-bar">
       <a class="cs-btn cs-btn-secondary cs-btn-sm"
-         href="{{ h.url_for('csunesco.site_page_edit') }}">{{ _("Edit this page") }}</a>
+         href="{{ h.csunesco_editor_link('csunesco.site_page_edit') }}">{{ _("Edit this page") }}</a>
     </p>
   {% endif %}
 {% endblock %}
@@ -45,4 +45,5 @@
   {% if ctx.has_lightbox or ctx.has_carousel %}
     {% asset 'csunesco/cs-page-view-js' %}
   {% endif %}
+{% snippet 'csunesco/snippets/preview_ready.html', portal_readonly_preview=portal_readonly_preview, preview_parent_origin=preview_parent_origin %}
 {% endblock %}

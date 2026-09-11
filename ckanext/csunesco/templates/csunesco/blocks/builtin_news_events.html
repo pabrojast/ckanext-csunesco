@@ -8,7 +8,7 @@
     <h2 id="cs-news-events-title" class="cs-section-title">{{ block.title or _("News, Events & More") }}</h2>
     {% if ctx.can_manage %}
       <a class="cs-btn cs-btn-secondary cs-btn-sm"
-         href="{{ h.url_for('csunesco.content_new', slug=ctx.project.slug) }}">
+         href="{{ h.csunesco_editor_link('csunesco.content_new', slug=ctx.project.slug) }}">
         {{ _("Add content") }}
       </a>
     {% endif %}

@@ -182,6 +182,8 @@ def csunesco_project_page_show(context, data_dict):
 
 
 def csunesco_project_page_update(context, data_dict):
+    from ckanext.csunesco.logic.editorial_owner import require_bridge
+    require_bridge(context)
     """Save the project page DRAFT. Never touches the published version.
 
     Saving a draft that was already awaiting review WITHDRAWS it from the queue
@@ -252,6 +254,8 @@ def csunesco_project_page_update(context, data_dict):
 
 
 def csunesco_project_page_submit(context, data_dict):
+    from ckanext.csunesco.logic.editorial_owner import require_bridge
+    require_bridge(context)
     """Publish the draft, or queue it for review.
 
     A sysadmin's page publishes immediately. A TRUSTED project's page publishes
@@ -439,6 +443,8 @@ def csunesco_site_page_show(context, data_dict):
 
 
 def csunesco_site_page_update(context, data_dict):
+    from ckanext.csunesco.logic.editorial_owner import require_bridge
+    require_bridge(context)
     """Save the hub page DRAFT (sysadmin). Never touches the published one."""
     tk.check_access('csunesco_site_page_update', context, data_dict)
     data_dict = data_dict or {}
@@ -470,6 +476,8 @@ def csunesco_site_page_update(context, data_dict):
 
 
 def csunesco_site_page_publish(context, data_dict):
+    from ckanext.csunesco.logic.editorial_owner import require_bridge
+    require_bridge(context)
     """Copy the hub draft over the published page. Immediate -- no queue."""
     tk.check_access('csunesco_site_page_publish', context, data_dict)
 
@@ -524,6 +532,8 @@ def csunesco_initiative_page_show(context, data_dict):
 
 
 def csunesco_initiative_page_update(context, data_dict):
+    from ckanext.csunesco.logic.editorial_owner import require_bridge
+    require_bridge(context)
     data_dict = data_dict or {}
     name = _initiative_name(data_dict)
     tk.check_access('csunesco_initiative_page_update', context,
@@ -551,6 +561,8 @@ def csunesco_initiative_page_update(context, data_dict):
 
 
 def csunesco_initiative_page_publish(context, data_dict):
+    from ckanext.csunesco.logic.editorial_owner import require_bridge
+    require_bridge(context)
     data_dict = data_dict or {}
     name = _initiative_name(data_dict)
     tk.check_access('csunesco_initiative_page_publish', context,

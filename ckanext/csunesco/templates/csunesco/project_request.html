@@ -130,7 +130,7 @@
       {% endif %}
 
       <form method="post"
-            action="{{ h.url_for('csunesco.project_new') if is_new else h.url_for('csunesco.project_edit', slug=project.slug) }}"
+            action="{{ h.csunesco_editor_link('csunesco.project_new') if is_new else h.csunesco_editor_link('csunesco.project_edit', slug=project.slug) }}"
             enctype="multipart/form-data"
             class="cs-form cs-wizard" id="cs-project-form" novalidate>
         {{ h.csrf_input() }}

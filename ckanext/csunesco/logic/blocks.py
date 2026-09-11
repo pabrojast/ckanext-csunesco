@@ -51,7 +51,9 @@ MAX_URL = 500
 
 WIDTHS = ('full', 'narrow')
 
-_ID_RE = re.compile(r'^[0-9a-f]{8}$')
+# App sections use readable builtin IDs and 12-character random IDs. Retain
+# these stable identities across previews/publication while excluding markup.
+_ID_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$')
 _FIELD_NAME_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 _REF_RE = re.compile(r'^[A-Za-z0-9._-]{1,100}$')
 _TAG_RE = re.compile(r'<[^>]*>')

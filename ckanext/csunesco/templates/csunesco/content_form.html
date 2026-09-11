@@ -22,9 +22,9 @@
 {% if is_new and organization %}
   {% set action_url = h.url_for('csunesco.org_content_new', org=organization.name) %}
 {% elif is_new %}
-  {% set action_url = h.url_for('csunesco.content_new', slug=project.slug) %}
+  {% set action_url = h.csunesco_editor_link('csunesco.content_new', slug=project.slug) %}
 {% else %}
-  {% set action_url = h.url_for('csunesco.content_edit', id=content.id) %}
+  {% set action_url = h.csunesco_editor_link('csunesco.content_edit', id=content.id) %}
 {% endif %}
 {% if project %}
   {% set cancel_url = h.url_for('csunesco.project_landing', slug=project.slug) %}

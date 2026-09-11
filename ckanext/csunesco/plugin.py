@@ -91,8 +91,10 @@ class CsunescoPlugin(p.SingletonPlugin):
     def get_helpers(self):
         # Presentation-layer helpers live in logic/helpers.py; import lazily so
         # the plugin has no import-time dependency on CKAN internals.
-        from ckanext.csunesco.logic import helpers
+        from ckanext.csunesco.logic import helpers, editorial_owner
         return {
+            "csunesco_app_editorial": editorial_owner.enabled,
+            "csunesco_editor_link": editorial_owner.editor_link,
             'csunesco_version': lambda: __version__,
             'csunesco_portal_public_field': helpers.csunesco_portal_public_field,
             'csunesco_portal_field_value': helpers.csunesco_portal_field_value,

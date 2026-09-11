@@ -664,6 +664,11 @@ def _request_nonce():
 
 
 def project_new():
+    from ckanext.csunesco.logic import editorial_owner
+    if editorial_owner.enabled():
+        if request.method != "GET":
+            return tk.abort(405, "Create projects in the Citizen Science app")
+        return tk.redirect_to((tk.config.get("ckanext.csunesco.ofform_app_url") or "").rstrip("/") + "/explorer/start")
     """GET the project-request form; POST creates a PENDING project request."""
     # Login is required at ENTRY, not discovered on submit. An anonymous
     # visitor could previously fill in the whole 5-step form and lose
@@ -764,6 +769,9 @@ def project_new():
 
 
 def project_edit(slug):
+    from ckanext.csunesco.logic import editorial_owner
+    if editorial_owner.enabled():
+        return editorial_owner.redirect("project", slug, "details")
     from ckanext.csunesco.logic import portal
     from ckanext.csunesco import db
     row = db.get_project(slug)

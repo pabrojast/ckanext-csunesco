@@ -258,7 +258,7 @@ def _copy_media(project, url, fetch_url=None, endpoint_kind='project-assets'):
     return '/citizen-science/portal/media/%s/%s' % (project.id, digest)
 
 
-def materialize_media(project, candidate):
+def materialize_media(project, candidate, endpoint_kind="project-assets", preview_warnings=None):
     candidate = copy.deepcopy(candidate)
     mapping = {}
     legacy_sources = {}
@@ -274,16 +274,23 @@ def materialize_media(project, candidate):
                 legacy_sources.setdefault(entry['fetch_url'], []).append(unquote(original.path))
     media_keys = {'image_url', 'logo_url', 'heading_image_url', 'thumbnail_url', 'src',
                   'attachment_url', 'header_image_url'}
-    def walk(value, image_items=False):
+    def walk(value, image_items=False, block_id=""):
         if isinstance(value, dict):
             is_image = value.get('type') == 'image'
+            block_id = value.get('id', block_id) if value.get('type') else block_id
             for key, item in list(value.items()):
                 if (key in media_keys or key == 'url' and image_items) and isinstance(item, str) and item:
                     if value.get('kind', value.get('type')) == 'video' and not mapping.get(item):
                         from ckanext.csunesco.logic.blocks import parse_video
                         if parse_video(item)[0]:
                             continue  # Provider embeds stay links; never download HTML.
-                    value[key] = _copy_media(project, item, mapping.get(item))
+                    try:
+                        value[key] = _copy_media(project, item, mapping.get(item), endpoint_kind=endpoint_kind)
+                    except Exception:
+                        if preview_warnings is None:
+                            raise
+                        value[key] = '/csunesco/images/preview-unavailable.svg'
+                        preview_warnings.append({'code': 'portal_media_unavailable', 'block_id': str(block_id or ''), 'field': key})
                     for path in legacy_sources.get(mapping.get(item) or item, []):
                         register_legacy_alias(project, path, value[key].rsplit('/', 1)[-1])
                 elif key == 'media' and isinstance(item, str):
@@ -291,13 +298,13 @@ def materialize_media(project, candidate):
                         nested = json.loads(item)
                     except ValueError:
                         continue
-                    walk(nested, True)
+                    walk(nested, True, block_id)
                     value[key] = json.dumps(nested)
                 else:
-                    walk(item, image_items or is_image and key == 'items' or key == 'media')
+                    walk(item, image_items or is_image and key == 'items' or key == 'media', block_id)
         elif isinstance(value, list):
             for item in value:
-                walk(item, image_items)
+                walk(item, image_items, block_id)
     walk(candidate)
     return candidate
 
@@ -317,9 +324,9 @@ def asset_view(project_id, digest):
     from flask import send_file
     from ckanext.csunesco.logic import portal
     project = db.get_project(project_id)
-    if project is None or project.status != 'approved' or portal.withdrawn(project):
-        return tk.abort(404, 'Media not found')
-    if digest not in portal.metadata(project).get('media_hashes', []):
+    from ckanext.csunesco.logic.editorial_pages import public_media_allowed
+    allowed = public_media_allowed(project_id, digest) if project is None else (project.status == 'approved' and not portal.withdrawn(project) and digest in portal.metadata(project).get('media_hashes', []))
+    if not allowed:
         return tk.abort(404, 'Media not found')
     saved_type = read_private('asset-types', digest)
     response = send_file(str(root() / 'assets' / digest), mimetype=saved_type['type'])

@@ -339,6 +339,9 @@ def _detail_url(content):
 
 
 def content_new(slug):
+    from ckanext.csunesco.logic import editorial_owner
+    if editorial_owner.enabled():
+        return editorial_owner.redirect("project", slug, "news")
     from ckanext.csunesco.logic import portal
     row = db.get_project(slug)
     if row and portal.managed(row):
@@ -478,6 +481,9 @@ def content_edit(id):
     from ckanext.csunesco.logic import portal
     content = db.get_content(id)
     row = db.get_project(content.project_id) if content and content.project_id else None
+    from ckanext.csunesco.logic import editorial_owner
+    if row and editorial_owner.enabled():
+        return editorial_owner.redirect("project", row.id, "news")
     if row and portal.managed(row):
         return tk.redirect_to(portal.editor_url(row))
 

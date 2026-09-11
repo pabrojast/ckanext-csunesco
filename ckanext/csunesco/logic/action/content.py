@@ -380,6 +380,8 @@ def csunesco_content_create(context, data_dict):
     data_dict = data_dict or {}
     project, organization = _resolve_scope(data_dict)
     if project is not None:
+        from ckanext.csunesco.logic.editorial_owner import require_bridge
+        require_bridge(context)
         if project.status != 'approved':
             raise tk.ValidationError({'project_id': [tk._(
                 'Content can only be added to an approved project')]})
@@ -461,6 +463,9 @@ def csunesco_content_update(context, data_dict):
     content = db.get_content(data_dict.get('id'))
     if content is None:
         raise tk.ObjectNotFound(tk._('Content not found'))
+    if content.project_id:
+        from ckanext.csunesco.logic.editorial_owner import require_bridge
+        require_bridge(context)
     from ckanext.csunesco.logic import portal
     if content.project_id and portal.managed(db.get_project(content.project_id)):
         raise tk.NotAuthorized('Edit project content in the CS Toolbox')
@@ -619,6 +624,9 @@ def csunesco_content_delete(context, data_dict):
     content = db.get_content(data_dict.get('id'))
     if content is None:
         raise tk.ObjectNotFound(tk._('Content not found'))
+    if content.project_id:
+        from ckanext.csunesco.logic.editorial_owner import require_bridge
+        require_bridge(context)
     content_id = content.id
     model.Session.delete(content)
     model.Session.commit()

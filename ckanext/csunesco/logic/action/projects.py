@@ -321,6 +321,9 @@ def _resolve_creator(context, data_dict):
 
 
 def csunesco_project_request_create(context, data_dict):
+    from ckanext.csunesco.logic import editorial_owner, portal
+    if editorial_owner.enabled():
+        portal.require_service(context)
     """Create a project request under an authorized CKAN organization.
 
     The sysadmin service token used by Toolbox remains compatible with its
@@ -411,6 +414,8 @@ PROJECT_EDITABLE_COLUMNS = (
 
 
 def csunesco_project_update(context, data_dict):
+    from ckanext.csunesco.logic.editorial_owner import require_bridge
+    require_bridge(context)
     """Edit an existing project's details (sysadmin / PM / initiative admin).
 
     Editing NEVER changes moderation state: an approved project stays approved,

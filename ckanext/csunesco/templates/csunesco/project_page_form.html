@@ -192,7 +192,7 @@
   #}
   <form method="post" enctype="multipart/form-data"
         class="cs-pb-form" id="cs-page-form" novalidate
-        action="{{ h.url_for('csunesco.site_page_edit') if is_site else h.url_for('csunesco.initiative_page_edit', name=initiative.name) if is_initiative else h.url_for('csunesco.project_page_edit', slug=project.slug) }}">
+        action="{{ h.csunesco_editor_link('csunesco.site_page_edit') if is_site else h.csunesco_editor_link('csunesco.initiative_page_edit', name=initiative.name) if is_initiative else h.csunesco_editor_link('csunesco.project_page_edit', slug=project.slug) }}">
     {{ h.csrf_input() }}
     {#
       Where a JS-enhanced submit writes the operation before submitting, because

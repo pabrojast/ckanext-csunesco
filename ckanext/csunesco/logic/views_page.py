@@ -167,6 +167,9 @@ def _take_drops(project_id):
 
 
 def project_page_edit(slug):
+    from ckanext.csunesco.logic import editorial_owner
+    if editorial_owner.enabled():
+        return editorial_owner.redirect('project', slug)
     from ckanext.csunesco.logic import portal
     from ckanext.csunesco import db
     row = db.get_project(slug)
@@ -400,6 +403,9 @@ def _initial_site_blocks(page):
 
 
 def site_page_edit():
+    from ckanext.csunesco.logic import editorial_owner
+    if editorial_owner.enabled():
+        return editorial_owner.redirect('site', 'home')
     """GET the hub-page editor; POST applies one operation and saves.
 
     The exact shape of project_page_edit with the project resolution swapped
@@ -549,6 +555,9 @@ def _initial_initiative_blocks(page):
 
 
 def initiative_page_edit(name):
+    from ckanext.csunesco.logic import editorial_owner
+    if editorial_owner.enabled():
+        return editorial_owner.redirect('initiative', name)
     initiative = _initiative(name)
     if initiative is None:
         return tk.abort(404, tk._('Initiative not found'))

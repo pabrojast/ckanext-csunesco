@@ -142,6 +142,8 @@ def _clean_workplan(raw):
 
 
 def csunesco_project_structure_upsert(context, data_dict):
+    from ckanext.csunesco.logic.editorial_owner import require_bridge
+    require_bridge(context)
     """Replace a project's mirrored phase-2 structure + workplan snapshot."""
     tk.check_access('csunesco_project_structure_upsert', context, data_dict)
     data_dict = data_dict or {}

@@ -416,7 +416,7 @@ def block_fields(item, default):
         elif key in ('intro', 'caption', 'empty_text'):
             kind = 'textarea'
         elif key in ('url', 'image_url', 'cta_url'):
-            kind = 'image' if item.key in ('image', 'media_text') else 'url'
+            kind = 'image' if key == 'image_url' or item.key in ('image', 'media_text') and key == 'url' else 'url'
         field = _field(key, kind, enums.get(key), default=value)
         if key == 'height':
             limits = {'chart': (200, 600), 'observation_map': (240, 700), 'terria_map': (300, 800)}
@@ -431,6 +431,10 @@ def block_fields(item, default):
             field.update(type='items', maximum=4, item_fields=[
                 _field('source', 'select', blocks.STAT_SOURCES, default='manual'),
                 _field('value'), _field('label')])
+        elif key == 'items' and item.key == 'site_initiatives':
+            name = _field('name', 'select')
+            name['options'] = [{'value': i['name'], 'label': i['title']} for i in constants.CS_INITIATIVES]
+            field.update(type='items', maximum=4, item_fields=[name, _field('image_url', 'image', required=True)])
         elif key == 'fields' and item.key in ('project_facts', 'project_structure'):
             allowed = FACT_FIELDS if item.key == 'project_facts' else STRUCTURE_FIELDS
             field.update(options=[{'value': k, 'label': k.replace('_', ' ').capitalize()} for k in allowed])
@@ -448,14 +452,21 @@ def capabilities(context, data):
     require_service(context)
     project = resolve_project(data) if (data.get('project') or data.get('project_id') or data.get('project_slug')) else None
     effective = actor_context(context, data, project) if project and data.get('actor') else None
-    standards = standard_sections(project)
+    scope = data.get('scope', 'project')
+    if scope not in ('project', 'site', 'initiative'):
+        raise tk.ValidationError({'scope': ['Unknown page scope']})
+    standards = standard_sections(project) if scope == 'project' else []
     standards_by_type = {item['type']: item for item in standards}
     registry = []
     for item in blocks._TYPES:
-        if 'project' not in item.scopes:
+        if scope not in item.scopes:
             continue
         default = blocks.normalize_block({'type': item.key})
         fields = block_fields(item, default)
+        if scope != 'project':
+            for field in fields:
+                if field.get('options_source') == 'datasets':
+                    field.pop('options_source')
         selected = LEADERSHIP_FIELDS if item.key == 'project_facts' else ENGAGEMENT_FIELDS
         registry.append({'key': item.key, 'type': item.key, 'label': item.label,
                          'description': item.description, 'builtin': item.builtin,
@@ -570,6 +581,9 @@ def _app_preview_access(grant, project=None):
 
 
 def authorize_saved_preview(saved, project=None):
+    if saved.get('scope') in ('site', 'initiative'):
+        from ckanext.csunesco.logic.editorial_pages import verify_saved
+        return verify_saved(saved)
     if saved.get('preview_grant'):
         return _app_preview_access(saved['preview_grant'], project)
     return actor_context({}, {'actor': saved['actor']}, project)
@@ -605,14 +619,15 @@ def create_preview_ticket(project, candidate, actor, revision, grant=None, expir
     from ckanext.csunesco.logic import snapshots
     token = secrets.token_urlsafe(32)
     expires = min(int(expires or time.time() + 300), int(time.time()) + 300)
-    candidate = snapshots.materialize_media(project, candidate)
+    warnings = []
+    candidate = snapshots.materialize_media(project, candidate, preview_warnings=warnings)
     prefix = '/citizen-science/portal/media/' + project.id + '/'
     candidate = json.loads(canonical(candidate).replace(prefix, '/citizen-science/portal/preview-media/' + token + '/'))
     snapshots.write_private('preview', hashlib.sha256(token.encode()).hexdigest(), {
         'project_id': project.id, 'revision': revision, 'candidate': candidate,
         'actor': actor, 'expires': expires, 'preview_grant': grant})
     base = (tk.config.get('ckan.site_url') or '').rstrip('/')
-    return {'ticket': token, 'url': base + '/citizen-science/portal/preview/' + token,
+    return {'warnings': warnings, 'ticket': token, 'url': base + '/citizen-science/portal/preview/' + token,
             'expires_at': datetime.datetime.utcfromtimestamp(expires).isoformat() + 'Z'}
 
 
@@ -629,24 +644,28 @@ def preview_view(ticket):
         authorize_saved_preview(saved, project)
     except Exception:
         return tk.abort(404, 'Preview expired')
-    candidate = saved['candidate']
-    public = db.project_dictize(project)
-    from ckanext.csunesco.logic.action.projects import _stats_dict
-    public['stats'] = _stats_dict(project.id)
-    public.update(_public_project(candidate))
-    public['structure'] = {k: v for k, v in candidate['structure'].items()
-                           if k not in constants.FIELD_AUDIENCE}
-    public['workplan'] = []
-    public['portal_managed'] = True
-    ctx = page_render.build_context({'user': None}, public, candidate['blocks'],
-                                   has_region=bool(public.get('region_geojson')), can_manage=False, preview=True)
-    ctx['contacts'] = {k: candidate.get('project', {}).get(k) for k in ('contact_person', 'contact_email')}
-    ctx['region_url'] = '/citizen-science/portal/preview-region/' + ticket
-    ctx['news_events'] = candidate.get('contents', [])
-    body = tk.render('csunesco/project_landing.html', extra_vars={
-        'project': public, 'blocks': candidate['blocks'], 'ctx': ctx,
-        'is_draft_preview': True, 'portal_readonly_preview': True,
-        'preview_parent_origin': tk.config.get('ckanext.csunesco.portal_preview_origin')})
+    if saved.get('scope') in ('site', 'initiative'):
+        from ckanext.csunesco.logic.editorial_pages import render_preview
+        body = render_preview(saved)
+    else:
+        candidate = saved['candidate']
+        public = db.project_dictize(project)
+        from ckanext.csunesco.logic.action.projects import _stats_dict
+        public['stats'] = _stats_dict(project.id)
+        public.update(_public_project(candidate))
+        public['structure'] = {k: v for k, v in candidate['structure'].items()
+                               if k not in constants.FIELD_AUDIENCE}
+        public['workplan'] = []
+        public['portal_managed'] = True
+        ctx = page_render.build_context({'user': None}, public, candidate['blocks'],
+                                       has_region=bool(public.get('region_geojson')), can_manage=False, preview=True)
+        ctx['contacts'] = {k: candidate.get('project', {}).get(k) for k in ('contact_person', 'contact_email')}
+        ctx['region_url'] = '/citizen-science/portal/preview-region/' + ticket
+        ctx['news_events'] = candidate.get('contents', [])
+        body = tk.render('csunesco/project_landing.html', extra_vars={
+            'project': public, 'blocks': candidate['blocks'], 'ctx': ctx,
+            'is_draft_preview': True, 'portal_readonly_preview': True,
+            'preview_parent_origin': tk.config.get('ckanext.csunesco.portal_preview_origin')})
     response = Response(body)
     origin = tk.config.get('ckanext.csunesco.portal_preview_origin') or ''
     if not origin or urlsplit(origin).scheme not in ('https', 'http'):
@@ -661,12 +680,13 @@ def preview_view(ticket):
 
 def get_actions():
     from ckanext.csunesco.logic import content_reviews
-    return {'csunesco_project_content_apply': content_reviews.apply,
+    from ckanext.csunesco.logic import editorial_pages
+    return dict(editorial_pages.get_actions(), **{'csunesco_project_content_apply': content_reviews.apply,
             'csunesco_project_content_status': content_reviews.status,'csunesco_project_portal_capabilities': capabilities,
             'csunesco_project_portal_apply': apply,
             'csunesco_project_portal_status': portal_status,
             'csunesco_project_portal_export': export,
-            'csunesco_project_portal_preview': preview}
+            'csunesco_project_portal_preview': preview})
 
 
 def portal_status(context, data):

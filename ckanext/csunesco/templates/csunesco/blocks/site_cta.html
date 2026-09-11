@@ -17,7 +17,7 @@
            aria-label="{{ block.title or _('Propose a project') }}">
     <p>{{ block.text or _("Leading a community water-monitoring effort?") }}</p>
     <a class="cs-btn cs-btn-primary"
-       href="{{ block.cta_url or h.url_for('csunesco.project_new') }}">
+       href="{{ block.cta_url or h.csunesco_editor_link('csunesco.project_new') }}">
       {{ block.cta_label or _("Propose a project") }}
     </a>
   </section>
