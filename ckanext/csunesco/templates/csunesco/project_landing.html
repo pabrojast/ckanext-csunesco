@@ -129,7 +129,14 @@
 {% block scripts %}
   {{ super() }}
   {% if portal_readonly_preview and preview_parent_origin %}
-  <script>window.parent.postMessage({type: 'cs-portal-preview-ready'}, {{ preview_parent_origin | tojson }});</script>
+  <script>
+    window.addEventListener('message', function (event) {
+      if (event.origin === {{ preview_parent_origin | tojson }} && event.source === window.parent &&
+          event.data && event.data.type === 'cs-portal-preview-check' && event.data.path === window.location.pathname) {
+        window.parent.postMessage({type: 'cs-portal-preview-ready', requestId: event.data.requestId}, event.origin);
+      }
+    });
+  </script>
   {% endif %}
   {# Leaflet loaded from CDN with SRI + crossorigin, lazily, ONLY on this page. #}
   <link rel="stylesheet"

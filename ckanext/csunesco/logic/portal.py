@@ -62,7 +62,8 @@ def can_edit_standard_sections(context):
 
 
 def validate_standard_sections(context, project, candidate_blocks):
-    if can_edit_standard_sections(context):
+    if can_edit_standard_sections(context) or (project and auth.can_manage_project(context, project.id)
+                                              and context.get('user') != tk.config.get('ckanext.csunesco.portal_service_user')):
         return
     standards = {item['type']: item for item in standard_sections(project)}
     for candidate in candidate_blocks:
@@ -478,7 +479,7 @@ def capabilities(context, data):
                 if field.get('options_source') == 'data_sources':
                     field['options'] = [{'value': source['id'], 'label': source.get('title') or str(source['form_id'])} for source in sources]
     return {'schema_version': SCHEMA_VERSION, 'capabilities_version': 'project-portal-1',
-            'can_edit_standard_sections': bool(effective and can_edit_standard_sections(effective)),
+            'can_edit_standard_sections': bool(not effective or can_edit_standard_sections(effective) or project and auth.can_manage_project(effective, project.id)),
             'standard_sections': standards,
             'blocks': registry, 'data_sources': sources, 'datasets': datasets,
             'project_fields': [{'key': k, 'label': k.replace('_', ' ').capitalize()} for k in FACT_FIELDS],
@@ -555,23 +556,61 @@ def export(context, data):
             'portal': status(project), 'exported_at': datetime.datetime.utcnow().isoformat()}
 
 
+def _app_preview_access(grant, project=None):
+    from ckanext.csunesco.logic import snapshots
+    try:
+        claims = snapshots.app_request('/internal/ckan/preview-access', {'grant': grant})
+        if claims.get('purpose') != 'portal-preview' or claims.get('expires', 0) <= time.time():
+            raise ValueError()
+        if project and (claims.get('scope') != 'project' or claims.get('project_slug') != project.slug):
+            raise ValueError()
+        return claims
+    except Exception:
+        raise tk.NotAuthorized('Preview permission expired or revoked') from None
+
+
+def authorize_saved_preview(saved, project=None):
+    if saved.get('preview_grant'):
+        return _app_preview_access(saved['preview_grant'], project)
+    return actor_context({}, {'actor': saved['actor']}, project)
+
+
 def preview(context, data):
-    project, effective, revision, app_id = validate_envelope(context, data)
-    candidate = validate_payload(data['payload'])
-    validate_standard_sections(effective, project, candidate['blocks'])
-    return create_preview_ticket(project, candidate, data['actor'], revision)
+    grant = data.get('preview_grant')
+    if grant:
+        require_service(context)
+        project = resolve_project(data)
+        claims = _app_preview_access(grant, project)
+        if (data.get('schema_version') not in (1, SCHEMA_VERSION)
+                or str(claims.get('key')) != str(data.get('app_project_id'))
+                or claims.get('revision') != data.get('revision')
+                or claims.get('checksum') != checksum(data.get('payload'))
+                or data.get('checksum') != claims.get('checksum')
+                or int(data.get('revision', 0)) < 1):
+            raise tk.ValidationError({'preview': ['Preview revision mismatch']})
+        linked = metadata(project).get('app_project_id')
+        if linked and int(linked) != int(data['app_project_id']):
+            raise tk.NotAuthorized('Preview belongs to another project')
+        revision = data['revision']
+        candidate = validate_payload(data['payload'])
+    else:
+        project, effective, revision, app_id = validate_envelope(context, data)
+        candidate = validate_payload(data['payload'])
+        validate_standard_sections(effective, project, candidate['blocks'])
+    return create_preview_ticket(project, candidate, data.get('actor', {}), revision,
+                                 grant=grant, expires=claims['expires'] if grant else None)
 
 
-def create_preview_ticket(project, candidate, actor, revision):
+def create_preview_ticket(project, candidate, actor, revision, grant=None, expires=None):
     from ckanext.csunesco.logic import snapshots
     token = secrets.token_urlsafe(32)
-    expires = int(time.time()) + 300
+    expires = min(int(expires or time.time() + 300), int(time.time()) + 300)
     candidate = snapshots.materialize_media(project, candidate)
     prefix = '/citizen-science/portal/media/' + project.id + '/'
     candidate = json.loads(canonical(candidate).replace(prefix, '/citizen-science/portal/preview-media/' + token + '/'))
     snapshots.write_private('preview', hashlib.sha256(token.encode()).hexdigest(), {
         'project_id': project.id, 'revision': revision, 'candidate': candidate,
-        'actor': actor, 'expires': expires})
+        'actor': actor, 'expires': expires, 'preview_grant': grant})
     base = (tk.config.get('ckan.site_url') or '').rstrip('/')
     return {'ticket': token, 'url': base + '/citizen-science/portal/preview/' + token,
             'expires_at': datetime.datetime.utcfromtimestamp(expires).isoformat() + 'Z'}
@@ -587,7 +626,7 @@ def preview_view(ticket):
         if not saved or saved['expires'] < time.time():
             raise ValueError()
         project = db.get_project(saved['project_id'])
-        actor_context({}, {'actor': saved['actor']}, project)
+        authorize_saved_preview(saved, project)
     except Exception:
         return tk.abort(404, 'Preview expired')
     candidate = saved['candidate']
@@ -735,7 +774,7 @@ def preview_media_view(ticket, digest):
         return tk.abort(404, 'Preview expired')
     project = db.get_project(saved['project_id'])
     try:
-        actor_context({}, {'actor': saved['actor']}, project)
+        authorize_saved_preview(saved, project)
     except Exception:
         return tk.abort(404, 'Preview expired')
     expected = '/citizen-science/portal/preview-media/' + ticket + '/' + digest
@@ -760,7 +799,7 @@ def preview_region_view(ticket):
         return tk.abort(404, 'Preview expired')
     project = db.get_project(saved['project_id'])
     try:
-        actor_context({}, {'actor': saved['actor']}, project)
+        authorize_saved_preview(saved, project)
     except Exception:
         return tk.abort(404, 'Preview expired')
     geometry = saved['candidate'].get('project', {}).get('region_geojson')

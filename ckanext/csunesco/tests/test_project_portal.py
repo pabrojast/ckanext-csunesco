@@ -215,26 +215,24 @@ def test_public_field_registry_does_not_advertise_private_fields(store):
 
 @pytest.mark.parametrize('kind,field', [('builtin_about', 'title'), ('builtin_data', 'intro'),
                                       ('project_facts', 'title'), ('project_structure', 'title')])
-def test_standard_headings_require_real_ckan_admin_for_apply_and_preview(store, kind, field):
+def test_standard_headings_can_be_edited_by_project_managers(store, kind, field):
     project, _ = store
     data = envelope(project)
     data['payload']['blocks'] = [blocks.normalize_block({'type': kind, field: 'Unauthorized label'})]
     data['checksum'] = portal.checksum(data['payload'])
     for operation in (portal.apply, portal.preview):
-        with pytest.raises(tk.NotAuthorized, match='Only a CKAN administrator'):
-            operation(ctx(), data)
-    assert db.get_project_page(project.id) is None
-    assert not portal.metadata(project)
+        operation(ctx(), data)
+    assert db.get_project_page(project.id).status == 'pending'
 
 
 def test_standard_heading_capability_uses_delegated_actor_not_transport(store):
     project, _ = store
-    for name, allowed in [('author', False), ('reviewer', True)]:
+    for name, allowed in [('author', True), ('reviewer', True)]:
         value = portal.capabilities(ctx(), {'project_id': project.id, 'actor': {'username': name}})
         assert value['can_edit_standard_sections'] is allowed
         assert len(value['standard_sections']) == 8
         assert next(item for item in value['blocks'] if item['key'] == 'rich_text')['standard_section'] is False
-    assert portal.capabilities(ctx(), {'project_id': project.id})['can_edit_standard_sections'] is False
+    assert portal.capabilities(ctx(), {'project_id': project.id})['can_edit_standard_sections'] is True
     with pytest.raises(tk.NotAuthorized):
         portal.capabilities(ctx(), {'project_id': project.id, 'actor': {'username': 'transport'}})
 
@@ -256,12 +254,11 @@ def test_manager_preserves_legacy_standard_labels_and_edits_canonical_and_custom
     assert next(item for item in draft if item['type'] == 'builtin_about')['html'] == '<p>New canonical description</p>'
 
 
-def test_direct_ckan_page_save_cannot_change_standard_intro_as_manager(store):
+def test_legacy_page_save_accepts_manager_headings_until_editor_cutover(store):
     project, _ = store
     candidate = blocks.default_blocks()
     candidate[0]['intro'] = 'Manager override'
-    with pytest.raises(tk.NotAuthorized, match='Only a CKAN administrator'):
-        page_actions.csunesco_project_page_update(ctx('author'), {'project_id': project.id, 'blocks': candidate})
+    page_actions.csunesco_project_page_update(ctx('author'), {'project_id': project.id, 'blocks': candidate})
     page_actions.csunesco_project_page_update(ctx('reviewer'), {'project_id': project.id, 'blocks': candidate})
     page_actions.csunesco_project_page_update(ctx('author'), {'project_id': project.id, 'blocks': candidate})
 
@@ -276,8 +273,7 @@ def test_published_legacy_heading_baseline_used_when_no_draft(store):
     db.Session.commit()
     portal.validate_standard_sections(ctx('author'), project, candidate)
     candidate[0]['title'] = 'Renamed'
-    with pytest.raises(tk.NotAuthorized):
-        portal.validate_standard_sections(ctx('author'), project, candidate)
+    portal.validate_standard_sections(ctx('author'), project, candidate)
 
 
 def test_asset_fetch_auth_is_pinned_to_app_endpoint(store, monkeypatch):
@@ -495,3 +491,34 @@ def test_legacy_local_alias_is_private_after_withdrawal_without_breaking_shared_
     home.published_json = json.dumps([{'type': 'image', 'items': [{'url': path}]}])
     db.Session.add(home); db.Session.commit()
     assert snapshots.legacy_alias_public(record)
+
+
+def test_app_grant_preview_without_ckan_actor_and_publication_stays_guarded(store, monkeypatch):
+    import time
+    project, users = store
+    data = envelope(project, actor={'username': 'app-only-manager'}, preview_grant='signed-grant')
+    claims = {'purpose': 'portal-preview', 'scope': 'project', 'key': '42',
+              'project_slug': project.slug, 'checksum': data['checksum'], 'revision': 1,
+              'expires': int(time.time()) + 300}
+    monkeypatch.setattr(snapshots, 'app_request', lambda path, body: dict(claims))
+    preview = portal.preview(ctx(), data)
+    saved = snapshots.read_private('preview', __import__('hashlib').sha256(preview['ticket'].encode()).hexdigest())
+    assert portal.authorize_saved_preview(saved, project)['key'] == '42'
+    assert db.get_project_page(project.id) is None
+    with pytest.raises(tk.NotAuthorized): portal.apply(ctx(), data)
+    with pytest.raises(tk.NotAuthorized): portal.preview(ctx('reviewer'), data)
+    wrong = copy.deepcopy(data); wrong['payload']['project']['title'] = 'Changed after authorization'
+    with pytest.raises(tk.ValidationError): portal.preview(ctx(), wrong)
+    claims['project_slug'] = 'different-project'
+    with pytest.raises(tk.NotAuthorized): portal.preview(ctx(), data)
+    with pytest.raises(tk.NotAuthorized): portal.authorize_saved_preview(saved, project)
+    claims['project_slug'] = project.slug; claims['expires'] = int(time.time()) - 1
+    with pytest.raises(tk.NotAuthorized): portal.authorize_saved_preview(saved, project)
+
+
+def test_preview_placeholder_does_not_fetch_remote_media(store):
+    project, _ = store
+    payload = envelope(project)['payload']
+    payload['blocks'].append(blocks.normalize_block({'type': 'image', 'items': [{'url': '/csunesco/images/preview-unavailable.svg'}]}))
+    result = snapshots.materialize_media(project, payload)
+    assert result['blocks'][-1]['items'][0]['url'] == '/csunesco/images/preview-unavailable.svg'

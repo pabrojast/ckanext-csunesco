@@ -184,7 +184,7 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _copy_media(project, url, fetch_url=None, endpoint_kind='project-assets'):
-    if url.startswith('/citizen-science/portal/media/'):
+    if url.startswith('/citizen-science/portal/media/') or url == '/csunesco/images/preview-unavailable.svg':
         return url
     headers = {}
     if fetch_url:
@@ -273,7 +273,7 @@ def materialize_media(project, candidate):
                     (original.scheme, original.netloc) == (site_origin.scheme, site_origin.netloc)):
                 legacy_sources.setdefault(entry['fetch_url'], []).append(unquote(original.path))
     media_keys = {'image_url', 'logo_url', 'heading_image_url', 'thumbnail_url', 'src',
-                  'attachment_url', 'project_document_url'}
+                  'attachment_url', 'header_image_url'}
     def walk(value, image_items=False):
         if isinstance(value, dict):
             is_image = value.get('type') == 'image'
