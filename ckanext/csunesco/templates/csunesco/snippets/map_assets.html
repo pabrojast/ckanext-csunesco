@@ -1,0 +1,17 @@
+{# Shared by the public project page and the project-review map. #}
+<link rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+<link rel="stylesheet" href="{{ h.url_for_static('/csunesco/vendor/maplibre-gl.css') }}">
+<script src="{{ h.url_for_static('/csunesco/vendor/maplibre-gl-csp.js') }}"></script>
+<script src="{{ h.url_for_static('/csunesco/vendor/leaflet-maplibre-gl.js') }}"></script>
+<script type="application/json" id="cs-map-config">{{ {
+  'styleUrl': h.url_for_static('/csunesco/maps/positron-borderless.json'),
+  'workerUrl': h.url_for_static('/csunesco/vendor/maplibre-gl-csp-worker.js')
+}|tojson }}</script>
+{% asset 'csunesco/cs-map-js' %}
+{% if observations %}{% asset 'csunesco/cs-data-map-js' %}{% endif %}

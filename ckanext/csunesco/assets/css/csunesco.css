@@ -954,6 +954,11 @@
   color: #46586a;
 }
 
+.cs-map-fallback[hidden],
+.cs-map-skeleton[hidden] {
+  display: none;
+}
+
 /* ---- Project landing extras -------------------------------------------- */
 .cs-project-hero-initiative {
   margin: 0 0 0.25rem 0;

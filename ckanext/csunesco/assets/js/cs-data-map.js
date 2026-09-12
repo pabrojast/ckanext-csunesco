@@ -55,11 +55,8 @@
     }
     hide(container.querySelector(".cs-map-fallback"));
 
-    var map = L.map(container, { scrollWheelZoom: false });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors",
-      maxZoom: 18
-    }).addTo(map);
+    var map = L.map(container, { scrollWheelZoom: false, maxZoom: 18, center: [0, 0], zoom: 2 });
+    window.csunescoAddBasemap(map);
 
     var layer = L.geoJSON(geojson, {
       pointToLayer: function (feature, latlng) {
@@ -92,7 +89,7 @@
   function initOne(container) {
     var url = container.getAttribute("data-observations-url");
     if (!url) { return; }
-    if (typeof L === "undefined" || !window.fetch) {
+    if (typeof L === "undefined" || !window.fetch || !window.csunescoAddBasemap) {
       showFallback(container, FALLBACK_UNAVAILABLE);
       return;
     }

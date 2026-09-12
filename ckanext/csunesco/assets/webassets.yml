@@ -20,19 +20,32 @@ cs-register-js:
   contents:
     - js/cs-register.js
 
-# Standalone project-region map behaviour. No base/main preload: it depends only
-# on Leaflet (loaded via CDN in the landing template) and vanilla DOM APIs.
+# Shared borderless style setup. MapLibre and its Leaflet adapter are local
+# scripts loaded by snippets/map_assets.html, alongside Leaflet.
+cs-basemap-js:
+  filters: rjsmin
+  output: js/cs-basemap.js
+  contents:
+    - js/cs-basemap.js
+
+# Standalone project-region map behaviour.
 cs-map-js:
   filters: rjsmin
   output: js/cs-map.js
+  extra:
+    preload:
+      - csunesco/cs-basemap-js
   contents:
     - js/cs-map.js
 
 # Observation maps for connected app-data sources on the project landing. Same
-# footprint as cs-map-js: Leaflet from CDN + vanilla DOM, no preload.
+# shared basemap as cs-map-js; data and popups remain Leaflet layers.
 cs-data-map-js:
   filters: rjsmin
   output: js/cs-data-map.js
+  extra:
+    preload:
+      - csunesco/cs-basemap-js
   contents:
     - js/cs-data-map.js
 
