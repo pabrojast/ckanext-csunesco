@@ -1321,10 +1321,10 @@ def test_project_form_steps_cover_the_schema_exactly():
         % (sorted(placed - expected), sorted(expected - placed)))
 
 
-def test_project_form_steps_are_numbered_one_to_six():
+def test_project_form_steps_are_numbered_one_to_eight():
     from ckanext.csunesco import constants
     numbers = [step['step'] for step in constants.PROJECT_FORM_STEPS]
-    assert numbers == [1, 2, 3, 4, 5, 6]
+    assert numbers == [1, 2, 3, 4, 5, 6, 7, 8]
 
 
 @pytest.fixture(autouse=True)

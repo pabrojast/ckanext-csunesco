@@ -43,3 +43,27 @@ newly authorized privacy policy.
 Validation: `bash scripts/run-ckan-tests.sh` includes the data-privacy matrix,
 revision failure, legacy-cache revocation, manual policy-drift and DataStore
 regressions as well as the existing CKAN 2.10 plugin-load and behavior checks.
+
+
+## Project setup: Koen's data access proposal
+
+Both native CKAN creation/editing and the shared Toolbox editor use eight steps,
+with Data access after Participation. The public/private/confidential radio
+choices carry the proposal's explanations and Open Science notice. Public is
+recommended for new requests only. Private and Confidential require a trimmed
+justification (maximum 2,000 characters), stored with the project and available
+for managerial review. Partial edits retain it; selecting Public clears it.
+Old service payloads can omit consent without authorizing any new publication.
+
+The CS partition identity retains `private`; its CKAN package is **findable**
+in datashare. Thus the public can discover metadata but cannot preview or export
+measurements. Public and Confidential map directly to the existing datashare
+levels. Existing advanced partitions keep their identities and settings.
+Confidential participant visibility and shared-site discovery are enforced by
+the Toolbox API. IHP-WINS dataset approvals and authorized access grants remain
+managed by CKAN.
+
+The Toolbox seeds an explicit CKAN declaration only on the first import of a
+new project; subsequent CKAN synchronization cannot overwrite its local policy.
+Project policy changes send the setting and justification through the existing
+project-update outbox. No deployment backfill or reauthorization is required.

@@ -184,7 +184,8 @@ def ensure_dataset(context, project, data_source, override_org=None,
 
     level = getattr(data_source, 'access_level', 'legacy')
     if level != 'legacy':
-        package_dict.update(access_level=level, private=(level == 'confidential'), state='active')
+        from ckanext.csunesco.logic.data_access import dataset_level
+        package_dict.update(access_level=dataset_level(level), private=(level == 'confidential'), state='active')
     resource_ids = []
     if data_source.ckan_package_id:
         # Preserve existing catalogue URLs and identifiers when adopting a legacy partition.

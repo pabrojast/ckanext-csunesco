@@ -311,6 +311,8 @@ def csunesco_field_audience_ok(field, project):
         context = {'model': model, 'user': tk.g.user}
         if auth._is_sysadmin(context):
             return True
+        if audience == 'managers':
+            return auth.can_edit_project_details(context, project)
         user_obj = auth._user_obj(context)
         if user_obj is None:
             return False

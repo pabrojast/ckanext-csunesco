@@ -428,10 +428,6 @@ def _render_project_form(data, errors, success=False, mode='new',
     """
     choices, states_available = _member_state_choices()
     steps = [dict(step) for step in constants.PROJECT_FORM_STEPS]
-    if mode == 'new':
-        steps[0]['fields'] = tuple(k for k in steps[0]['fields'] if k not in ('image_url', 'logo_url', 'heading_image_url'))
-        steps.append({'step': 7, 'title': 'Brand images', 'hint': 'Project logo and profile header.',
-                      'fields': ('logo_url', 'heading_image_url')})
     open_step = next((step['step'] for step in steps if set(errors).intersection(step['fields'])), 1)
     return tk.render('csunesco/project_request.html', extra_vars={
         'mode': mode,
@@ -535,6 +531,9 @@ def _read_project_form():
             if item],
     }
     # Radios submit nothing while unchosen; only trust a real choice.
+    if form.get('data_access'):
+        data['data_access'] = form.get('data_access')
+        data['data_access_justification'] = (form.get('data_access_justification') or '').strip()
     if form.get('participation_mode'):
         data['participation_mode'] = form.get('participation_mode')
     # An empty multi-select submits nothing, so a picker that could not render
@@ -616,6 +615,8 @@ def _project_to_form(project):
         'end_date': (project.get('end_date') or '')[:10],
         'open_participation': bool(project.get('open_participation')),
         'participation_mode': participation_mode,
+        'data_access': project.get('data_access') or '',
+        'data_access_justification': project.get('data_access_justification') or '',
         'target_group': project.get('target_group') or '',
         'contact_person': project.get('contact_person') or '',
         'contact_email': project.get('contact_email') or '',

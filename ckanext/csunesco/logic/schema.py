@@ -17,6 +17,8 @@ from ckanext.csunesco.logic import validators as v
 # action has one authoritative list to iterate rather than a second hand-written
 # copy that drifts. ``project_dictize`` merges extras back in on read.
 PROJECT_EXTRA_FIELDS = (
+    'data_access',
+    'data_access_justification',
     'how_to_participate',
     'start_date',
     'end_date',
@@ -115,6 +117,8 @@ def project_request_schema():
             ignore_missing, v.csunesco_valid_iso_date,
             v.csunesco_end_after('start_date', allow_equal=True)],
         'open_participation': [ignore_missing, boolean_validator],
+        'data_access': [ignore_missing, unicode_safe, v.csunesco_choice(('public', 'private', 'confidential'))],
+        'data_access_justification': [ignore_missing, unicode_safe],
         'target_group': [ignore_missing, unicode_safe],
         'contact_person': [ignore_missing, unicode_safe],
         'contact_email': [ignore_missing, unicode_safe, email_validator],
@@ -194,6 +198,7 @@ def project_request_form_schema():
         'geographic_extent': [not_empty] + schema['geographic_extent'][1:],
         'countries': [not_empty] + schema['countries'][1:],
         'participation_mode': [not_empty] + schema['participation_mode'][1:],
+        'data_access': [not_empty] + schema['data_access'][1:],
         'activity_status': [not_empty] + schema['activity_status'][1:] + [
             v.csunesco_require_list(1)],
         'lead_partner_type': [not_empty] + schema['lead_partner_type'][1:],

@@ -6,7 +6,25 @@ import ckan.plugins.toolkit as tk
 from ckanext.csunesco import db
 
 log = logging.getLogger(__name__)
-LEVELS = ('public', 'confidential', 'findable', 'viewable', 'restricted')
+LEVELS = ('public', 'private', 'confidential', 'findable', 'viewable', 'restricted')
+
+
+def dataset_level(level):
+    """Koen's Private shares metadata, not measurements: datashare Findable."""
+    return 'findable' if level == 'private' else level
+
+
+def validate_project_access(data, current=None):
+    if not {'data_access', 'data_access_justification'}.intersection(data):
+        return
+    level = data.get('data_access', (current or {}).get('data_access'))
+    reason = (data.get('data_access_justification', (current or {}).get('data_access_justification')) or '').strip()
+    if len(reason) > 2000:
+        raise tk.ValidationError({'data_access_justification': ['Maximum 2000 characters']})
+    if level in ('private', 'confidential') and not reason:
+        raise tk.ValidationError({'data_access_justification': [
+            tk._('Please indicate why the project cannot operate under open access settings')]})
+    data['data_access_justification'] = reason if level in ('private', 'confidential') else ''
 
 
 def as_dict(source):
@@ -105,7 +123,7 @@ def upsert_partition(context, data, project):
             package = tk.get_action('package_show')(dict(context), {'id': legacy.ckan_package_id})
             from ckanext.datashare import core
             actual = package.get('access_level') or ('confidential' if package.get('private') else core.dataset_level(package))
-            if actual == level:
+            if actual == dataset_level(level):
                 source = legacy
     new = source is None
     if new:

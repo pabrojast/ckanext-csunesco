@@ -585,9 +585,34 @@
     });
   }
 
+  function initDataAccess(form) {
+    var root = form.querySelector('[data-cs-da]');
+    if (!root) return;
+    var reason = root.querySelector('[data-da-justification]');
+    var textarea = reason.querySelector('textarea');
+    function sync() {
+      var selected = root.querySelector('input[name="data_access"]:checked');
+      var value = selected ? selected.value : null;
+      var needsReason = value === 'private' || value === 'confidential';
+      slice(root.querySelectorAll('[data-da-option]')).forEach(function (panel) {
+        panel.hidden = panel.getAttribute('data-da-option') !== value;
+      });
+      reason.hidden = !needsReason;
+      textarea.disabled = !needsReason;
+      textarea.required = needsReason;
+      textarea.setAttribute('aria-required', String(needsReason));
+      if (!needsReason) setFieldError(textarea, '');
+    }
+    slice(root.querySelectorAll('input[name="data_access"]')).forEach(function (radio) {
+      radio.addEventListener('change', sync);
+    });
+    sync();
+  }
+
   function init() {
     var form = document.getElementById("cs-project-form");
     if (!form) { return; }
+    try { initDataAccess(form); } catch (error) { /* server validation remains authoritative */ }
     var showStep = null;
     try { showStep = initWizard(form); } catch (error) { /* long form */ }
     try { initCountryPicker(form); } catch (error) { /* native select */ }

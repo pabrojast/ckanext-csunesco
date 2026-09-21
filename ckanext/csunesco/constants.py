@@ -39,9 +39,7 @@ PROJECT_FORM_STEPS = [
     {'step': 1, 'key': 'identity', 'title': u'Basic identity',
      'hint': u'What the project is called, how it introduces itself, and its '
              u'images.',
-     'fields': ('title', 'slug', 'short_description', 'image_url',
-                'image_focal_x', 'image_focal_y', 'logo_url',
-                'heading_image_url', 'heading_focal_x', 'heading_focal_y')},
+     'fields': ('title', 'slug', 'short_description')},
     {'step': 2, 'key': 'classification', 'title': u'Classification',
      'hint': u'Keywords, the water bodies and data involved, and the '
              u'initiative if it belongs to one.',
@@ -56,15 +54,22 @@ PROJECT_FORM_STEPS = [
      'hint': u'Who can take part, when the project runs and who benefits.',
      'fields': ('participation_mode', 'allowed_participants', 'languages',
                 'stakeholders', 'activity_status')},
-    {'step': 5, 'key': 'leadership', 'title': u'Leadership and contact',
+    {'step': 5, 'key': 'dataAccess', 'title': u'Data access',
+     'hint': u'Choose who can access the data collected by your project.',
+     'fields': ('data_access', 'data_access_justification')},
+    {'step': 6, 'key': 'leadership', 'title': u'Leadership and contact',
      'hint': u'The institutions behind the project and who to reach.',
      'fields': ('lead_partner_type', 'lead_organisation',
                 'organization_id', 'other_organisations', 'editors', 'contact_person',
                 'contact_email')},
-    {'step': 6, 'key': 'funding', 'title': u'Funding and references',
+    {'step': 7, 'key': 'funding', 'title': u'Funding and references',
      'hint': u'Who funds the project and where to read more.',
      'fields': ('funding_body', 'funding_programme', 'project_document_url',
                 'international_frameworks')},
+    {'step': 8, 'key': 'brand', 'title': u'Brand images',
+     'hint': u'Project logo and profile header.',
+     'fields': ('image_url', 'image_focal_x', 'image_focal_y', 'logo_url',
+                'heading_image_url', 'heading_focal_x', 'heading_focal_y')},
 ]
 
 # --------------------------------------------------------------------------- #
@@ -150,6 +155,7 @@ PARTICIPATION_MODES = ('open', 'limited')
 # or 'participants' (active members of that project only). Rendering goes
 # through ``h.csunesco_field_audience_ok``.
 FIELD_AUDIENCE = {
+    'data_access_justification': 'managers',
     'contact_email': 'logged-in',
     'contact_person': 'logged-in',
     'editors': 'logged-in',

@@ -60,7 +60,8 @@ def _check_update(context, data_dict):
     package = model.Package.get(data_dict.get('id')) if model else None
     source = source_for(package.id) if package else None
     if source and getattr(source, 'access_level', 'legacy') != 'legacy':
-        level = source.access_level
+        from ckanext.csunesco.logic.data_access import dataset_level
+        level = dataset_level(source.access_level)
         extras = data_dict.get('extras') or []
         if isinstance(extras, list):
             extras = {entry.get('key'): entry.get('value') for entry in extras if isinstance(entry, dict)}

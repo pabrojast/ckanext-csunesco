@@ -87,7 +87,7 @@ def actions(session, monkeypatch):
 STRICT_REQUIRED = (
     'title', 'organization_id', 'short_description', 'keywords', 'water_type',
     'water_data_type', 'geographic_extent', 'countries',
-    'participation_mode', 'activity_status', 'lead_partner_type',
+    'participation_mode', 'data_access', 'activity_status', 'lead_partner_type',
     'lead_organisation',
 )
 
@@ -365,3 +365,26 @@ def test_reject_notifies_with_the_reason(actions, session, monkeypatch):
     actions.csunesco_project_reject(
         _ctx('reviewer-1'), {'id': created['id'], 'reason': 'Out of scope'})
     assert calls == [(False, 'Out of scope')]
+
+
+@pytest.mark.parametrize('level', ['private', 'confidential'])
+def test_nonpublic_access_requires_reason_and_survives_reopening(actions, session, level):
+    with pytest.raises(tk.ValidationError) as error:
+        actions.csunesco_project_request_create(_ctx(), {'title': 'Sensitive river', 'data_access': level})
+    assert 'data_access_justification' in error.value.error_dict
+    created = actions.csunesco_project_request_create(_ctx(), {
+        'title': 'Sensitive river', 'data_access': level,
+        'data_access_justification': '  Protected monitoring sites  '})
+    assert created['data_access'] == level
+    assert created['data_access_justification'] == 'Protected monitoring sites'
+    updated = actions.csunesco_project_update(_ctx(), {'id': created['id'], 'title': 'Updated river'})
+    assert updated['data_access_justification'] == 'Protected monitoring sites'
+    public = actions.csunesco_project_update(_ctx(), {'id': created['id'], 'data_access': 'public'})
+    assert public['data_access'] == 'public'
+    assert not public.get('data_access_justification')
+
+
+def test_data_access_justification_length_is_enforced(actions):
+    with pytest.raises(tk.ValidationError):
+        actions.csunesco_project_request_create(_ctx(), {
+            'title': 'Sensitive river', 'data_access': 'private', 'data_access_justification': 'x' * 2001})

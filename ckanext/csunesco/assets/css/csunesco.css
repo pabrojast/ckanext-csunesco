@@ -4554,3 +4554,17 @@
 .cs-project-sidebar .cs-portal-info-grid{grid-template-columns:1fr}
 .cs-project-columns .cs-map{max-width:100%;min-width:0}
 @media(max-width:760px){.cs-project-columns{grid-template-columns:minmax(0,1fr);gap:0}.cs-project-columns .cs-section,.cs-project-columns .cs-card{padding:18px}.cs-portal-info-grid,.cs-project-selected-fields dl{grid-template-columns:1fr}.cs-project-hero{min-height:220px}}
+
+/* Data access step: inherit the site theme, including keyboard/mobile states. */
+.cs-da-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .75rem; }
+.cs-da-choice { display: flex; align-items: center; flex-wrap: wrap; padding: .75rem 1rem; border: 1px solid #b8c0cc; border-radius: .5rem; cursor: pointer; gap: .5rem; }
+.cs-da-choice:has(input:checked) { border-color: #0077d4; background: #eaf3fc; box-shadow: inset 0 0 0 1px #0077d4; }
+.cs-da-choice:has(input:focus-visible) { outline: 2px solid #0b4f8a; outline-offset: 2px; }
+.cs-da-badge { margin-inline-start: auto; padding: .05rem .5rem; border-radius: 1rem; background: #e3f4e8; color: #14532d; font-size: .72rem; font-weight: 600; }
+.cs-da-panel { margin-top: .9rem; padding: 1.1rem 1.25rem; border: 1px solid #d5dbe3; border-radius: .5rem; background: #f8fafc; }
+.cs-da-panel li { margin-block: .25rem; }
+.cs-da-note { padding: .65rem .9rem; border-inline-start: 4px solid; border-radius: .25rem; }
+.cs-da-note--ok { background: #eaf7ee; border-color: #2e7d4f; }
+.cs-da-note--warn { background: #fff6e0; border-color: #c98a00; }
+.cs-da-justification { margin-top: 1rem; }
+@media (max-width: 640px) { .cs-da-options { grid-template-columns: 1fr; } }

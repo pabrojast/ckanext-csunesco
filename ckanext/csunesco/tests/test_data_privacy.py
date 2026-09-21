@@ -8,7 +8,7 @@ from ckanext.csunesco.logic import data_access, managed_data, ofform, snapshots
 
 
 @pytest.mark.parametrize('level,metadata,preview,download', [
-    ('public', True, True, True), ('confidential', False, False, False),
+    ('public', True, True, True), ('private', True, False, False), ('confidential', False, False, False),
     ('findable', True, False, False), ('viewable', True, True, False),
     ('restricted', True, False, False),
 ])
@@ -127,3 +127,15 @@ def test_completed_partition_migration_never_requests_an_exclusive_lock(monkeypa
     monkeypatch.setattr(db.sa, 'inspect', lambda _: inspector)
     # No begin() exists: an already-migrated database must never request DDL.
     db._ensure_data_source_partitions(engine)
+
+
+def test_private_is_findable_in_datashare_without_changing_partition_identity(monkeypatch):
+    source = SimpleNamespace(access_level='private')
+    monkeypatch.setattr(managed_data, 'source_for', lambda package_id: source)
+    model = SimpleNamespace(Package=SimpleNamespace(get=lambda key: SimpleNamespace(id='dataset')))
+    context = {'model': model}
+    assert data_access.dataset_level('private') == 'findable'
+    managed_data._check_update(context, {'id': 'dataset', 'access_level': 'findable', 'private': False})
+    with pytest.raises(tk.ValidationError):
+        managed_data._check_update(context, {'id': 'dataset', 'access_level': 'public'})
+    assert source.access_level == 'private'

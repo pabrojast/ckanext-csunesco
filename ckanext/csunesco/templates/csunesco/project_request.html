@@ -205,63 +205,6 @@
             {{ field_error('short_description') }}
           </div>
 
-          {% if not is_new %}
-          <div class="cs-field">
-            <span class="cs-field-legend">{{ _("Cover / thumbnail image") }}</span>
-            {% snippet "csunesco/blocks/edit/_image_picker.html",
-                       input_id="cs-f-image",
-                       url_name="image_url",
-                       upload_name="image_upload",
-                       clear_name="image_clear",
-                       value=data.image_url,
-                       label=_("Cover image address"),
-                       clear_label=_("Remove the current cover image"),
-                       url_field="image_url",
-                       upload_field="image_upload" %}
-            <p class="cs-hint">{{ _("Optional. Reduced to fit within 1200×1200 without cropping. The focal point controls its crop on project cards.") }}</p>
-            {{ field_error('image_url') }}
-            {% snippet "csunesco/blocks/edit/_focal_picker.html", input_id="cs-f-image", image_url=data.image_url,
-                       x_name="image_focal_x", y_name="image_focal_y", focal_x=data.image_focal_x, focal_y=data.image_focal_y %}
-          </div>
-
-          {% endif %}
-          {% if not is_new %}
-          <div class="cs-field">
-            <span class="cs-field-legend">{{ _("Project logo") }}</span>
-            {% snippet "csunesco/blocks/edit/_image_picker.html",
-                       input_id="cs-f-logo",
-                       url_name="logo_url",
-                       upload_name="logo_upload",
-                       clear_name="logo_clear",
-                       value=data.logo_url,
-                       label=_("Logo address"),
-                       clear_label=_("Remove the current logo"),
-                       url_field="logo_url",
-                       upload_field="logo_upload" %}
-            <p class="cs-hint">{{ _("Optional. Reduced to fit within 1200×1200 without cropping; logos are displayed with their full proportions.") }}</p>
-            {{ field_error('logo_url') }}
-            {% snippet "csunesco/blocks/edit/_focal_picker.html", input_id="cs-f-logo", image_url=data.logo_url, x_name="logo_focal_x", y_name="logo_focal_y", focal_x=data.logo_focal_x, focal_y=data.logo_focal_y, zoom_name="logo_zoom" %}
-          </div>
-
-          <div class="cs-field">
-            <span class="cs-field-legend">{{ _("Profile heading image") }}</span>
-            {% snippet "csunesco/blocks/edit/_image_picker.html",
-                       input_id="cs-f-heading",
-                       url_name="heading_image_url",
-                       upload_name="heading_upload",
-                       clear_name="heading_clear",
-                       value=data.heading_image_url,
-                       label=_("Heading image address"),
-                       clear_label=_("Remove the current heading image"),
-                       url_field="heading_image_url",
-                       upload_field="heading_upload" %}
-            <p class="cs-hint">{{ _("Optional. Reduced to fit within 2000×1200 without cropping. Choose the focal point used by the wide profile banner.") }}</p>
-            {{ field_error('heading_image_url') }}
-            {% snippet "csunesco/blocks/edit/_focal_picker.html", input_id="cs-f-heading", image_url=data.heading_image_url,
-                       x_name="heading_focal_x", y_name="heading_focal_y", focal_x=data.heading_focal_x, focal_y=data.heading_focal_y, zoom_name="heading_zoom" %}
-          </div>
-
-          {% endif %}
           <div class="cs-wizard-nav" hidden>
             <button type="button" class="cs-btn cs-btn-primary cs-wizard-next">{{ _("Next") }}</button>
           </div>
@@ -512,12 +455,56 @@
           </div>
         </section>
 
-        {# ================= 5. Leadership and contact ====================== #}
-        {% set step = steps[4] %}
-        <section class="cs-step{% if open_step == 5 %} is-active{% endif %}"
-                 data-step="5" role="group" aria-labelledby="cs-step-5-title">
-          <h3 class="cs-step-title" id="cs-step-5-title" tabindex="-1">
-            {{ _("Step %(n)s of %(total)s", n=5, total=total_steps) }} — {{ _(step.title) }}
+        {# Data access: project consent, separate from participation. #}
+        {% set access = data.data_access or ('public' if is_new and not errors else '') %}
+        <section class="cs-step{% if open_step == 5 %} is-active{% endif %}" data-step="5" role="group" aria-labelledby="cs-step-5-title" data-cs-da>
+          <h3 class="cs-step-title" id="cs-step-5-title" tabindex="-1">{{ _("Step %(n)s of %(total)s", n=5, total=total_steps) }} — {{ _('Data access') }}</h3>
+          <p class="cs-hint">{{ _("Citizen Science holds the prospect of empowering communities, solving water resources challenges through science, enabling local decision making and policy, and strengthening environmental education. Access to the data generated from your project is therefore key to support these objectives. Please indicate the data access setting you would like to use for this project.") }}</p>
+          <fieldset class="cs-field">
+            <legend class="cs-field-legend">{{ _("Project data access settings") }} <span class="cs-req" aria-hidden="true">*</span></legend>
+            <div class="cs-da-options">
+              <label class="cs-checkbox-label cs-da-choice"><input type="radio" name="data_access" value="public" required {% if access == 'public' %}checked{% endif %}><span>{{ _('Public') }}</span><span class="cs-da-badge">{{ _("Recommended") }}</span></label>
+              <label class="cs-checkbox-label cs-da-choice"><input type="radio" name="data_access" value="private" required {% if access == 'private' %}checked{% endif %}><span>{{ _('Private') }}</span></label>
+              <label class="cs-checkbox-label cs-da-choice"><input type="radio" name="data_access" value="confidential" required {% if access == 'confidential' %}checked{% endif %}><span>{{ _('Confidential') }}</span></label>
+            </div>
+            {{ field_error('data_access') }}
+            <div class="cs-da-panel" aria-live="polite">
+              <div data-da-option="public" {% if access != 'public' %}hidden{% endif %}>
+                <p><strong>{{ _("Project data is visible to project participants and public users.") }}</strong></p>
+                <ul><li>{{ _("Citizen Science participants can see all the data collected by the project.") }}</li><li>{{ _("Public users can see all the data collected by the project.") }}</li><li>{{ _("Project data locations are findable and accessible in other Citizen Science projects, and data collected at these locations can be viewed or downloaded.") }}</li></ul>
+                <p class="cs-da-note cs-da-note--ok">{{ _("This choice fully aligns with the") }} <a href="https://www.unesco.org/en/open-science/about" target="_blank" rel="noopener noreferrer">{{ _("UNESCO Recommendation on Open Science") }}<span class="cs-visually-hidden"> {{ _("(opens in a new tab)") }}</span></a>. {{ _("Choosing this option still allows you to make individual measurements or sites within the project private or confidential if the need arises.") }}</p>
+              </div>
+              <div data-da-option="private" {% if access != 'private' %}hidden{% endif %}>
+                <p><strong>{{ _("Project data is only visible to project participants, but not to public users.") }}</strong></p>
+                <ul><li>{{ _("Citizen Science participants can see all the data collected by the project.") }}</li><li>{{ _("Public users cannot see the data collected by the project.") }}</li><li>{{ _("Project data locations are findable and accessible in other Citizen Science projects, but data collected at these locations cannot be viewed or downloaded.") }}</li></ul>
+                <p class="cs-da-note cs-da-note--warn">{{ _("Please note that this option does not fully align with the") }} <a href="https://www.unesco.org/en/open-science/about" target="_blank" rel="noopener noreferrer">{{ _("UNESCO Recommendation on Open Science") }}<span class="cs-visually-hidden"> {{ _("(opens in a new tab)") }}</span></a>. </p>
+              </div>
+              <div data-da-option="confidential" {% if access != 'confidential' %}hidden{% endif %}>
+                <p><strong>{{ _("Project data is not visible to other project participants or to public users.") }}</strong></p>
+                <ul><li>{{ _("Citizen Science participants can only see the data collected by themselves.") }}</li><li>{{ _("Public users cannot see the data collected by the project.") }}</li><li>{{ _("Project sites are not shared with any other Citizen Science project.") }}</li></ul>
+                <p class="cs-da-note cs-da-note--warn">{{ _("Please note that this option does not align with the") }} <a href="https://www.unesco.org/en/open-science/about" target="_blank" rel="noopener noreferrer">{{ _("UNESCO Recommendation on Open Science") }}<span class="cs-visually-hidden"> {{ _("(opens in a new tab)") }}</span></a>. </p>
+              </div>
+              <div class="cs-field cs-da-justification" data-da-justification {% if access not in ('private', 'confidential') %}hidden{% endif %}>
+                <label for="cs-f-data_access_justification">{{ _("Please indicate why the project cannot operate under open access settings") }} <span class="cs-req" aria-hidden="true">*</span></label>
+                <textarea id="cs-f-data_access_justification" name="data_access_justification" rows="4" maxlength="2000" aria-describedby="cs-f-data_access_justification-hint" {% if access in ('private', 'confidential') %}required aria-required="true"{% endif %}>{{ data.data_access_justification or '' }}</textarea>
+                <p id="cs-f-data_access_justification-hint" class="cs-hint">{{ _("Required for the Private and Confidential settings. Maximum 2,000 characters.") }}</p>
+                {{ field_error('data_access_justification') }}
+              </div>
+            </div>
+            <p class="cs-hint">{{ _("Quality-control holds and individual privacy exceptions still apply. Project managers retain access to review data.") }}</p>
+          </fieldset>
+          <div class="cs-wizard-nav" hidden>
+            <button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _('Back') }}</button>
+            <button type="button" class="cs-btn cs-btn-primary cs-wizard-next">{{ _('Next') }}</button>
+          </div>
+        </section>
+
+        {# ================= 6. Leadership and contact ====================== #}
+        {% set step = steps[5] %}
+        <section class="cs-step{% if open_step == 6 %} is-active{% endif %}"
+                 data-step="6" role="group" aria-labelledby="cs-step-6-title">
+          <h3 class="cs-step-title" id="cs-step-6-title" tabindex="-1">
+            {{ _("Step %(n)s of %(total)s", n=6, total=total_steps) }} — {{ _(step.title) }}
           </h3>
           <p class="cs-hint">{{ _(step.hint) }}</p>
 
@@ -613,12 +600,12 @@
           </div>
         </section>
 
-        {# ================= 6. Funding and references ====================== #}
-        {% set step = steps[5] %}
-        <section class="cs-step{% if open_step == 6 %} is-active{% endif %}"
-                 data-step="6" role="group" aria-labelledby="cs-step-6-title">
-          <h3 class="cs-step-title" id="cs-step-6-title" tabindex="-1">
-            {{ _("Step %(n)s of %(total)s", n=6, total=total_steps) }} — {{ _(step.title) }}
+        {# ================= 7. Funding and references ====================== #}
+        {% set step = steps[6] %}
+        <section class="cs-step{% if open_step == 7 %} is-active{% endif %}"
+                 data-step="7" role="group" aria-labelledby="cs-step-7-title">
+          <h3 class="cs-step-title" id="cs-step-7-title" tabindex="-1">
+            {{ _("Step %(n)s of %(total)s", n=7, total=total_steps) }} — {{ _(step.title) }}
           </h3>
           <p class="cs-hint">{{ _(step.hint) }}</p>
 
@@ -659,12 +646,31 @@
             <button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _("Back") }}</button>
           </div>
 
-          {% if is_new %}
           <div class="cs-wizard-nav" hidden><button type="button" class="cs-btn cs-btn-primary cs-wizard-next">{{ _('Next') }}</button></div>
         </section>
-        <section class="cs-step{% if open_step == 7 %} is-active{% endif %}" data-step="7" role="group" aria-labelledby="cs-step-7-title">
-          <h3 class="cs-step-title" id="cs-step-7-title" tabindex="-1">{{ _('Step 7 of 7 — Brand images') }}</h3>
+        <section class="cs-step{% if open_step == 8 %} is-active{% endif %}" data-step="8" role="group" aria-labelledby="cs-step-8-title">
+          <h3 class="cs-step-title" id="cs-step-8-title" tabindex="-1">{{ _('Step 8 of 8 — Brand images') }}</h3>
           <p class="cs-hint">{{ _('Choose a project logo and a profile header. Upload an image or paste its URL, then adjust its position and zoom.') }}</p>
+          {% if not is_new %}
+          <div class="cs-field">
+            <span class="cs-field-legend">{{ _("Cover / thumbnail image") }}</span>
+            {% snippet "csunesco/blocks/edit/_image_picker.html",
+                       input_id="cs-f-image",
+                       url_name="image_url",
+                       upload_name="image_upload",
+                       clear_name="image_clear",
+                       value=data.image_url,
+                       label=_("Cover image address"),
+                       clear_label=_("Remove the current cover image"),
+                       url_field="image_url",
+                       upload_field="image_upload" %}
+            <p class="cs-hint">{{ _("Optional. Reduced to fit within 1200×1200 without cropping. The focal point controls its crop on project cards.") }}</p>
+            {{ field_error('image_url') }}
+            {% snippet "csunesco/blocks/edit/_focal_picker.html", input_id="cs-f-image", image_url=data.image_url,
+                       x_name="image_focal_x", y_name="image_focal_y", focal_x=data.image_focal_x, focal_y=data.image_focal_y %}
+          </div>
+
+          {% endif %}
           <div class="cs-field">
             <span class="cs-field-legend">{{ _("Project logo") }}</span>
             {% snippet "csunesco/blocks/edit/_image_picker.html",
@@ -701,7 +707,6 @@
           </div>
 
           <div class="cs-wizard-nav" hidden><button type="button" class="cs-btn cs-btn-secondary cs-wizard-prev">{{ _('Back') }}</button></div>
-          {% endif %}
           <div class="cs-form-actions">
             {% if is_new %}
               <button type="submit" id="cs-req-submit" class="cs-btn cs-btn-primary">

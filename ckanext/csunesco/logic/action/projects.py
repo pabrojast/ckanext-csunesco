@@ -270,6 +270,13 @@ def _stats_dict(project_id):
     }
 
 
+def _project_read_dict(context, project):
+    result = db.project_dictize(project)
+    if 'data_access_justification' in result and not auth.can_edit_project_details(context, project):
+        result.pop('data_access_justification', None)
+    return result
+
+
 def _can_view_unapproved(context, project):
     """Creator / active member / initiative-admin / sysadmin may view a
     not-yet-approved project."""
@@ -343,6 +350,8 @@ def csunesco_project_request_create(context, data_dict):
     data, errors = tk.navl_validate(incoming, schema, context)
     if errors:
         raise tk.ValidationError(errors)
+    from ckanext.csunesco.logic.data_access import validate_project_access
+    validate_project_access(data)
     _sync_participation(data)
     _apply_point_radius(data)
 
@@ -469,6 +478,8 @@ def csunesco_project_update(context, data_dict):
         incoming, cs_schema.project_update_schema(incoming.keys()), context)
     if errors:
         raise tk.ValidationError(errors)
+    from ckanext.csunesco.logic.data_access import validate_project_access
+    validate_project_access(data, db._load_json(project.extras, {}))
     _sync_participation(data)
     _apply_point_radius(data)
 
@@ -836,7 +847,7 @@ def csunesco_project_list(context, data_dict):
     if extras_filters:
         swept = (query.order_by(db.CsProject.created.desc())
                  .limit(1000).all())
-        dictized = [db.project_dictize(project) for project in swept]
+        dictized = [_project_read_dict(context, project) for project in swept]
         matched = []
         for item in dictized:
             ok = True
@@ -865,7 +876,7 @@ def csunesco_project_list(context, data_dict):
         )
         results = []
         for project in rows:
-            item = db.project_dictize(project)
+            item = _project_read_dict(context, project)
             item.pop('region_geojson', None)
             results.append(item)
 
@@ -906,7 +917,7 @@ def csunesco_project_show(context, data_dict):
     if portal.withdrawn(project) and not _can_view_unapproved(context, project):
         raise tk.ObjectNotFound(tk._('Project not found'))
 
-    result = db.project_dictize(project)
+    result = _project_read_dict(context, project)
     if not data_dict.get('include_geojson'):
         result.pop('region_geojson', None)
     result['stats'] = _stats_dict(project.id)
