@@ -116,3 +116,14 @@ def test_nested_searches_share_check_and_recheck_on_next_request(monkeypatch):
     with app.test_request_context('/'):
         result = managed_data.package_search(original, {}, {'rows': 0})
         assert '-id:"dataset"' in result['fq']
+
+
+def test_completed_partition_migration_never_requests_an_exclusive_lock(monkeypatch):
+    db = managed_data.db
+    engine = SimpleNamespace(dialect=SimpleNamespace(name='postgresql'))
+    inspector = SimpleNamespace(
+        get_unique_constraints=lambda table: [],
+        get_indexes=lambda table: [{'name': 'uq_cs_data_source_project_form_level'}])
+    monkeypatch.setattr(db.sa, 'inspect', lambda _: inspector)
+    # No begin() exists: an already-migrated database must never request DDL.
+    db._ensure_data_source_partitions(engine)

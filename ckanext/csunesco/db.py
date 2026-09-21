@@ -502,11 +502,27 @@ def ensure_tables():
     _ensure_mappers()
     metadata.create_all(bind=engine, tables=_ALL_TABLES, checkfirst=True)
     _ensure_columns(engine)
-    if engine.dialect.name == 'postgresql':
-        with engine.begin() as conn:
-            conn.execute(sa.text("ALTER TABLE cs_data_source DROP CONSTRAINT IF EXISTS uq_cs_data_source_project_form"))
-            conn.execute(sa.text("CREATE UNIQUE INDEX IF NOT EXISTS uq_cs_data_source_project_form_level ON cs_data_source(project_id, form_id, access_level)"))
+    _ensure_data_source_partitions(engine)
     _ensure_indexes(engine)
+
+
+def _ensure_data_source_partitions(engine):
+    if engine.dialect.name != 'postgresql':
+        return
+    inspector = sa.inspect(engine)
+    constraints = {item['name'] for item in inspector.get_unique_constraints('cs_data_source')}
+    indexes = {item['name'] for item in inspector.get_indexes('cs_data_source')}
+    old = 'uq_cs_data_source_project_form'
+    new = 'uq_cs_data_source_project_form_level'
+    # Even DROP CONSTRAINT IF EXISTS takes an exclusive table lock. Once the
+    # migration has run, startup must do no DDL on this actively read table.
+    if old not in constraints and new in constraints | indexes:
+        return
+    with engine.begin() as conn:
+        if old in constraints:
+            conn.execute(sa.text("ALTER TABLE cs_data_source DROP CONSTRAINT IF EXISTS uq_cs_data_source_project_form"))
+        if new not in constraints | indexes:
+            conn.execute(sa.text("CREATE UNIQUE INDEX IF NOT EXISTS uq_cs_data_source_project_form_level ON cs_data_source(project_id, form_id, access_level)"))
 
 
 # ---------------------------------------------------------------------------
