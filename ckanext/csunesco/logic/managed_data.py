@@ -1,6 +1,18 @@
 """Prevent alternate CKAN APIs from bypassing managed data policy."""
 import ckan.plugins.toolkit as tk
+from flask import g, has_request_context
 from ckanext.csunesco import db
+
+
+def _request_checks():
+    # CKAN validators can nest hundreds of searches within one action. Share
+    # its current-policy check only inside that HTTP request, never across
+    # visitors or subsequent requests, and never use a persisted fallback.
+    if not has_request_context():
+        return {}
+    if not hasattr(g, '_cs_current_policy_checks'):
+        g._cs_current_policy_checks = {}
+    return g._cs_current_policy_checks
 
 
 def source_for(package_id):
@@ -14,12 +26,20 @@ def check_current(source):
     data = db.data_source_dictize(source)
     if not data.get('partition_id'):
         return
+    checks = _request_checks()
+    key = ('partition', data['partition_id'], data['policy_revision'], data.get('access_level'))
+    if key in checks:
+        if not checks[key]:
+            raise tk.ObjectNotFound('Dataset is unavailable while its data policy synchronizes')
+        return
     try:
         current = snapshots.app_request('/internal/ckan/data-partitions/%d?policy_revision=%d' % (
             int(data['partition_id']), int(data['policy_revision'])))
         if current.get('access_level') != data.get('access_level'):
             raise ValueError('Access level changed')
+        checks[key] = True
     except Exception:
+        checks[key] = False
         raise tk.ObjectNotFound('Dataset is unavailable while its data policy synchronizes')
 
 
@@ -85,13 +105,18 @@ def package_search(original, context, data_dict):
     records = [db.data_source_dictize(row) for row in rows if row.ckan_package_id]
     checks = [{'id': int(row['partition_id']), 'revision': int(row['policy_revision'])}
               for row in records if row.get('partition_id')]
-    allowed = set()
-    try:
-        for offset in range(0, len(checks), 1000):
-            allowed.update(snapshots.app_request('/internal/ckan/data-policy/check',
-                {'partitions': checks[offset:offset + 1000]})['available'])
-    except Exception:
-        allowed.clear()
+    cache = _request_checks()
+    key = ('search', tuple(sorted((item['id'], item['revision']) for item in checks)))
+    if key not in cache:
+        allowed = set()
+        try:
+            for offset in range(0, len(checks), 1000):
+                allowed.update(snapshots.app_request('/internal/ckan/data-policy/check',
+                    {'partitions': checks[offset:offset + 1000]})['available'])
+        except Exception:
+            allowed.clear()
+        cache[key] = allowed
+    allowed = cache[key]
     hidden = [row['ckan_package_id'] for row in records if row.get('partition_id') not in allowed]
     data_dict = dict(data_dict)
     if hidden:

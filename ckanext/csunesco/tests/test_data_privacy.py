@@ -69,3 +69,50 @@ def test_manual_privacy_drift_and_datastore_copies_are_rejected(monkeypatch):
         managed_data.datastore_create(lambda *args: {}, context, {'resource_id': 'resource'})
     result = managed_data.package_patch(lambda ctx, data: data, context, {'id': 'dataset', 'title': 'Updated title'})
     assert result['title'] == 'Updated title'
+
+
+def test_policy_check_is_shared_only_within_one_http_request(monkeypatch):
+    from flask import Flask
+    app = Flask(__name__)
+    source = object()
+    monkeypatch.setattr(managed_data.db, 'data_source_dictize', lambda obj: {
+        'partition_id': 9, 'policy_revision': 8, 'access_level': 'restricted'})
+    calls = []
+    def fetch(path):
+        calls.append(path)
+        return {'access_level': 'restricted'}
+    monkeypatch.setattr(snapshots, 'app_request', fetch)
+    with app.test_request_context('/'):
+        managed_data.check_current(source)
+        managed_data.check_current(source)
+        assert len(calls) == 1
+    # An outage on the next request must never reuse the previous success.
+    monkeypatch.setattr(snapshots, 'app_request', lambda path: (_ for _ in ()).throw(ValueError('offline')))
+    with app.test_request_context('/'):
+        with pytest.raises(tk.ObjectNotFound):
+            managed_data.check_current(source)
+
+
+def test_nested_searches_share_check_and_recheck_on_next_request(monkeypatch):
+    from flask import Flask
+    app = Flask(__name__)
+    row = SimpleNamespace(ckan_package_id='dataset')
+    monkeypatch.setattr(managed_data.db.CsDataSource, 'access_level', 'legacy', raising=False)
+    query = SimpleNamespace(filter=lambda *a: SimpleNamespace(all=lambda: [row]))
+    monkeypatch.setattr(managed_data.db.Session, 'query', lambda *a: query)
+    monkeypatch.setattr(managed_data.db, 'data_source_dictize', lambda obj: {
+        'partition_id': 9, 'policy_revision': 8, 'ckan_package_id': 'dataset'})
+    calls = []
+    def fetch(path, data):
+        calls.append(data)
+        return {'available': [9]}
+    monkeypatch.setattr(snapshots, 'app_request', fetch)
+    original = lambda context, data: data
+    with app.test_request_context('/'):
+        for _ in range(20):
+            assert managed_data.package_search(original, {}, {'rows': 0}) == {'rows': 0}
+        assert len(calls) == 1
+    monkeypatch.setattr(snapshots, 'app_request', lambda *a: {'available': []})
+    with app.test_request_context('/'):
+        result = managed_data.package_search(original, {}, {'rows': 0})
+        assert '-id:"dataset"' in result['fq']
