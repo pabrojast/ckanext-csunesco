@@ -663,3 +663,10 @@ def guard_migrated_local_assets():
 def prevent_migrated_asset_caching(response):
     from ckanext.csunesco.logic import snapshots
     return snapshots.no_cache_legacy_upload(response)
+
+
+def portal_partition_media(source_id, digest):
+    from ckanext.csunesco.logic import snapshots
+    return snapshots.partition_asset_view(source_id, digest)
+
+csunesco_bp.add_url_rule('/portal/partition-media/<source_id>/<digest>', 'portal_partition_media', portal_partition_media, methods=['GET'])

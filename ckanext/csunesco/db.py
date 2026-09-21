@@ -184,6 +184,7 @@ cs_project_stats_table = Table(
 
 cs_data_source_table = Table(
     'cs_data_source', metadata,
+    Column('access_level', types.UnicodeText, nullable=False, default=u'legacy', server_default=u'legacy'),
     Column('id', types.UnicodeText, primary_key=True, default=make_uuid),
     Column('project_id', types.UnicodeText, index=True),
     # The CS Toolbox (ofform) form whose PUBLIC endpoints feed this source.
@@ -204,8 +205,8 @@ cs_data_source_table = Table(
     Column('extras', types.Text, default=u'{}'),
     Column('created', types.DateTime, default=_utcnow),
     Column('modified', types.DateTime, default=_utcnow),
-    UniqueConstraint('project_id', 'form_id',
-                     name='uq_cs_data_source_project_form'),
+    UniqueConstraint('project_id', 'form_id', 'access_level',
+                     name='uq_cs_data_source_project_form_level'),
 )
 
 cs_project_page_table = Table(
@@ -386,6 +387,7 @@ def ensure_mappers():
 #
 # Tuples are (table_name, column_name, column_sql_type).
 _AUTO_HEAL_COLUMNS = [
+    ('cs_data_source', 'access_level', "TEXT NOT NULL DEFAULT 'legacy'"),
     ('cs_project', 'biosphere_reserve', 'TEXT'),
     ('cs_project', 'image_url', 'TEXT'),
     ('cs_project', 'logo_url', 'TEXT'),
@@ -500,6 +502,10 @@ def ensure_tables():
     _ensure_mappers()
     metadata.create_all(bind=engine, tables=_ALL_TABLES, checkfirst=True)
     _ensure_columns(engine)
+    if engine.dialect.name == 'postgresql':
+        with engine.begin() as conn:
+            conn.execute(sa.text("ALTER TABLE cs_data_source DROP CONSTRAINT IF EXISTS uq_cs_data_source_project_form"))
+            conn.execute(sa.text("CREATE UNIQUE INDEX IF NOT EXISTS uq_cs_data_source_project_form_level ON cs_data_source(project_id, form_id, access_level)"))
     _ensure_indexes(engine)
 
 
@@ -1998,6 +2004,7 @@ def data_source_dictize(data_source):
         'id': data_source.id,
         'project_id': data_source.project_id,
         'form_id': data_source.form_id,
+        'access_level': getattr(data_source, 'access_level', 'legacy'),
         'title': data_source.title,
         'description': data_source.description,
         'status': data_source.status,
@@ -2025,7 +2032,7 @@ def get_data_source(id):
     return Session.query(CsDataSource).get(id)
 
 
-def get_data_source_by_form(project_id, form_id):
+def get_data_source_by_form(project_id, form_id, access_level=None):
     """Fetch the (unique) row for ``(project_id, form_id)`` (None if absent)."""
     _ensure_mappers()
     if not project_id or form_id is None:
@@ -2034,6 +2041,7 @@ def get_data_source_by_form(project_id, form_id):
         Session.query(CsDataSource)
         .filter(CsDataSource.project_id == project_id)
         .filter(CsDataSource.form_id == form_id)
+        .filter(CsDataSource.access_level == access_level if access_level else sa.true())
         .first()
     )
 

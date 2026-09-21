@@ -192,7 +192,7 @@ def test_draft_export_is_service_only_and_preserves_snapshot(store):
         portal.export(ctx('author'), {'project_id': project.id})
 
 
-def test_persisted_bundle_survives_upstream_failure_and_gates_revocation(store, monkeypatch):
+def test_persisted_bundle_cannot_bypass_unavailable_policy_or_revocation(store, monkeypatch):
     project, _ = store
     source = db.CsDataSource(); source.project_id = project.id; source.form_id = 99; source.status = 'approved'
     db.Session.add(source); db.Session.commit()
@@ -200,8 +200,10 @@ def test_persisted_bundle_survives_upstream_failure_and_gates_revocation(store, 
     snapshots.write_private('forms', '99', {'dashboard': data, 'csv': 'id,ph\n1,7\n', 'created_at': 0})
     from ckanext.csunesco.logic import ofform
     monkeypatch.setattr(ofform, '_fetch', lambda *a, **k: (_ for _ in ()).throw(ofform.OfformError('offline')))
-    assert ofform.fetch_dashboard_data(99) == data
-    assert ofform.fetch_csv(99) == 'id,ph\n1,7\n'
+    with pytest.raises(ofform.OfformError):
+        ofform.fetch_dashboard_data(99)
+    with pytest.raises(ofform.OfformError):
+        ofform.fetch_csv(99)
     source.status = 'rejected'; db.Session.commit()
     assert snapshots.saved_form(99) is None
 

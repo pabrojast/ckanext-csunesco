@@ -22,7 +22,7 @@ import ckan.model as model
 
 from ckanext.csunesco import db
 from ckanext.csunesco.logic import auth
-from ckanext.csunesco.logic import package_sync
+from ckanext.csunesco.logic import package_sync, data_access
 from ckanext.csunesco.logic.sanitize import sanitize_html
 from ckanext.csunesco.logic.action import current_user_id
 
@@ -105,6 +105,8 @@ def csunesco_data_source_create(context, data_dict):
         raise tk.NotAuthorized(tk._(
             'Only the project admin or a sysadmin can connect data'))
 
+    if data_dict.get("partition_id"):
+        return data_access.upsert_partition(context, data_dict, project)
     form_id = _required_form_id(data_dict)
     title = (data_dict.get('title') or '').strip()
     if not title:
@@ -248,6 +250,7 @@ def csunesco_data_source_approve(context, data_dict):
     data_source.modified = now
     model.Session.commit()
     result = db.data_source_dictize(data_source)
+    data_access.callback(data_source)
     from ckanext.csunesco.logic import snapshots
     if tk.config.get('ckan.storage_path') or tk.config.get('ckanext.csunesco.portal_storage_path'):
         try:
@@ -283,6 +286,7 @@ def csunesco_data_source_reject(context, data_dict):
         (data_dict.get('reason') or '').strip()) or None
     data_source.modified = now
     model.Session.commit()
+    data_access.callback(data_source)
     return db.data_source_dictize(data_source)
 
 
@@ -306,7 +310,9 @@ def refresh_project_stats(project_id):
     fetched = 0
     for source in sources:
         try:
-            data = ofform.fetch_dashboard_data(source.form_id)
+            if not data_access.permitted({}, source, "can_download"):
+                continue
+            data = data_access.dashboard(source)
         except ofform.OfformError:
             continue
         observations += ofform.observation_stats(data)['observations']
@@ -357,11 +363,19 @@ def csunesco_data_source_list(context, data_dict):
     limit = _positive_int(data_dict.get('limit'),
                           default=DEFAULT_LIST_LIMIT, maximum=MAX_LIST_LIMIT)
     offset = _positive_int(data_dict.get('offset'), default=0)
-    total, rows = db.list_data_sources(
-        project_id=project_id, status=status, limit=limit, offset=offset)
+    # Apply visibility before pagination: hidden partitions affect neither
+    # counts nor page boundaries. Source registries are small per project.
+    query = db.Session.query(db.CsDataSource)
+    if project_id:
+        query = query.filter(db.CsDataSource.project_id == project_id)
+    if status:
+        query = query.filter(db.CsDataSource.status == status)
+    rows = query.order_by(db.CsDataSource.created.desc(), db.CsDataSource.id).all()
+    visible = [row for row in rows if (row.status != 'approved' and privileged) or
+               data_access.permitted(context, row, 'can_read_metadata')]
     return {
-        'count': total,
-        'results': [db.data_source_dictize(row) for row in rows],
+        'count': len(visible),
+        'results': [db.data_source_dictize(row) for row in visible[offset:offset + limit]],
         'limit': limit,
         'offset': offset,
     }
@@ -378,6 +392,8 @@ def csunesco_data_source_show(context, data_dict):
     if (data_source.status != 'approved'
             and not _can_view_unapproved(context, data_source)):
         raise tk.NotAuthorized(tk._('Not authorized to view this data source'))
+    if data_source.status == 'approved':
+        data_access.require(context, data_source, 'can_read_metadata')
     return db.data_source_dictize(data_source)
 
 
@@ -394,7 +410,7 @@ def csunesco_data_source_show(context, data_dict):
 # that action on EVERY request, and adding an upstream fetch to it would make
 # every download pay for a feature it does not use.
 
-def _approved_source_or_404(data_dict):
+def _approved_source_or_404(data_dict, context=None):
     """Resolve an APPROVED data source, honouring an optional project pin.
 
     Approval is checked here rather than trusted from the caller: a source can
@@ -405,6 +421,7 @@ def _approved_source_or_404(data_dict):
     data_source = db.get_data_source((data_dict or {}).get('id'))
     if data_source is None or data_source.status != 'approved':
         raise tk.ObjectNotFound(tk._('Data source not found'))
+    data_access.require(context or {}, data_source)
     project_key = (data_dict or {}).get('project_id')
     if project_key:
         project = db.get_project(project_key)
@@ -421,10 +438,10 @@ def csunesco_data_source_fields(context, data_dict):
     categorical and how the observations are spread in time.
     """
     tk.check_access('csunesco_data_source_fields', context, data_dict)
-    data_source = _approved_source_or_404(data_dict)
+    data_source = _approved_source_or_404(data_dict, context)
 
     from ckanext.csunesco.logic import aggregate, ofform
-    payload = ofform.fetch_dashboard_data(data_source.form_id)
+    payload = data_access.dashboard(data_source)
     rows = payload.get('rows') or []
     schema = payload.get('schema') or {}
     site_field = aggregate.detect_site_field(schema, rows)
@@ -462,10 +479,10 @@ def csunesco_data_source_series(context, data_dict):
     """
     tk.check_access('csunesco_data_source_series', context, data_dict)
     data_dict = data_dict or {}
-    data_source = _approved_source_or_404(data_dict)
+    data_source = _approved_source_or_404(data_dict, context)
 
     from ckanext.csunesco.logic import aggregate, ofform
-    payload = ofform.fetch_dashboard_data(data_source.form_id)
+    payload = data_access.dashboard(data_source)
     rows = payload.get('rows') or []
     schema = payload.get('schema') or {}
     total_rows = payload.get('total', len(rows))

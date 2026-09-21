@@ -90,7 +90,7 @@ def csunesco_data_chat(context, data_dict):
     data_dict = data_dict or {}
 
     # Resolve first: a bad id must 404 before we spend anything.
-    data_source = _approved_source_or_404(data_dict)
+    data_source = _approved_source_or_404(data_dict, context)
 
     if not llm.is_configured():
         return _envelope('unconfigured')
@@ -250,7 +250,8 @@ def _run_stat(data_source, args):
     for no one's benefit. It reuses the same TTL-cached payload as the charts.
     """
     from ckanext.csunesco.logic import aggregate, ofform
-    payload = ofform.fetch_dashboard_data(data_source.form_id)
+    from ckanext.csunesco.logic import data_access
+    payload = data_access.dashboard(data_source)
     rows = payload.get('rows') or []
     schema = payload.get('schema') or {}
     total_rows = payload.get('total', len(rows))

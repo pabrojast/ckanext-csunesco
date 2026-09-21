@@ -95,10 +95,23 @@ def _source(form_id):
 
 
 def saved_form(form_id):
-    source = _source(form_id)
-    if source is None:
+    # Public form helpers cannot choose a privileged partition. Check the
+    # current app policy on every read, including old persisted media URLs.
+    from ckanext.csunesco.logic import data_access
+    sources = db.Session.query(db.CsDataSource).filter(
+        db.CsDataSource.form_id == int(form_id), db.CsDataSource.status == 'approved').all()
+    source = next((row for row in sources if data_access.permitted({}, row, 'can_download')), None)
+    if not source:
         return None
-    return read_private('forms', str(int(form_id)))
+    record = db.data_source_dictize(source)
+    if record.get('partition_id'):
+        result = data_access.bundle(record, materialize=False)
+    elif tk.config.get('ckanext.csunesco.ofform_callback_token'):
+        result = app_request('/internal/ckan/forms/%d/snapshot' % int(form_id))
+    else:
+        return None
+    dashboard, hashes = materialize_observation_media(source, result['dashboard'], result.get('media') or [])
+    return dict(result, dashboard=dashboard, csv=csv_from_dashboard(dashboard), media_hashes=hashes)
 
 
 def csv_from_dashboard(data):
@@ -123,6 +136,14 @@ def csv_from_dashboard(data):
 def refresh_form(source, force=False, defer_commit=False):
     if source.status != 'approved':
         return False
+    from ckanext.csunesco.logic import data_access
+    data_access.callback(source)
+    record = db.data_source_dictize(source)
+    if record.get('partition_id'):
+        # Managed partitions use revision-gated live reads; never share the
+        # historical per-form cache between privacy levels.
+        data_access.bundle(record)
+        return True
     key = str(int(source.form_id))
     old = read_private('forms', key)
     if not force and old and time.time() - old.get('created_at', 0) < 300:
@@ -480,7 +501,9 @@ def materialize_observation_media(source, dashboard, media):
         if item.get('sha256') and item['sha256'] != digest:
             raise ValueError('Attachment checksum mismatch')
         hashes.append(digest)
-        public_url = '/citizen-science/portal/data-media/%s/%s' % (source.form_id, digest)
+        record = db._load_json(getattr(source, "extras", "{}"), {})
+        public_url = ('/citizen-science/portal/partition-media/%s/%s' % (source.id, digest)
+                      if record.get('partition_id') else '/citizen-science/portal/data-media/%s/%s' % (source.form_id, digest))
         metadata = {key: item.get(key) for key in ('id', 'field_name', 'mime', 'size')}
         metadata['url'] = public_url
         row.setdefault('media', []).append(metadata)
@@ -652,4 +675,29 @@ def no_cache_legacy_upload(response):
     from flask import g
     if getattr(g, 'csunesco_guarded_legacy_asset', False):
         response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+def partition_asset_view(source_id, digest):
+    from flask import send_file
+    from ckanext.csunesco.logic import data_access, ofform
+    source = db.get_data_source(source_id)
+    context = {'model': __import__('ckan.model', fromlist=['Session']), 'user': tk.g.user}
+    if not source or not re.fullmatch(r'[a-f0-9]{64}', digest) or not data_access.permitted(context, source):
+        return tk.abort(404, 'Media not found')
+    try:
+        bundle = data_access.bundle(source)
+    except ofform.OfformError:
+        return tk.abort(404, 'Media not available')
+    if digest not in bundle.get('media_hashes', []):
+        return tk.abort(404, 'Media not found')
+    kind = read_private('asset-types', digest) or {}
+    mime = kind.get('type', 'application/octet-stream')
+    if not mime.startswith('image/') and not data_access.permitted(context, source, 'can_download'):
+        return tk.abort(404, 'Media not found')
+    response = send_file(str(root() / 'assets' / digest), mimetype=mime,
+                         as_attachment=not mime.startswith('image/'), download_name=digest)
+    response.headers['Cache-Control'] = 'private, no-store'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox"
     return response

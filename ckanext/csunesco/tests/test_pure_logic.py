@@ -1082,7 +1082,8 @@ def test_every_registered_action_has_an_auth_function():
     """
     actions = pytest.importorskip('ckanext.csunesco.logic.actions')
     auth = pytest.importorskip('ckanext.csunesco.logic.auth')
-    missing = sorted(set(actions.get_actions()) - set(auth.get_auth_functions()))
+    missing = sorted(name for name, action in actions.get_actions().items()
+                     if name not in auth.get_auth_functions() and not getattr(action, "chained_action", False))
     assert not missing, 'acciones sin función de auth: %s' % missing
 
 
@@ -1324,3 +1325,12 @@ def test_project_form_steps_are_numbered_one_to_six():
     from ckanext.csunesco import constants
     numbers = [step['step'] for step in constants.PROJECT_FORM_STEPS]
     assert numbers == [1, 2, 3, 4, 5, 6]
+
+
+@pytest.fixture(autouse=True)
+def isolate_http_cache_from_publication_database(monkeypatch):
+    # This module exercises HTTP cache behavior without a CKAN database.
+    # Policy-gated persistent storage is exercised in test_project_portal.
+    from ckanext.csunesco.logic import snapshots
+    monkeypatch.setattr(snapshots, 'saved_form', lambda form_id: None)
+    monkeypatch.setattr(snapshots, '_source', lambda form_id: None)

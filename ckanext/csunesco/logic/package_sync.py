@@ -41,7 +41,8 @@ def _munge_name(text):
 
 def package_name(project, data_source):
     """Deterministic package name for a project/form pair (<= 100 chars)."""
-    suffix = '-{0}'.format(data_source.form_id)
+    level = getattr(data_source, 'access_level', 'legacy')
+    suffix = '-{0}'.format(data_source.form_id) + ('-' + level if level != 'legacy' else '')
     base = _munge_name('cs-data-{0}'.format(project.slug))
     return base[:MAX_NAME_LENGTH - len(suffix)] + suffix
 
@@ -145,6 +146,7 @@ def ensure_dataset(context, project, data_source, override_org=None,
     Raises whatever the core actions raise -- the caller decides how to surface
     failure (the approve action leaves the row pending and reports it).
     """
+    context = dict(context, _cs_partition_sync=True)
     owner_org = resolve_owner_org(
         project, data_source, override_org, honor_suggestion=honor_suggestion)
     if owner_org and not _org_exists(context, owner_org):
@@ -180,8 +182,14 @@ def ensure_dataset(context, project, data_source, override_org=None,
     # override it explicitly, and never clobbers one already set.
     package_dict.setdefault('identifier', package_dict['name'])
 
+    level = getattr(data_source, 'access_level', 'legacy')
+    if level != 'legacy':
+        package_dict.update(access_level=level, private=(level == 'confidential'), state='active')
     resource_ids = []
     if data_source.ckan_package_id:
+        # Preserve existing catalogue URLs and identifiers when adopting a legacy partition.
+        package_dict.pop('name', None)
+        package_dict.pop('identifier', None)
         package_dict['id'] = data_source.ckan_package_id
         package = tk.get_action('package_patch')(dict(context), package_dict)
         # Patch the two known resources in place (ids stored on approval).

@@ -143,8 +143,8 @@ class FakeSource(object):
 
 def _stub_ofform(monkeypatch):
     from ckanext.csunesco.logic import ofform
-    monkeypatch.setattr(ofform, 'fetch_dashboard_data',
-                        lambda form_id, **kwargs: _payload())
+    from ckanext.csunesco.logic import data_access
+    monkeypatch.setattr(data_access, 'dashboard', lambda source: _payload())
 
 
 def test_stat_matches_a_hand_computed_mean(monkeypatch):

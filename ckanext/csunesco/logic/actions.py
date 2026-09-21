@@ -26,4 +26,6 @@ def get_actions():
     actions.update(structure.get_actions())
     from ckanext.csunesco.logic import portal
     actions.update(portal.get_actions())
+    from ckanext.csunesco.logic import managed_data
+    actions.update(managed_data.get_actions())
     return actions

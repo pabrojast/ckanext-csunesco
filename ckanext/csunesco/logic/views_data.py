@@ -60,7 +60,7 @@ def _not_authorized_response():
     return tk.abort(403, tk._('You are not authorized to view this page'))
 
 
-def _approved_source(id):
+def _approved_source(id, capability="can_download"):
     """Resolve an APPROVED data source dict, or ``None`` (callers 404)."""
     try:
         source = tk.get_action('csunesco_data_source_show')(
@@ -73,6 +73,9 @@ def _approved_source(id):
     # The action already hides unapproved rows from the public, but a manager
     # CAN see their own pending row -- the proxy must still refuse to serve it.
     if source.get('status') != 'approved':
+        return None
+    from ckanext.csunesco.logic import data_access
+    if not data_access.permitted(_context(), source, capability):
         return None
     return source
 
@@ -88,7 +91,8 @@ def data_source_csv(id):
         return tk.abort(404, tk._('Data source not found'))
     from ckanext.csunesco.logic import ofform
     try:
-        text = ofform.fetch_csv(source['form_id'])
+        from ckanext.csunesco.logic import data_access
+        text = data_access.bundle(source)['csv']
     except ofform.OfformError:
         # text/plain a human may actually read in a browser tab, so unlike the
         # JSON envelopes this one stays translated.
@@ -108,7 +112,8 @@ def data_source_geojson(id):
         return tk.abort(404, tk._('Data source not found'))
     from ckanext.csunesco.logic import ofform
     try:
-        data = ofform.fetch_dashboard_data(source['form_id'])
+        from ckanext.csunesco.logic import data_access
+        data = data_access.bundle(source)['dashboard']
         geojson = ofform.rows_to_geojson(data)
     except ofform.OfformError:
         return _upstream_error(UPSTREAM_UNAVAILABLE)

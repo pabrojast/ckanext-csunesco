@@ -201,14 +201,14 @@ def fetch_dashboard_data(form_id, timeout=REQUEST_TIMEOUT):
     try:
         saved = snapshots.saved_form(form_id)
     except Exception:
-        saved = None
+        raise OfformError("Current data policy could not be verified")
     if saved is not None:
         return saved['dashboard']
     """The public dashboard-data JSON for a form (TTL-cached dict)."""
     form_id = _coerce_form_id(form_id)
     key = ('dashboard', form_id)
     cached = _cached_or_raise(key)
-    if cached is not None:
+    if cached is not None and snapshots._source(form_id) is None:
         return cached
     # El probe del panel de revisión usa un timeout más corto: si falla por
     # lentitud no debe marcar el upstream como caído para los proxys, que sí
@@ -244,14 +244,14 @@ def fetch_csv(form_id):
     try:
         saved = snapshots.saved_form(form_id)
     except Exception:
-        saved = None
+        raise OfformError("Current data policy could not be verified")
     if saved is not None:
         return saved['csv']
     """The public CSV export for a form (TTL-cached text)."""
     form_id = _coerce_form_id(form_id)
     key = ('csv', form_id)
     cached = _cached_or_raise(key)
-    if cached is not None:
+    if cached is not None and snapshots._source(form_id) is None:
         return cached
     try:
         raw = _fetch('/public/forms/%d/export.csv' % form_id)
