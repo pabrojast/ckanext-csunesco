@@ -446,6 +446,8 @@ def csunesco_data_source_fields(context, data_dict):
     schema = payload.get('schema') or {}
     site_field = aggregate.detect_site_field(schema, rows)
     first, last = aggregate.date_span(rows)
+    numeric = aggregate.numeric_fields_with_data(schema, rows)
+    populated = {field['name'] for field in numeric}
 
     return {
         'data_source_id': data_source.id,
@@ -462,7 +464,11 @@ def csunesco_data_source_fields(context, data_dict):
         # column name.
         'site_label': (aggregate.field_label(schema, site_field)
                        if site_field else None),
-        'numeric': aggregate.numeric_fields_with_data(schema, rows),
+        'numeric': numeric,
+        'empty_numeric': [{'name': field['name'], 'label': field.get('label') or field['name'],
+                           'unit': field.get('unit'), 'rows': 0}
+                          for field in aggregate.schema_fields(schema)
+                          if field.get('type') == 'number' and field['name'] not in populated],
         'categorical': aggregate.categorical_field_options(
             schema, rows, site_field),
     }

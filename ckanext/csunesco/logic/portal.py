@@ -402,7 +402,7 @@ def block_fields(item, default):
         enums['layout'] = ('grid', 'list')
     if item.key == 'datasets_list':
         enums['source'] = ('project', 'organization', 'ids')
-    readonly = {'id', 'type', 'provider', 'video_id', 'parameter_charts'}
+    readonly = {'id', 'type', 'provider', 'video_id', 'parameter_charts', 'charts', 'source_ids', 'show_maps', 'show_downloads'}
     result = []
     for key, value in default.items():
         if key in readonly:
@@ -478,11 +478,16 @@ def capabilities(context, data):
                          'selectable_fields': [{'key': k, 'label': k.replace('_', ' ').capitalize()} for k in selected]
                              if item.key in ('project_facts', 'project_structure') else []})
     sources = []
+    data_catalog = []
     datasets = []
     if data.get('project') or data.get('project_id') or data.get('project_slug'):
         project = resolve_project(data)
-        sources = [db.data_source_dictize(row) for row in db.Session.query(db.CsDataSource).filter(
-            db.CsDataSource.project_id == project.id, db.CsDataSource.status == 'approved').all()]
+        from ckanext.csunesco.logic import data_access
+        data_catalog = [db.data_source_dictize(row) for row in db.Session.query(db.CsDataSource).filter(
+            db.CsDataSource.project_id == project.id).all()]
+        for source in data_catalog:
+            source['public_access'] = data_access.permitted({'user': ''}, source)
+        sources = [source for source in data_catalog if source.get('status') == 'approved']
         datasets = [{'id': source['ckan_package_id'], 'title': source.get('title')}
                     for source in sources if source.get('ckan_package_id')]
         for item in registry:
@@ -493,6 +498,7 @@ def capabilities(context, data):
             'can_edit_standard_sections': bool(not effective or can_edit_standard_sections(effective) or project and auth.can_manage_project(effective, project.id)),
             'standard_sections': standards,
             'blocks': registry, 'data_sources': sources, 'datasets': datasets,
+            'data_editor_version': 2, 'data_catalog': data_catalog,
             'project_fields': [{'key': k, 'label': k.replace('_', ' ').capitalize()} for k in FACT_FIELDS],
             'structure_fields': [{'key': k, 'label': k.replace('_', ' ').capitalize()} for k in STRUCTURE_FIELDS],
             'fixed_hero': True, 'snapshot_interval_seconds': 300}

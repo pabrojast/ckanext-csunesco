@@ -63,6 +63,33 @@ def test_transport_never_autoapproves(store):
     assert 'private field' not in json.dumps(db.page_dictize(page))
 
 
+def test_guided_data_configuration_survives_review_without_monitoring_names(store):
+    project, _ = store
+    data = envelope(project)
+    candidate = next(item for item in data['payload']['blocks'] if item['type'] == 'builtin_data')
+    candidate.update(source_ids=['habitat'], show_maps=False, show_downloads=False,
+                     charts=[dict(id='weather', type='chart', data_source_id='habitat', mode='category',
+                                  field='weather', title='Weather observations', chart='pie', range='90d')])
+    data['checksum'] = portal.checksum(data['payload'])
+    result = portal.apply(ctx(), data)
+    page_actions.csunesco_project_page_approve(ctx('reviewer'), {'project_id': project.id, 'draft_hash': result['draft_hash']})
+    saved = next(item for item in blocks.blocks_from_json(db.get_project_page(project.id).published_json) if item['type'] == 'builtin_data')
+    assert saved['source_ids'] == ['habitat']
+    assert saved['show_maps'] is False and saved['show_downloads'] is False
+    assert saved['charts'][0]['title'] == 'Weather observations'
+    assert saved['charts'][0]['mode'] == 'category'
+    assert saved['charts'][0]['range'] == '90d'
+    assert not saved['parameter_charts']
+
+
+def test_explicit_empty_data_selection_does_not_restore_legacy_defaults():
+    legacy = blocks.normalize_block({'type': 'builtin_data'})
+    empty = blocks.normalize_block({'type': 'builtin_data', 'charts': [], 'source_ids': []})
+    assert 'charts' not in legacy and 'source_ids' not in legacy
+    assert empty['charts'] == [] and empty['source_ids'] == []
+    assert blocks.normalize_block({'type': 'builtin_data', 'source_ids': 123})['source_ids'] == []
+
+
 @pytest.mark.parametrize('x,y,expected', [(0, 100, '0% 100%'), (100, 0, '100% 0%'),
                                         (None, None, '50% 50%')])
 def test_landing_logo_zoom_uses_saved_focal_point_as_transform_origin(x, y, expected):

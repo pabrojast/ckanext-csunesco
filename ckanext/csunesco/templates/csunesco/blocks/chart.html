@@ -53,9 +53,11 @@
          card into whatever follows. #}
       <figcaption class="cs-block-caption cs-chart-caption">
         {% if block.caption %}<span>{{ block.caption }}</span>{% endif %}
+        {% if show_downloads is not defined or show_downloads %}
         <a class="cs-link" href="{{ h.url_for('csunesco.data_source_csv', id=source.id) }}">
           {{ _("Download the data (CSV)") }}
         </a>
+        {% endif %}
       </figcaption>
     </figure>
   </section>

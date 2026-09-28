@@ -30,23 +30,36 @@
   </div>
   {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
   {% set approved_sources = ctx.data_sources | selectattr('status', 'equalto', 'approved') | list %}
+  {% if block.source_ids is defined %}
+    {% set approved_sources = approved_sources | selectattr('id', 'in', block.source_ids) | list %}
+  {% endif %}
   {% for group, parameters in (ctx.project.structure or {}).get('water_parameters', {}).items() %}
     <details class="cs-parameter-group" open><summary>{{ group }}</summary><div class="cs-project-tags">{% for parameter in parameters %}<span>{{ parameter }}</span>{% endfor %}</div>
+    {% if block.charts is not defined %}
     {% for binding in block.parameter_charts or [] if binding.parameter in parameters and binding.field %}
       {% set chart = {'id': block.id ~ '-parameter-' ~ loop.index ~ '-' ~ binding.field, 'type': 'chart', 'data_source_id': binding.data_source_id, 'field': binding.field, 'title': binding.parameter, 'mode': 'numeric', 'chart': 'line', 'agg': 'mean', 'group_by': 'auto', 'bucket': 'month', 'range': 'all', 'height': 260} %}
       {% snippet 'csunesco/blocks/chart.html', block=chart, ctx=ctx %}
     {% endfor %}
+    {% endif %}
     </details>
   {% endfor %}
+  {% if block.charts is defined %}
+    {% for chart in block.charts if not chart.hidden and (block.source_ids is not defined or chart.data_source_id in block.source_ids) %}
+      {% snippet 'csunesco/blocks/chart.html', block=chart, ctx=ctx, show_downloads=block.show_downloads %}
+    {% endfor %}
+  {% endif %}
   {% for ds in approved_sources %}
+    {% if block.charts is not defined %}
     {% set count_chart = {'id': block.id ~ '-observations-' ~ ds.id, 'type': 'chart', 'data_source_id': ds.id, 'title': _('Observations by month'), 'mode': 'count', 'chart': 'bar', 'agg': 'count', 'group_by': 'auto', 'bucket': 'month', 'range': 'all', 'height': 220} %}
     {% snippet 'csunesco/blocks/chart.html', block=count_chart, ctx=ctx %}
+    {% endif %}
     <article class="cs-data-source">
       <h3 class="cs-data-source-title">{{ ds.title }}</h3>
       {% if ds.description %}
         {# description is sanitized server-side before storage -> safe. #}
         <div class="cs-rich-text">{{ ds.description | safe }}</div>
       {% endif %}
+      {% if block.show_maps is not defined or block.show_maps %}
       <div class="cs-map cs-data-map"
            data-observations-url="{{ h.url_for('csunesco.data_source_geojson', id=ds.id) }}"
            role="img" aria-label="{{ _('Map of the observations collected by this project') }}">
@@ -55,6 +68,8 @@
         </div>
         <p class="cs-map-fallback" hidden></p>
       </div>
+      {% endif %}
+      {% if block.show_downloads is not defined or block.show_downloads %}
       <p class="cs-data-links">
         {% if ds.ckan_package_id %}
           <a class="cs-link" href="{{ h.url_for('dataset.read', id=ds.ckan_package_id) }}">
@@ -68,6 +83,7 @@
           {{ _("GeoJSON") }}
         </a>
       </p>
+      {% endif %}
     </article>
   {% endfor %}
   {% if ctx.can_manage %}

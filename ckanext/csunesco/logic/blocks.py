@@ -561,6 +561,18 @@ def _n_builtin(raw, report=None):
 
 def _n_builtin_data(raw, report=None):
     payload = _n_builtin(raw, report)
+    payload['show_maps'] = raw.get('show_maps') is not False
+    payload['show_downloads'] = raw.get('show_downloads') is not False
+    # Absence preserves legacy "all approved sources". An explicit empty list
+    # is the author's choice to show none, never a request to restore defaults.
+    if 'source_ids' in raw:
+        source_ids = raw.get('source_ids')
+        source_ids = source_ids if isinstance(source_ids, list) else []
+        payload['source_ids'] = list(dict.fromkeys(
+            ref for ref in (_ref(item) for item in source_ids[:100]) if ref))
+    if 'charts' in raw:
+        payload['charts'] = [normalize_block(dict(item, type='chart'))
+                             for item in _items(raw.get('charts'), 100)]
     payload['parameter_charts'] = [{
         'parameter': _plain(item.get('parameter'), 200),
         'data_source_id': _ref(item.get('data_source_id')),
