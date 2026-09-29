@@ -121,6 +121,7 @@ class CsunescoPlugin(p.SingletonPlugin):
             'csunesco_can_edit_project': helpers.csunesco_can_edit_project,
             'csunesco_can_propose_project':
                 helpers.csunesco_can_propose_project,
+            'csunesco_login_return_url': helpers.csunesco_login_return_url,
             'csunesco_field_audience_ok': helpers.csunesco_field_audience_ok,
             'csunesco_has_joined_projects':
                 helpers.csunesco_has_joined_projects,

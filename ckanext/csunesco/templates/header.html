@@ -1,5 +1,14 @@
 {% ckan_extends %}
 
+{% block header_account_notlogged %}
+  {% set cs_return = h.csunesco_login_return_url() %}
+  {% if not c.userobj and cs_return %}
+    <li class="topmenu-login"><a href="{{ h.url_for('user.login', came_from=cs_return) }}" title="{{ _('Log in') }}"><i class="fa fa-sign-in mobile-icon"></i><span class="login-text">{{ _('Log in') }}</span></a></li>
+  {% else %}
+    {{ super() }}
+  {% endif %}
+{% endblock %}
+
 {#
   ckanext-csunesco header override (nav wiring only).
 
