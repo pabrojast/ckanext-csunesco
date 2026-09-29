@@ -3,16 +3,12 @@
 
   Empty overrides render the original `_()`-translated copy.
 
-  Rendered ONLY for users who can actually propose (sysadmin or org
-  admin/editor): for everyone else the band disappears entirely — showing a
-  banner about a button you cannot use only confused visitors (UNESCO
-  feedback, ago-2026). The path INTO becoming a Project Manager lives where
-  people look for it: the "Register as a Project Manager" entry on the hub
-  and the eligibility page at /project/new.
+  Public entry point, independent of the CKAN session. The destination app
+  asks visitors to sign in or create an account and retains its own permission
+  checks. Legacy installations keep their project-eligibility entry page.
 
   Vars: block, ctx.
 #}
-{% if h.csunesco_can_propose_project() %}
   <section class="cs-section cs-cta-band" id="block-{{ block.id }}"
            aria-label="{{ block.title or _('Propose a project') }}">
     <p>{{ block.text or _("Leading a community water-monitoring effort?") }}</p>
@@ -21,4 +17,3 @@
       {{ block.cta_label or _("Propose a project") }}
     </a>
   </section>
-{% endif %}
