@@ -347,6 +347,14 @@ def csunesco_project_request_create(context, data_dict):
     # schema itself re-adds required fields as missing when absent.
     incoming = {k: (data_dict or {}).get(k)
                 for k in schema if k in (data_dict or {})}
+    app_assets = {key: incoming[key] for key in ('logo_url', 'heading_image_url')
+                  if isinstance(incoming.get(key), str)
+                  and re.fullmatch(r'asset:[0-9]+', incoming[key])}
+    if app_assets:
+        # Only the authenticated bridge may resolve private Toolbox assets.
+        portal.require_service(context)
+        for key in app_assets:
+            incoming.pop(key)
     data, errors = tk.navl_validate(incoming, schema, context)
     if errors:
         raise tk.ValidationError(errors)
@@ -360,6 +368,10 @@ def csunesco_project_request_create(context, data_dict):
             and not auth._is_org_editor(context, organization.id)):
         raise tk.NotAuthorized(tk._(
             'Only an organization admin or editor can propose a project'))
+
+    from ckanext.csunesco.logic import snapshots
+    data.update(app_assets)
+    intake_refs = snapshots.materialize_app_intake(data, data_dict.get('requested_by') or context['user']) if app_assets else []
 
     slug_base = data.get('slug') or data['title']
     slug = db.unique_slug(slug_base)
@@ -396,10 +408,13 @@ def csunesco_project_request_create(context, data_dict):
     project.created = now
     project.modified = now
     model.Session.add(project)
-    if data.get('editors'):
+    if data.get('editors') or intake_refs:
         # flush() so the new project has an id for the member rows; still ONE
         # commit for the whole create.
         model.Session.flush()
+    if intake_refs:
+        snapshots.bind_intake_media(project, intake_refs)
+    if data.get('editors'):
         _sync_editor_members(project.id, data['editors'], now)
     model.Session.commit()
     return db.project_dictize(project)
