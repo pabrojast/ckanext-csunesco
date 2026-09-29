@@ -169,9 +169,12 @@ def csunesco_can_edit_project(project):
 
 
 def csunesco_can_propose_project():
-    """Whether the acting user may create a project for any organization."""
+    """App proposals are open to portal users; legacy org rules stay intact."""
     if not tk.g.user:
         return False
+    from ckanext.csunesco.logic import editorial_owner
+    if editorial_owner.enabled():
+        return True
     try:
         import ckan.model as model
         from ckanext.csunesco.logic import auth
@@ -180,6 +183,23 @@ def csunesco_can_propose_project():
     except Exception:
         log.warning('csunesco: project proposal eligibility unavailable')
         return False
+
+
+def csunesco_login_return_url():
+    """Keep CS header logins in their local page, without changing other hubs."""
+    from flask import has_request_context, request
+    if not has_request_context():
+        return None
+    path = request.path
+    # Blueprint is stable across locale prefixes. The old portal landing
+    # belongs to the theme rather than the CS blueprint.
+    parts = path.strip('/').split('/')
+    is_portal = parts[-1] == 'citizen-science-portal'
+    if request.blueprint != 'csunesco' and not is_portal:
+        return None
+    if not path.startswith('/') or path.startswith('//') or '\\' in path:
+        return None
+    return request.full_path if request.query_string else path
 
 
 def csunesco_can_manage_project(project_id):
