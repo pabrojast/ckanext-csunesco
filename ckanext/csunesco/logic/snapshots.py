@@ -18,6 +18,7 @@ import secrets
 import hmac
 import tempfile
 import time
+from types import SimpleNamespace
 import urllib.request
 import urllib.error
 from urllib.parse import urlsplit, urljoin, unquote
@@ -211,10 +212,13 @@ def _copy_media(project, url, fetch_url=None, endpoint_kind='project-assets'):
     if fetch_url:
         from ckanext.csunesco.logic.ofform import get_base_url
         base = get_base_url() or ''
-        resolved = urljoin(base + '/', fetch_url)
+        if not re.fullmatch(r'/internal/ckan/' + re.escape(endpoint_kind) + r'/[0-9]+', fetch_url):
+            raise tk.ValidationError({'media': ['Invalid app asset endpoint']})
+        # Preserve an API subpath such as /cstoolbox/api, as app_request does.
+        resolved = base.rstrip('/') + fetch_url
         parsed = urlsplit(resolved)
         allowed = urlsplit(base)
-        if (parsed.scheme, parsed.netloc) != (allowed.scheme, allowed.netloc) or not re.fullmatch(r'/internal/ckan/' + re.escape(endpoint_kind) + r'/[0-9]+', parsed.path):
+        if parsed.scheme not in ('http', 'https') or (parsed.scheme, parsed.netloc) != (allowed.scheme, allowed.netloc):
             raise tk.ValidationError({'media': ['Invalid app asset endpoint']})
         token = tk.config.get('ckanext.csunesco.ofform_callback_token')
         if not token:
@@ -527,6 +531,28 @@ def observation_asset_view(form_id, digest):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox"
     return response
+
+
+def materialize_app_intake(data, username):
+    """Copy trusted app upload references to the existing private intake store.
+
+    The caller must authorize the service before calling this helper. No
+    requester-supplied URL or public/expiring editor URL is used for fetching.
+    """
+    refs = []
+    for field in ('logo_url', 'heading_image_url'):
+        match = re.fullmatch(r'asset:([0-9]+)', data.get(field) or '')
+        if not match:
+            continue
+        copied = _copy_media(SimpleNamespace(id='intake'), '',
+                             fetch_url='/internal/ckan/project-assets/' + match.group(1))
+        digest = copied.rsplit('/', 1)[-1]
+        token = secrets.token_urlsafe(32)
+        write_private('intake', token, {'actor': username, 'project_id': None,
+                                      'digest': digest, 'field': field, 'created_at': time.time()})
+        data[field] = '/citizen-science/portal/intake-media/' + token + '/' + digest
+        refs.append(token)
+    return refs
 
 
 def privatize_intake_uploads(data, batch, username):

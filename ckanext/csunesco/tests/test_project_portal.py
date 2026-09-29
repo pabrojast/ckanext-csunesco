@@ -418,6 +418,62 @@ def test_initial_upload_moves_out_of_public_storage_and_binds_after_retry(store,
     assert snapshots.read_private('intake', refs[0])['project_id'] == project.id
 
 
+def test_app_proposal_upload_is_private_durable_and_bound_to_requester(store, monkeypatch):
+    from ckanext.csunesco.logic.action import projects
+    _, users = store
+    fetched = []
+    digest = 'c' * 64
+    def copy_asset(project, url, fetch_url=None):
+        fetched.append(fetch_url)
+        return '/citizen-science/portal/media/intake/' + digest
+    monkeypatch.setattr(snapshots, '_copy_media', copy_asset)
+    result = projects.csunesco_project_request_create(
+        {'user': 'transport', 'auth_user_obj': users['transport']},
+        {'title': 'Regular citizen proposal', 'requested_by': 'author', 'logo_url': 'asset:19'})
+    assert result['status'] == 'pending'
+    assert result['created_by'] == 'author'
+    assert fetched == ['/internal/ckan/project-assets/19']
+    assert result['logo_url'].startswith('/citizen-science/portal/intake-media/')
+    ticket = result['logo_url'].rsplit('/', 2)[-2]
+    record = snapshots.read_private('intake', ticket)
+    assert record['project_id'] == result['id']
+    assert record['actor'] == 'author'
+    assert record['digest'] == digest
+
+
+def test_nonservice_cannot_resolve_private_app_uploads(store, monkeypatch):
+    from ckanext.csunesco.logic.action import projects
+    monkeypatch.setattr(snapshots, '_copy_media', lambda *a, **k: pytest.fail('Unauthorized fetch'))
+    with pytest.raises(tk.NotAuthorized):
+        projects.csunesco_project_request_create(ctx('author'), {'title': 'No', 'logo_url': 'asset:19'})
+
+
+def test_invalid_proposal_does_not_fetch_an_upload(store, monkeypatch):
+    from ckanext.csunesco.logic.action import projects
+    monkeypatch.setattr(snapshots, '_copy_media', lambda *a, **k: pytest.fail('Invalid proposal fetch'))
+    with pytest.raises(tk.ValidationError):
+        projects.csunesco_project_request_create(ctx(), {'title': '', 'logo_url': 'asset:19'})
+
+
+def test_app_asset_fetch_preserves_api_subpath(store, monkeypatch):
+    from email.message import Message
+    import io
+    project, _ = store
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.ofform_base_url', 'https://portal.example/cstoolbox/api')
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.ofform_callback_token', 'test-only')
+    fetched = []
+    def open_asset(request, timeout):
+        fetched.append(request.full_url)
+        stream = io.BytesIO(b'example-image')
+        stream.headers = Message()
+        stream.headers['Content-Type'] = 'image/png'
+        return stream
+    monkeypatch.setattr(snapshots.urllib.request, 'build_opener', lambda *a: SimpleNamespace(open=open_asset))
+    result = snapshots._copy_media(project, '', '/internal/ckan/project-assets/19')
+    assert fetched == ['https://portal.example/cstoolbox/api/internal/ckan/project-assets/19']
+    assert result.startswith('/citizen-science/portal/media/' + project.id + '/')
+
+
 def test_intake_media_requires_owner_or_service_until_approval(store, monkeypatch):
     from flask import Flask, g, abort
     from werkzeug.exceptions import NotFound
