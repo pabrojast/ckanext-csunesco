@@ -6,7 +6,7 @@ import pytest
 from flask import Blueprint, Flask
 from jinja2 import DictLoader, Environment
 import ckan.plugins.toolkit as tk
-from ckanext.csunesco.logic import helpers, auth
+from ckanext.csunesco.logic import helpers, auth, editorial_owner
 
 
 @pytest.fixture
@@ -41,8 +41,41 @@ def test_proposal_navigation_uses_app_eligibility_without_changing_legacy_auth(m
     assert helpers.csunesco_can_propose_project()
     monkeypatch.setitem(tk.config, 'ckanext.csunesco.editorial_owner', 'ckan')
     assert not helpers.csunesco_can_propose_project()
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.project_intake_owner', 'app')
+    assert helpers.csunesco_can_propose_project()
+    assert not editorial_owner.enabled()
     monkeypatch.setattr(tk, 'g', SimpleNamespace(user=None))
     assert not helpers.csunesco_can_propose_project()
+
+
+def test_app_only_intake_redirects_legacy_cta_without_global_editorial_migration(app, monkeypatch):
+    from ckanext.csunesco.logic import views
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.editorial_owner', 'ckan')
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.project_intake_owner', 'app')
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.ofform_app_url', 'https://portal.test/cstoolbox/')
+    monkeypatch.setattr(tk, 'redirect_to', lambda url: url)
+    monkeypatch.setattr(views, '_organization_choices', lambda **kw: pytest.fail('App intake must not require CKAN organization membership'))
+    destination = 'https://portal.test/cstoolbox/explorer/start'
+    with app.test_request_context('/citizen-science/project/new'):
+        assert views.project_new() == destination
+    assert editorial_owner.editor_link('csunesco.project_new') == destination
+    assert not editorial_owner.enabled()
+    monkeypatch.setattr(tk, 'url_for', lambda endpoint, **kw: '/legacy-editor')
+    assert editorial_owner.editor_link('csunesco.site_page_edit') == '/legacy-editor'
+
+
+@pytest.mark.parametrize('method,configured,status', [('POST', True, 405), ('GET', False, 503)])
+def test_app_only_intake_fails_closed(app, monkeypatch, method, configured, status):
+    from flask import abort
+    from werkzeug.exceptions import HTTPException
+    from ckanext.csunesco.logic import views
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.project_intake_owner', 'app')
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.ofform_app_url', 'https://portal.test/cstoolbox' if configured else '')
+    monkeypatch.setattr(tk, 'abort', abort)
+    with app.test_request_context('/citizen-science/project/new', method=method):
+        with pytest.raises(HTTPException) as error:
+            views.project_new()
+        assert error.value.code == status
 
 
 def test_header_keeps_other_pages_and_logged_in_users_unchanged():
