@@ -173,7 +173,7 @@ def csunesco_can_propose_project():
     if not tk.g.user:
         return False
     from ckanext.csunesco.logic import editorial_owner
-    if editorial_owner.enabled():
+    if editorial_owner.project_intake_in_app():
         return True
     try:
         import ckan.model as model
