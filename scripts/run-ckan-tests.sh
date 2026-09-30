@@ -127,7 +127,7 @@ fi
 
 echo
 if ! docker run --rm "${IMAGE}" bash -lc \
-  'cd /plugin && python -m pytest ckanext/csunesco/tests/test_public_project_entry.py -q -p no:ckan'; then
+  'cd /plugin && python -m pytest ckanext/csunesco/tests/test_public_project_entry.py ckanext/csunesco/tests/test_public_discovery.py -q -p no:ckan'; then
   echo "FAIL: public project entry tests failed"
   exit 1
 fi

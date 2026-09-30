@@ -31,9 +31,22 @@ def as_dict(source):
     return source if isinstance(source, dict) else db.data_source_dictize(source)
 
 
-def permitted(context, source, capability='can_view_resources'):
+def published(source):
+    """The source and its parent must both be publicly published."""
     source = as_dict(source)
     if source.get('status') != 'approved':
+        return False
+    if source.get('project_id'):
+        from ckanext.csunesco.logic import portal
+        project = db.get_project(source['project_id'])
+        if project is None or project.status != 'approved' or portal.withdrawn(project):
+            return False
+    return True
+
+
+def permitted(context, source, capability='can_view_resources'):
+    source = as_dict(source)
+    if not published(source):
         return False
     package_id = source.get('ckan_package_id')
     if not package_id:

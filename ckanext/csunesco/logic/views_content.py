@@ -8,6 +8,7 @@ Post/Redirect/Get. Public index/detail pages read approved content; the editor
 and maps ``ValidationError`` back to inline field errors.
 """
 import logging
+from ckanext.csunesco.logic.public_view import public_context
 
 from flask import request
 
@@ -83,7 +84,7 @@ def _content_index(content_type):
         data_dict['initiative'] = initiative
     try:
         listing = tk.get_action('csunesco_content_list')(
-            _context(), data_dict)
+            public_context(_context()), data_dict)
     except Exception:
         log.warning('csunesco: content list unavailable (%s)', content_type)
         listing = {'results': [], 'count': 0}
@@ -167,7 +168,7 @@ def cs_content_index():
         data_dict['q'] = q
     try:
         listing = tk.get_action('csunesco_content_list')(
-            _context(), data_dict)
+            public_context(_context()), data_dict)
     except Exception:
         log.warning('csunesco: combined content list unavailable')
         listing = {'results': [], 'count': 0}

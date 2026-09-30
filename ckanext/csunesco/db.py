@@ -1000,6 +1000,15 @@ def stats_set(project_id, observations=None, sites_monitored=None,
         Session.expire(cached)
 
 
+def public_project_clause():
+    """Approved projects whose public page has not been withdrawn."""
+    extras = sa.func.replace(CsProject.extras, ' ', '')
+    return sa.and_(CsProject.status == 'approved', sa.or_(
+        CsProject.extras.is_(None), sa.and_(
+            ~extras.like('%"_portal_withdrawn":true%'),
+            ~extras.like('%"status":"withdrawn"%'))))
+
+
 def aggregate_stats(initiative_group=None):
     """At-a-glance totals across APPROVED projects (hub band).
 
@@ -1015,22 +1024,13 @@ def aggregate_stats(initiative_group=None):
     Read-only; never commits. All literals are bound parameters.
     """
     _ensure_mappers()
-    initiative_sql = (' AND p.initiative_group = :initiative'
-                      if initiative_group else '')
-    params = {'status': 'approved'}
+    stats_query = Session.query(
+        sa.func.coalesce(sa.func.sum(CsProjectStats.observations), 0),
+        sa.func.coalesce(sa.func.sum(CsProjectStats.sites_monitored), 0),
+    ).join(CsProject, CsProject.id == CsProjectStats.project_id).filter(public_project_clause())
     if initiative_group:
-        params['initiative'] = initiative_group
-    row = Session.execute(
-        sa.text(
-            'SELECT '
-            'COALESCE(SUM(s.observations), 0), '
-            'COALESCE(SUM(s.sites_monitored), 0) '
-            'FROM cs_project_stats s '
-            'JOIN cs_project p ON p.id = s.project_id '
-            'WHERE p.status = :status' + initiative_sql
-        ),
-        params,
-    ).first()
+        stats_query = stats_query.filter(CsProject.initiative_group == initiative_group)
+    row = stats_query.first()
     observations = int(row[0] or 0) if row is not None else 0
     sites = int(row[1] or 0) if row is not None else 0
 
@@ -1042,7 +1042,7 @@ def aggregate_stats(initiative_group=None):
         user_id for (user_id,) in
         Session.query(CsProjectMember.user_id)
         .join(CsProject, CsProject.id == CsProjectMember.project_id)
-        .filter(CsProject.status == 'approved')
+        .filter(public_project_clause())
         .filter(CsProjectMember.status == 'active')
         .filter(CsProject.initiative_group == initiative_group)
         .all() if user_id
@@ -1050,13 +1050,13 @@ def aggregate_stats(initiative_group=None):
         user_id for (user_id,) in
         Session.query(CsProjectMember.user_id)
         .join(CsProject, CsProject.id == CsProjectMember.project_id)
-        .filter(CsProject.status == 'approved')
+        .filter(public_project_clause())
         .filter(CsProjectMember.status == 'active').all() if user_id)
     member_ids = set(member_query)
 
     countries = set()
     country_query = (Session.query(CsProject.countries)
-                     .filter(CsProject.status == 'approved'))
+                     .filter(public_project_clause()))
     if initiative_group:
         country_query = country_query.filter(
             CsProject.initiative_group == initiative_group)
@@ -1401,7 +1401,8 @@ def list_content(content_type=None, project_id=None, status=None,
                  public_only=False, private_project_ids=None,
                  private_org_ids=None, q=None, date_from=None, date_to=None,
                  upcoming=False, created_by=None, source=None,
-                 project_ids=None, sort=None, include_logged_in=False):
+                 project_ids=None, sort=None, include_logged_in=False,
+                 published_projects_only=False):
     """List content with server-side filtering + paging. Returns ``(total, rows)``.
 
     All filter values are bound query parameters (no SQL is built from strings).
@@ -1431,6 +1432,10 @@ def list_content(content_type=None, project_id=None, status=None,
         query = query.filter(CsContent.organization_id == organization_id)
     if status:
         query = query.filter(CsContent.status == status)
+    if published_projects_only:
+        published = Session.query(CsProject.id).filter(public_project_clause())
+        query = query.filter(sa.or_(CsContent.project_id.is_(None),
+                                   CsContent.project_id.in_(published)))
     if initiative_group:
         query = query.filter(CsContent.initiative_group == initiative_group)
     if featured is not None:

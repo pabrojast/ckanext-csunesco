@@ -235,7 +235,8 @@ def _registration_projects():
             listing = tk.get_action('csunesco_project_list')({
                 'model': model, 'session': model.Session,
                 'user': getattr(tk.g, 'user', None),
-            }, {'limit': 100, 'offset': offset})
+                'csunesco_public_view': True,
+            }, {'limit': 100, 'offset': offset, 'status': 'approved'})
             batch = listing.get('results') or []
             projects.extend(batch)
             offset += len(batch)

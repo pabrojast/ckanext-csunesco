@@ -817,7 +817,8 @@ def csunesco_project_list(context, data_dict):
     country = data_dict.get('country')
     q = data_dict.get('q')
 
-    if auth._is_sysadmin(context):
+    public_only = context.get('csunesco_public_view') or not auth._is_sysadmin(context)
+    if not public_only:
         status = data_dict.get('status')   # may be None -> all statuses
     else:
         status = 'approved'
@@ -827,12 +828,8 @@ def csunesco_project_list(context, data_dict):
     offset = _positive_int(data_dict.get('offset'), default=0)
 
     query = model.Session.query(db.CsProject)
-    if not auth._is_sysadmin(context):
-        # Portal metadata is canonical JSON written by set_metadata. This
-        # private marker survives replacement drafts until approval commits.
-        query = query.filter(sa.or_(db.CsProject.extras.is_(None), sa.and_(
-            ~db.CsProject.extras.like('%"_portal_withdrawn":true%'),
-            ~db.CsProject.extras.like('%"status":"withdrawn"%'))))
+    if public_only:
+        query = query.filter(db.public_project_clause())
     if status:
         query = query.filter(db.CsProject.status == status)
     if initiative:

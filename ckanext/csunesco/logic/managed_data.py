@@ -49,6 +49,10 @@ def package_show(original, context, data_dict):
     package = original(context, data_dict)
     source = source_for(package.get('id'))
     if source and not context.get('_cs_partition_sync'):
+        if context.get('csunesco_public_view'):
+            from ckanext.csunesco.logic.data_access import published
+            if not published(source):
+                raise tk.ObjectNotFound('Dataset is not published')
         check_current(source)
     return package
 
@@ -119,12 +123,23 @@ def package_search(original, context, data_dict):
         cache[key] = allowed
     allowed = cache[key]
     hidden = [row['ckan_package_id'] for row in records if row.get('partition_id') not in allowed]
+    if context.get('csunesco_public_view'):
+        # Apply publication before Solr counts, facets and pagination. Include
+        # legacy sources too: an archived parent must disappear from blocks.
+        import sqlalchemy as sa
+        unpublished = db.Session.query(db.CsDataSource.ckan_package_id).outerjoin(
+            db.CsProject, db.CsProject.id == db.CsDataSource.project_id,
+        ).filter(sa.or_(
+            db.CsDataSource.status.is_(None), db.CsDataSource.status != 'approved',
+            db.CsProject.id.is_(None), ~db.public_project_clause()))
+        hidden.extend(package_id for (package_id,) in unpublished.all() if package_id)
     data_dict = dict(data_dict)
     if hidden:
         # Package IDs are CKAN-generated UUIDs; quote through JSON nonetheless.
         import json
-        exclude = ' AND '.join('-id:' + json.dumps(value) for value in hidden)
-        data_dict['fq'] = ((data_dict.get('fq') or '') + ' ' + exclude).strip()
+        exclude = ' AND '.join('-id:' + json.dumps(value) for value in sorted(set(hidden)))
+        existing = (data_dict.get('fq') or '').strip()
+        data_dict['fq'] = ('(%s) AND (%s)' % (existing, exclude)) if existing else exclude
     return original(context, data_dict)
 
 

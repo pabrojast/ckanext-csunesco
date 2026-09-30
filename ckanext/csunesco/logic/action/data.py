@@ -355,7 +355,8 @@ def csunesco_data_source_list(context, data_dict):
 
     privileged = auth._is_sysadmin(context) or (
         project_id and auth._is_project_admin(context, project_id))
-    if privileged:
+    public_view = bool(context.get('csunesco_public_view'))
+    if privileged and not public_view:
         status = data_dict.get('status')      # None -> all statuses
     else:
         status = 'approved'
@@ -366,6 +367,9 @@ def csunesco_data_source_list(context, data_dict):
     # Apply visibility before pagination: hidden partitions affect neither
     # counts nor page boundaries. Source registries are small per project.
     query = db.Session.query(db.CsDataSource)
+    if public_view or not privileged:
+        published = db.Session.query(db.CsProject.id).filter(db.public_project_clause())
+        query = query.filter(db.CsDataSource.project_id.in_(published))
     if project_id:
         query = query.filter(db.CsDataSource.project_id == project_id)
     if status:

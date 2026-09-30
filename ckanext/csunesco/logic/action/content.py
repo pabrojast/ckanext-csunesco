@@ -732,7 +732,8 @@ def csunesco_content_list(context, data_dict):
     privileged = is_sysadmin or is_initiative_admin or (
         project_id and auth.can_manage_project(context, project_id)) or (
         organization_id and auth._is_org_editor(context, organization_id))
-    if privileged:
+    public_view = bool(context.get('csunesco_public_view'))
+    if privileged and not public_view:
         status = data_dict.get('status')          # None -> all statuses
     else:
         status = 'approved'
@@ -745,12 +746,12 @@ def csunesco_content_list(context, data_dict):
     public_only = False
     private_project_ids = None
     private_org_ids = None
-    if not is_sysadmin:
+    if public_view or not is_sysadmin:
         public_only = True
-        if project_id and (privileged
+        if not public_view and project_id and (privileged
                            or _is_active_project_member(context, project_id)):
             private_project_ids = [project_id]
-        if organization_id and (
+        if not public_view and organization_id and (
                 privileged
                 or auth._is_org_member(context, organization_id)):
             private_org_ids = [organization_id]
@@ -782,6 +783,7 @@ def csunesco_content_list(context, data_dict):
         source=source_filter,
         project_ids=project_ids,
         sort=sort,
+        published_projects_only=public_view or not privileged,
     )
     results = [db.content_dictize(row, summary=summary) for row in rows]
     if tk.asbool(data_dict.get('include_project') or False):
@@ -827,8 +829,10 @@ def csunesco_content_show(context, data_dict):
     if content is None:
         raise tk.ObjectNotFound(tk._('Content not found'))
     from ckanext.csunesco.logic import portal
-    if content.project_id and portal.withdrawn(db.get_project(content.project_id)) and not _can_view_unapproved(context, content):
-        raise tk.ObjectNotFound(tk._('Content not found'))
+    if content.project_id:
+        parent = db.get_project(content.project_id)
+        if (parent is None or parent.status != 'approved' or portal.withdrawn(parent)) and not _can_view_unapproved(context, content):
+            raise tk.ObjectNotFound(tk._('Content not found'))
     if (content.status != 'approved'
             and not _can_view_unapproved(context, content)):
         raise tk.NotAuthorized(tk._('Not authorized to view this content'))

@@ -462,7 +462,7 @@ def test_null_visibility_counts_as_public(actions, session, monkeypatch):
     ``visibility != 'private'`` filter would silently drop them."""
     row = db.CsContent()
     row.content_type = 'cs-news'
-    row.project_id = 'p-legacy'
+    row.project_id = _approved_project(session, 'p-legacy').id
     row.title = 'Legacy row'
     row.status = 'approved'
     row.visibility = None

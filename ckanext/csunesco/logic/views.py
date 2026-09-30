@@ -16,6 +16,7 @@ The blueprint wraps these behind lazily-imported thin functions so there is no
 import-time dependency on CKAN internals.
 """
 import logging
+from ckanext.csunesco.logic.public_view import public_context
 
 from flask import request, Response
 
@@ -241,7 +242,7 @@ def project_list():
             data_dict[facet] = value
 
     try:
-        listing = tk.get_action('csunesco_project_list')(_context(), data_dict)
+        listing = tk.get_action('csunesco_project_list')(public_context(_context()), data_dict)
     except Exception:
         # ValidationError (e.g. an unknown initiative filter) and any unexpected
         # error both collapse to an empty, safe result set.

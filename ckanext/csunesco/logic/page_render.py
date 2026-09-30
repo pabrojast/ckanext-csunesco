@@ -25,6 +25,7 @@ on a public URL.
 import logging
 
 import ckan.plugins.toolkit as tk
+from ckanext.csunesco.logic.public_view import public_context
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +58,9 @@ def build_context(context, project, blocks, has_region=False,
     project-only, so a forged one in stored JSON simply resolves to nothing.
     """
     types = {block.get('type') for block in blocks or []}
+    # Public blocks reflect publication, even for a moderator. Explicit draft
+    # previews retain the editor's access to pending sources and content.
+    listing_context = context if preview else public_context(context)
     scope = scope or ('site' if project is None else 'project')
     ctx = {
         'scope': scope,
@@ -106,7 +110,7 @@ def build_context(context, project, blocks, has_region=False,
             ctx['contacts'] = {k: project.get(k) for k in ('contact_person', 'contact_email')}
 
     if project is not None and types & _DATA_BLOCKS:
-        data_sources = _list_data_sources(context, project['id'])
+        data_sources = _list_data_sources(listing_context, project['id'])
         ctx['data_sources'] = data_sources
         # The allowlist every block that names a source is checked against.
         ctx['approved_sources'] = dict(
@@ -115,7 +119,7 @@ def build_context(context, project, blocks, has_region=False,
 
     if project is not None and types & _CONTENT_BLOCKS:
         ctx['news_events'] = _list_content(
-            context, project['id'], limit=BUILTIN_CONTENT_LIMIT)
+            listing_context, project['id'], limit=BUILTIN_CONTENT_LIMIT)
 
     if 'site_projects' in types:
         # One query even if (somehow) several site_projects blocks exist:
@@ -135,17 +139,17 @@ def build_context(context, project, blocks, has_region=False,
              if block.get('type') in ('initiative_news',
                                       'initiative_events')] or [3])
         ctx['initiative_news'] = _list_initiative_content(
-            context, initiative['name'], content_limit, 'cs-news')
+            listing_context, initiative['name'], content_limit, 'cs-news')
         ctx['initiative_events'] = _list_initiative_content(
-            context, initiative['name'], content_limit, 'cs-event',
+            listing_context, initiative['name'], content_limit, 'cs-event',
             upcoming=True)
 
     # Author-configurable listings, resolved ONCE per distinct configuration.
     # Without the memo, four content_list blocks with the same settings would
     # each run their own query on a public page.
     ctx['content_lists'] = _resolve_content_lists(
-        context, project, blocks, initiative=initiative)
-    ctx['dataset_lists'] = _resolve_dataset_lists(context, project, blocks,
+        listing_context, project, blocks, initiative=initiative)
+    ctx['dataset_lists'] = _resolve_dataset_lists(listing_context, project, blocks,
                                                   ctx['data_sources'])
     return ctx
 
@@ -230,10 +234,16 @@ def _show_datasets(context, names):
     whole block.
     """
     packages = []
+    read_context = dict(context, for_view=False)
+    if context.get('csunesco_public_view'):
+        read_context.update(user=None, auth_user_obj=None, ignore_auth=False)
     for name in names:
         try:
-            packages.append(tk.get_action('package_show')(
-                dict(context, for_view=False), {'id': name}))
+            package = tk.get_action('package_show')(dict(read_context), {'id': name})
+            if context.get('csunesco_public_view') and (
+                    package.get('private') or package.get('state', 'active') != 'active'):
+                continue
+            packages.append(package)
         except Exception:
             continue
     return packages
@@ -242,7 +252,8 @@ def _show_datasets(context, names):
 def _search_datasets(query, limit):
     try:
         result = tk.get_action('package_search')(
-            {}, {'fq': query, 'rows': limit, 'include_private': False})
+            public_context({'user': None}),
+            {'fq': query, 'rows': limit, 'include_private': False})
         return result.get('results', [])
     except Exception:
         log.warning('csunesco: dataset search block unavailable')
@@ -278,10 +289,10 @@ def _aggregate_stats(context, initiative=None):
 def _recent_projects(context, limit, initiative=None):
     """The newest approved projects, decorated with ``initiative_title``."""
     try:
-        data_dict = {'limit': limit, 'offset': 0}
+        data_dict = {'limit': limit, 'offset': 0, 'status': 'approved'}
         if initiative:
             data_dict['initiative'] = initiative
-        listing = tk.get_action('csunesco_project_list')(context, data_dict)
+        listing = tk.get_action('csunesco_project_list')(public_context(context), data_dict)
         results = listing.get('results', [])
     except Exception:
         log.warning('csunesco: site page project list unavailable')

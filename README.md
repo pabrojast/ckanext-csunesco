@@ -86,8 +86,14 @@ Every HTTP view lives under the blueprint prefix **`/citizen-science`** (so the
 self-registration page is `/citizen-science/register-citizen`, **not**
 `/register-citizen`). Authorization roles:
 
-- **public** — anonymous allowed. Read views only ever expose *approved* rows to
-  non-privileged callers; the action layer does the filtering.
+- **public** — anonymous allowed. Public discovery pages show approved,
+  non-withdrawn projects even to administrators: home/initiative blocks,
+  project search, registration choices, content indexes and the data viewer.
+  Content and sources also require a published parent project. Filtering
+  happens before counts/pagination. Public blocks omit private datasets and
+  content; the existing logged-in content tier remains available after login.
+  The internal `csunesco_public_view` context marks these queries without
+  changing review APIs, administrative queues or explicit draft previews.
 - **authenticated** — any logged-in CKAN user.
 - **project admin** (PM) — an active `admin` member of the *target* project.
 - **initiative admin** (ADM) — an active `admin`-capacity member of the target

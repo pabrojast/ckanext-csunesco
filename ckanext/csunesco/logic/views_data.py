@@ -12,6 +12,7 @@ internal leaks.
 """
 import json
 import logging
+from ckanext.csunesco.logic.public_view import public_context
 
 from flask import request, Response
 
@@ -302,7 +303,7 @@ def data_viewer():
     page = _pos(request.args.get('page'), 1)
     per_page = 20
     try:
-        listing = tk.get_action('csunesco_data_source_list')(_context(), {
+        listing = tk.get_action('csunesco_data_source_list')(public_context(_context()), {
             'limit': per_page,
             'offset': (page - 1) * per_page,
         })
@@ -315,7 +316,7 @@ def data_viewer():
     projects = {}
     try:
         project_listing = tk.get_action('csunesco_project_list')(
-            _context(), {'limit': 100})
+            public_context(_context()), {'limit': 100})
         for project in project_listing.get('results') or []:
             projects[project['id']] = project
     except Exception:
