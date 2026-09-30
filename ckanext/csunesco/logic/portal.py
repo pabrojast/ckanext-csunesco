@@ -793,6 +793,8 @@ def send_initial_request(project):
                    'intake_synced': True, 'updated_at': datetime.datetime.utcnow().isoformat()}
     project.extras = canonical(extras)
     model.Session.commit()
+    from ckanext.csunesco.logic import approval_events
+    approval_events.flush(project)
     return result
 
 

@@ -22,6 +22,7 @@ def app():
     cs.add_url_rule('/citizen-science/', 'home', lambda: '')
     cs.add_url_rule('/es/citizen-science/project/river', 'project', lambda: '')
     cs.add_url_rule('/citizen-science/project/new', 'project_new', views.project_new, methods=['GET', 'POST'])
+    cs.add_url_rule('/citizen-science/project/<slug>', 'project_landing', lambda slug: '')
     cs.add_url_rule('/citizen-science/project/<slug>/edit', 'project_edit', lambda slug: '')
     application.register_blueprint(cs)
     application.add_url_rule('/citizen-science-portal', 'portal', lambda: '')
@@ -194,9 +195,96 @@ def test_header_keeps_other_pages_and_logged_in_users_unchanged():
         return '/user/login?came_from=/citizen-science/'
     for user, destination in [(None, None), (object(), '/citizen-science/')]:
         html = env.get_template('header.html').render(c=SimpleNamespace(userobj=user),
-            h=SimpleNamespace(csunesco_login_return_url=lambda: destination), _=lambda s: s)
+            h=SimpleNamespace(csunesco_login_url=lambda: destination), _=lambda s: s)
         assert 'ORIGINAL' in html
     html = env.get_template('header.html').render(c=SimpleNamespace(userobj=None),
-        h=SimpleNamespace(csunesco_login_return_url=lambda: '/citizen-science/', url_for=url_for), _=lambda s: s)
+        h=SimpleNamespace(csunesco_login_url=lambda: '/user/login?came_from=/citizen-science/', url_for=url_for), _=lambda s: s)
     assert 'ORIGINAL' not in html
-    assert calls == [('user.login', {'came_from': '/citizen-science/'})]
+    assert '/user/login?came_from=/citizen-science/' in html
+    assert calls == []
+
+
+@pytest.mark.parametrize('path,next_path', [
+    ('/citizen-science/', '/projects'),
+    ('/citizen-science-portal', '/projects'),
+    ('/citizen-science/project/river', '/explorer/projects/river'),
+    ('/citizen-science/?next=https://outside.test', '/projects'),
+])
+def test_app_login_is_scoped_and_retains_project_context(app, monkeypatch, path, next_path):
+    from urllib.parse import urlsplit, parse_qs
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.ofform_app_url', 'https://app.example/cstoolbox')
+    with app.test_request_context(path):
+        target = urlsplit(helpers.csunesco_login_url())
+        assert target.netloc == 'app.example' and target.path == '/cstoolbox/login'
+        assert parse_qs(target.query) == {'next': [next_path]}
+
+
+@pytest.mark.parametrize('path', ['/citizen-science/project/new', '/citizen-science/project/river/edit'])
+def test_ckan_editor_login_stays_in_ckan(app, monkeypatch, path):
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.ofform_app_url', 'https://app.example')
+    monkeypatch.setattr(tk, 'url_for', lambda endpoint, **kw: (endpoint, kw))
+    with app.test_request_context(path):
+        assert helpers.csunesco_login_url() == ('user.login', {'came_from': path})
+    with app.test_request_context('/dataset'):
+        assert helpers.csunesco_login_url() is None
+
+
+def test_approval_event_is_durable_private_and_retains_concurrent_events(store, monkeypatch):
+    from ckanext.csunesco.logic import approval_events, snapshots
+    project, users = store
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.ofform_callback_token', 'test-token')
+    users['author'].email = 'author@example.org'
+    approval_events.record(project)
+    db.Session.commit()
+    event = db._load_json(project.extras, {})[approval_events.KEY][0]
+    assert event['actor_email'] == 'author@example.org'
+    assert approval_events.KEY not in db.project_dictize(project)
+    def unavailable(*args):
+        raise RuntimeError('transport unavailable')
+    monkeypatch.setattr(snapshots, 'app_request', unavailable)
+    approval_events.flush(project)
+    assert db._load_json(project.extras, {})[approval_events.KEY] == [event]
+    def receive(path, payload):
+        assert path == '/internal/ckan/approval-events' and payload == event
+        approval_events.record(project, 'join_request', 'outsider')
+        db.Session.commit()
+    monkeypatch.setattr(snapshots, 'app_request', receive)
+    approval_events.flush(project)
+    remaining = db._load_json(project.extras, {})[approval_events.KEY]
+    assert len(remaining) == 1 and remaining[0]['actor_username'] == 'outsider'
+
+
+def test_registration_errors_never_expose_unknown_backend_details(monkeypatch):
+    from ckanext.csunesco.logic.registration_errors import from_validation
+    monkeypatch.setattr(tk, '_', lambda message: message)
+    result = from_validation(tk.ValidationError({'database': 'private credentials'}))
+    assert result['code'] == 'registration_service_unavailable'
+    assert 'private credentials' not in str(result)
+    assert from_validation(tk.ValidationError({'name': ['already exists']}))['code'] == 'registration_username_taken'
+
+
+@pytest.mark.parametrize('email,password,state,success', [
+    ('author@example.org', 'original-password', 'active', True),
+    ('other@example.org', 'original-password', 'active', False),
+    ('author@example.org', 'another-password', 'active', False),
+    ('author@example.org', 'original-password', 'pending', False),
+])
+def test_registration_retry_requires_original_active_identity(store, monkeypatch, email, password, state, success):
+    from ckanext.csunesco.logic.action import registration as action
+    project, users = store
+    user = users['author']
+    user.email = 'author@example.org'
+    user.state = state
+    user.validate_password = lambda value: value == 'original-password'
+    profile = db.CsCitizenScientist()
+    profile.user_id = user.id
+    db.Session.add(profile)
+    db.Session.commit()
+    monkeypatch.setattr(tk, '_', lambda value: value)
+    body = {'username':'author', 'email':email, 'password':password}
+    if success:
+        assert action.csunesco_register_citizen_scientist({}, body)['existed'] is True
+    else:
+        with pytest.raises(tk.ValidationError) as error:
+            action.csunesco_register_citizen_scientist({}, body)
+        assert error.value.error_dict['code'] == 'registration_username_taken'

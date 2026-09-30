@@ -18,7 +18,7 @@
   <div class="cs-register-page">
     <section class="cs-register-shell" aria-labelledby="cs-reg-title">
       <div class="cs-register-topbar">
-        <a class="cs-register-back" href="{{ h.url_for('user.login') }}">
+        <a class="cs-register-back" href="{{ (h.csunesco_login_url() or h.url_for('user.login')) }}">
           <span aria-hidden="true">&larr;</span> {{ _("Back to sign in") }}
         </a>
       </div>
@@ -63,7 +63,7 @@
         <p id="cs-reg-announcement" class="cs-visually-hidden" aria-live="polite"></p>
 
         {% if errors and errors.message %}
-          <div id="cs-reg-error" class="cs-form-error" role="alert">
+          <div id="cs-reg-error" class="cs-form-error" role="alert" tabindex="-1" data-fields="{{ (errors.fields or {})|tojson|forceescape }}">
             {{ errors.message }}
           </div>
         {% endif %}
@@ -288,9 +288,6 @@
 
           {% if recaptcha_publickey %}
             <input type="hidden" name="recaptcha_response" id="cs-recaptcha-response">
-            <p class="cs-hint cs-recaptcha-note">
-              {{ _("This site is protected by reCAPTCHA; the Google Privacy Policy and Terms of Service apply.") }}
-            </p>
           {% endif %}
 
           <button type="submit" id="cs-submit" class="cs-btn cs-btn-primary cs-register-submit">
@@ -304,7 +301,7 @@
         </p>
         <p class="cs-register-footer">
           {{ _("Already have an account?") }}
-          <a href="{{ h.url_for('user.login') }}">{{ _("Sign in") }}</a>
+          <a href="{{ (h.csunesco_login_url() or h.url_for('user.login')) }}">{{ _("Sign in") }}</a>
         </p>
       {% endif %}
     </section>

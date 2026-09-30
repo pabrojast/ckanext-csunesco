@@ -9,8 +9,8 @@ orchestration: it reads and validates the form, calls the core ``user_create``
 action and marks the new user as a Citizen Scientist profile.
 
 Design notes (from advisors, see .mix/plan.md):
-  * Do NOT pre-validate username/email uniqueness. Call ``user_create`` inside a
-    try/except and render a GENERIC error -- never enumerate existing accounts.
+  * CKAN validates account creation. Only allowlisted, actionable validation
+    messages reach the public form; unexpected exceptions stay private.
   * Registration relies on CKAN's own ``user_create`` auth
     (``ckan.auth.create_user_via_web``); we add no bespoke auth function.
   * reCAPTCHA v3 is OPTIONAL: enforced only when BOTH the public and private
@@ -35,6 +35,7 @@ import ckan.model as model
 from ckan.logic import check_access, NotAuthorized, ValidationError
 
 from ckanext.csunesco import constants
+from ckanext.csunesco.logic.registration_errors import problem, from_validation
 
 log = logging.getLogger(__name__)
 
@@ -144,11 +145,11 @@ def _parse_optional_profile(data):
             date_of_birth = datetime.datetime.strptime(
                 str(raw_dob).strip(), '%Y-%m-%d').date()
         except (TypeError, ValueError):
-            raise ValidationError({'message': GENERIC_ERROR})
+            raise ValidationError(problem('date_invalid', 'date_of_birth'))
     else:
         date_of_birth = None
     if date_of_birth and date_of_birth > datetime.date.today():
-        raise ValidationError({'message': GENERIC_ERROR})
+        raise ValidationError(problem('date_invalid', 'date_of_birth'))
 
     nationality = (data.get('nationality') or '').strip().upper()
     # Two non-ISO sentinels, stored as themselves so profiles stay
@@ -159,11 +160,11 @@ def _parse_optional_profile(data):
     if (nationality
             and nationality not in ('OTHER', 'PREFER_NOT_TO_SAY')
             and nationality not in constants.ISO_3166_ALPHA2):
-        raise ValidationError({'message': GENERIC_ERROR})
+        raise ValidationError(problem('nationality_invalid', 'nationality'))
 
     gender = (data.get('gender') or '').strip()
     if gender and gender not in GENDER_VALUES:
-        raise ValidationError({'message': GENERIC_ERROR})
+        raise ValidationError(problem('gender_invalid', 'gender'))
 
     return date_of_birth, nationality or None, gender or None
 
@@ -355,13 +356,13 @@ def create_citizen_scientist(context, data, verification_token=None):
     if not username and (fullname or email):
         username = _generate_username(fullname, email)
 
-    # Server-side minimums (mirror the web form). Any failure -> generic error.
+    # Validaciones públicas que indican el campo a corregir.
     if not username or not email or not password:
-        raise ValidationError({'message': GENERIC_ERROR})
+        raise ValidationError(problem('required', 'username', 'email', 'password'))
     if len(password) < MIN_PASSWORD_LENGTH:
-        raise ValidationError({'message': GENERIC_ERROR})
+        raise ValidationError(problem('password_short', 'password'))
     if not EMAIL_RE.match(email):
-        raise ValidationError({'message': GENERIC_ERROR})
+        raise ValidationError(problem('email_invalid', 'email'))
 
     # user_create runs its own auth check; NotAuthorized (self-registration
     # disabled / non-sysadmin token) is left to propagate to the caller.
@@ -374,11 +375,10 @@ def create_citizen_scientist(context, data, verification_token=None):
             'password': password,
             'fullname': fullname,
         })
-    except ValidationError:
-        # Duplicate name/email, weak password, invalid name chars, ... All are
-        # collapsed into the same generic error -> no account-enumeration hint.
+    except ValidationError as exc:
+        # Solo mensajes permitidos; las excepciones internas no se publican.
         log.warning('csunesco: citizen scientist account creation rejected')
-        raise ValidationError({'message': GENERIC_ERROR})
+        raise ValidationError(from_validation(exc))
     except NotAuthorized:
         raise
     except Exception:
@@ -387,7 +387,7 @@ def create_citizen_scientist(context, data, verification_token=None):
         # transaction and the error page itself would 500 on the next query.
         model.Session.rollback()
         log.warning('csunesco: unexpected error creating citizen scientist')
-        raise ValidationError({'message': GENERIC_ERROR})
+        raise ValidationError(problem('service_unavailable'))
 
     # Web path: hold the account in ``pending`` state until the emailed link is
     # opened. Both CKAN core login and the custom authenticator gate on
@@ -511,22 +511,22 @@ def register_citizen():
         'project': project_value,
     }
 
-    def _fail(status=200, headers=None):
-        """Re-render the form with the generic error and the entered values."""
+    def _fail(status=200, headers=None, errors=None):
+        """Re-render with actionable errors and the entered values."""
         rendered = _render({
             'data': data,
-            'errors': {'message': GENERIC_ERROR},
+            'errors': errors or problem('required'),
         })
         if status == 200 and not headers:
             return rendered
         return rendered, status, (headers or {})
 
     if retry_after is not None:
-        return _fail(429, {'Retry-After': str(retry_after)})
+        return _fail(429, {'Retry-After': str(retry_after)}, problem('too_many_attempts'))
 
     # Terms acceptance is mandatory (server-side, truthy).
     if not terms:
-        return _fail()
+        return _fail(errors=problem('terms_required', 'terms'))
 
     # Required identity/demographics -- enforced in the WEB form only (the
     # API action, ofform's frozen payload, stays lenient on purpose; the
@@ -535,13 +535,14 @@ def register_citizen():
     # disaggregated by gender, age class and Member State, and an optional
     # field yields ~30% completion (the OpenLearning experience).
     if not fullname or not date_of_birth or not gender or not nationality:
-        return _fail()
+        missing = [k for k in ('fullname', 'date_of_birth', 'gender', 'nationality') if not data[k]]
+        return _fail(errors=problem('required', *missing))
 
     # Password: required, min length, must match confirmation.
     if not password or len(password) < MIN_PASSWORD_LENGTH:
-        return _fail()
+        return _fail(errors=problem('password_short', 'password'))
     if password != confirm_password:
-        return _fail()
+        return _fail(errors=problem('password_mismatch', 'confirm_password'))
 
     # Parse profile values now so invalid dates/codes fail before user_create.
     try:
@@ -550,13 +551,13 @@ def register_citizen():
             'nationality': nationality,
             'gender': gender,
         })
-    except ValidationError:
-        return _fail()
+    except ValidationError as exc:
+        return _fail(errors=from_validation(exc))
 
     # reCAPTCHA only enforced when configured.
     if _recaptcha_configured():
         if not _verify_recaptcha(request.form.get('recaptcha_response')):
-            return _fail()
+            return _fail(errors=problem('captcha_failed'))
 
     context = {
         'model': model,
@@ -583,11 +584,9 @@ def register_citizen():
         # Self-registration via the web is disabled
         # (ckan.auth.create_user_via_web = false). Show the same generic error.
         log.warning('csunesco: user_create not authorized for citizen register')
-        return _fail()
-    except ValidationError:
-        # Duplicate name/email, weak password, ... collapsed into one generic
-        # error inside create_citizen_scientist -> no account-enumeration hint.
-        return _fail()
+        return _fail(errors=problem('registration_disabled'))
+    except ValidationError as exc:
+        return _fail(errors=from_validation(exc))
 
     # Join is deliberately immediate, even though the account remains pending.
     # The reviewer queue already exposes the verification flag. As in ofform,
@@ -694,51 +693,52 @@ def register_manager():
         'org_title': org_title,
     }
 
-    def _fail(status=200, headers=None):
+    def _fail(status=200, headers=None, errors=None):
         rendered = _render_manager({
             'data': data,
-            'errors': {'message': GENERIC_ERROR},
+            'errors': errors or problem('required'),
         })
         if status == 200 and not headers:
             return rendered
         return rendered, status, (headers or {})
 
     if retry_after is not None:
-        return _fail(429, {'Retry-After': str(retry_after)})
+        return _fail(429, {'Retry-After': str(retry_after)}, problem('too_many_attempts'))
 
     # The responsibilities acknowledgement is this form's terms checkbox.
     if not responsibilities:
-        return _fail()
+        return _fail(errors=problem('terms_required', 'responsibilities'))
 
     # Required fields: identity, demographics (incl. nationality -- the 2026
     # Member-State reporting rule, same as the citizen form) and the whole
     # org block.
     if not fullname or not date_of_birth or not gender or not nationality:
-        return _fail()
+        missing = [k for k in ('fullname', 'date_of_birth', 'gender', 'nationality') if not data[k]]
+        return _fail(errors=problem('required', *missing))
     if org_type not in {row['name'] for row in constants.ORG_TYPES}:
-        return _fail()
+        return _fail(errors=problem('organization_invalid', 'org_name', 'org_title', 'org_type', 'new_org_name'))
     if not org_title:
-        return _fail()
+        return _fail(errors=problem('organization_invalid', 'org_name', 'org_title', 'org_type', 'new_org_name'))
 
     # Organization: an existing one (role editor) XOR a new one (role admin).
     creating_org = org_name == '__new__'
     if creating_org and not new_org_name:
-        return _fail()
+        return _fail(errors=problem('organization_invalid', 'org_name', 'org_title', 'org_type', 'new_org_name'))
     if not creating_org and not org_name:
-        return _fail()
+        return _fail(errors=problem('organization_invalid', 'org_name', 'org_title', 'org_type', 'new_org_name'))
     org_id = None
     if not creating_org:
         # Validate against the live list so a forged value cannot smuggle an
         # arbitrary string into the approval flow.
         known = {row['name'] for row in _organization_options()}
         if org_name not in known:
-            return _fail()
+            return _fail(errors=problem('organization_invalid', 'org_name', 'org_title', 'org_type', 'new_org_name'))
         org_id = org_name
 
     if not password or len(password) < MIN_PASSWORD_LENGTH:
-        return _fail()
+        return _fail(errors=problem('password_short', 'password'))
     if password != confirm_password:
-        return _fail()
+        return _fail(errors=problem('password_mismatch', 'confirm_password'))
 
     try:
         parsed_dob, parsed_nationality, parsed_gender = _parse_optional_profile({
@@ -746,12 +746,12 @@ def register_manager():
             'nationality': nationality,
             'gender': gender,
         })
-    except ValidationError:
-        return _fail()
+    except ValidationError as exc:
+        return _fail(errors=from_validation(exc))
 
     if _recaptcha_configured():
         if not _verify_recaptcha(request.form.get('recaptcha_response')):
-            return _fail()
+            return _fail(errors=problem('captcha_failed'))
 
     context = {
         'model': model,
@@ -782,9 +782,9 @@ def register_manager():
         }, verification_token=verification_token)
     except NotAuthorized:
         log.warning('csunesco: user_create not authorized for PM register')
-        return _fail()
-    except ValidationError:
-        return _fail()
+        return _fail(errors=problem('registration_disabled'))
+    except ValidationError as exc:
+        return _fail(errors=from_validation(exc))
 
     _send_verification_email(fullname or username, email, verification_token)
 

@@ -622,3 +622,24 @@ the container harness above.
 ## License
 
 GNU Affero General Public License (AGPL) v3.0.
+
+### Acceso Citizen Science y avisos de revisión
+
+`h.csunesco_login_url()` dirige las entradas públicas de Citizen Science a
+`ckanext.csunesco.ofform_app_url/login?next=/projects`; una entrada de proyecto
+conserva su slug. El login general del catálogo y el de inscripción, edición y
+administración de proyectos siguen en CKAN. Sin URL de app válida se conserva
+el login de CKAN.
+
+Con el token de callback existente, los proyectos enviados a revisión y las
+solicitudes de participación del portal generan eventos privados y durables
+en `_approval_notifications`. Se entregan a `/internal/ckan/approval-events`;
+el worker de sincronización reintenta sin cambiar el identificador. La app
+configura los destinatarios y envía los correos con formato HTML. Una caída de
+la app no elimina la solicitud de CKAN. Las solicitudes iniciadas en la app
+usan su propia cola para no enviar un segundo aviso desde el portal.
+
+Los formularios de alta muestran códigos/mensajes permitidos y señalan el
+campo que debe corregirse. El reintento de un alta existente exige la misma
+identidad y contraseña. Se retiró el párrafo adicional de privacidad de
+reCAPTCHA; se conservan el control del servidor, el script y la insignia.

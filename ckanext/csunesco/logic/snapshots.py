@@ -460,7 +460,7 @@ def start_worker():
                     refresh_all()
                     # Repair callbacks and initial requests while retaining
                     # local moderation/publication if the app is unavailable.
-                    from ckanext.csunesco.logic import portal
+                    from ckanext.csunesco.logic import portal, approval_events
                     projects = db.Session.query(db.CsProject).all()
                     for project in projects:
                         if portal.managed(project):
@@ -470,6 +470,7 @@ def start_worker():
                                 portal.send_initial_request(project)
                             except Exception:
                                 pass
+                        approval_events.flush(project)
             except Exception:
                 log.exception('Project portal repair will retry')
             finally:

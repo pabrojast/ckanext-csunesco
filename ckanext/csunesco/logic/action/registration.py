@@ -9,8 +9,8 @@ the API share a single implementation.
 Idempotency: if a CKAN user with the requested name already exists AND already
 carries a ``cs_citizen_scientist`` profile, a previous (possibly retried)
 registration already succeeded -- we return success with ``existed=True`` instead
-of raising, so retries are safe. Otherwise we create the account. Every failure
-is collapsed into a single generic error (no account enumeration).
+of raising when the email, password and active account match. Otherwise we
+create the account or return a public, actionable validation code.
 
 Manager approval: Project Manager accounts are double-gated (email
 verification, then a sysadmin decision). ``csunesco_manager_approve`` is the
@@ -29,9 +29,9 @@ import ckan.model as model
 
 from ckanext.csunesco import db
 from ckanext.csunesco.logic.action import current_user_id
+from ckanext.csunesco.logic.registration_errors import problem, from_validation
 from ckanext.csunesco.logic.registration import (
     create_citizen_scientist,
-    GENERIC_ERROR,
 )
 
 log = logging.getLogger(__name__)
@@ -56,8 +56,7 @@ def csunesco_register_citizen_scientist(context, data_dict):
         terms_accepted = False
 
     # IDEMPOTENT fast-path: an existing CKAN user that already carries a CS
-    # profile means a previous registration succeeded. Return success WITHOUT
-    # touching anything -- never raise, never re-create the account.
+    # profile must also match the credentials of the original active account.
     existing_user = model.User.get(username) if username else None
     if existing_user is not None:
         db.ensure_mappers()
@@ -67,6 +66,10 @@ def csunesco_register_citizen_scientist(context, data_dict):
             .first()
         )
         if profile is not None:
+            if (existing_user.state != 'active'
+                    or str(existing_user.email or '').lower() != email.lower()
+                    or not existing_user.validate_password(password)):
+                raise tk.ValidationError(problem('username_taken', 'username'))
             return {
                 'status': 'success',
                 'username': existing_user.name,
@@ -88,9 +91,9 @@ def csunesco_register_citizen_scientist(context, data_dict):
             # before sending its legacy payload, which must remain unchanged.
             'terms_accepted': terms_accepted,
         })
-    except tk.ValidationError:
-        # Collapse to a single generic error (no account enumeration).
-        raise tk.ValidationError({'message': GENERIC_ERROR})
+    except tk.ValidationError as exc:
+        # Mantener los códigos públicos y ocultar detalles internos.
+        raise tk.ValidationError(from_validation(exc))
 
     return {
         'status': 'success',

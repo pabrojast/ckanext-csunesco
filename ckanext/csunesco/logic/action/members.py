@@ -180,9 +180,14 @@ def csunesco_join_request_create(context, data_dict):
             reopened = True
         if note and existing.status == C.MEMBER_STATUS_PENDING:
             existing.note = note
+        if reopened and not on_behalf:
+            from ckanext.csunesco.logic import approval_events
+            approval_events.record(project, 'join_request', user_id, note)
         if reopened or note:
             existing.source = source
             model.Session.commit()
+        if reopened and not on_behalf:
+            approval_events.flush(project)
         result = db.member_dictize(existing)
         result['already_requested'] = not reopened
         result['reopened'] = reopened
@@ -205,7 +210,12 @@ def csunesco_join_request_create(context, data_dict):
                     else context.get('user')),
         actor_role='citizen_scientist', via=source, note=note)
     model.Session.add(member)
+    if not on_behalf:
+        from ckanext.csunesco.logic import approval_events
+        approval_events.record(project, 'join_request', user_id, note)
     model.Session.commit()
+    if not on_behalf:
+        approval_events.flush(project)
 
     result = db.member_dictize(member)
     result['already_requested'] = False

@@ -18,9 +18,10 @@ pytestmark = pytest.mark.skipif(not HAVE_CKAN, reason='requires CKAN')
 
 
 @pytest.fixture
-def app():
+def app(monkeypatch):
     app = Flask(__name__)
     app.secret_key = 'registration-test'
+    monkeypatch.setattr(tk, '_', lambda message: message)
     return app
 
 
@@ -128,7 +129,7 @@ def test_web_registration_creates_immediate_join_and_keeps_verification(
     assert out['join_project']['slug'] == 'river-x'
 
 
-def test_rate_limited_post_is_generic_429(app, monkeypatch):
+def test_rate_limited_post_is_actionable_429(app, monkeypatch):
     monkeypatch.setattr(registration, '_registration_retry_after', lambda: 37)
     monkeypatch.setattr(registration, '_render', lambda values: values)
     with app.test_request_context('/register', method='POST'):
@@ -136,7 +137,7 @@ def test_rate_limited_post_is_generic_429(app, monkeypatch):
     body, status, headers = out
     assert status == 429
     assert headers['Retry-After'] == '37'
-    assert body['errors']['message'] == registration.GENERIC_ERROR
+    assert body['errors']['code'] == 'registration_too_many_attempts'
 
 
 def test_ofform_legacy_action_payload_remains_valid(monkeypatch):
@@ -245,7 +246,8 @@ def test_web_registration_requires_the_demographic_block(app, monkeypatch):
         with app.test_request_context('/register', method='POST', data=data):
             g.user = ''
             out = registration.register_citizen()
-        assert out['errors']['message'] == registration.GENERIC_ERROR, missing
+        assert out['errors']['code'] == 'registration_required', missing
+        assert missing in out['errors']['fields']
 
 
 # --------------------------------------------------------------------------- #
@@ -321,14 +323,16 @@ def test_manager_registration_requires_the_org_block(app, monkeypatch):
                            ('org_title', ''), ('responsibilities', ''),
                            ('new_org_name', ''), ('nationality', '')):
         out, captured = _manager_post(app, monkeypatch, {missing: value})
-        assert out['errors']['message'] == registration.GENERIC_ERROR, missing
+        expected = {'responsibilities': 'terms_required', 'nationality': 'required'}.get(missing, 'organization_invalid')
+        assert out['errors']['code'] == 'registration_' + expected, missing
+        assert missing in out['errors']['fields']
         assert 'created' not in captured, missing
 
 
 def test_manager_registration_rejects_an_unknown_existing_org(app, monkeypatch):
     out, captured = _manager_post(app, monkeypatch, {
         'org_name': 'forged-org', 'new_org_name': ''})
-    assert out['errors']['message'] == registration.GENERIC_ERROR
+    assert out['errors']['code'] == 'registration_organization_invalid'
     assert 'created' not in captured
 
 

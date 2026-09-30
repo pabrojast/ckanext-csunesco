@@ -414,6 +414,9 @@ def csunesco_project_request_create(context, data_dict):
         snapshots.bind_intake_media(project, intake_refs)
     if data.get('editors'):
         _sync_editor_members(project.id, data['editors'], now)
+    if project.status == 'pending':
+        from ckanext.csunesco.logic import approval_events
+        approval_events.record(project)
     model.Session.commit()
     return db.project_dictize(project)
 
@@ -615,7 +618,10 @@ def csunesco_project_resubmit(context, data_dict):
     project.reviewed_by = None
     project.reviewed_at = None
     project.modified = now
+    from ckanext.csunesco.logic import approval_events
+    approval_events.record(project)
     model.Session.commit()
+    approval_events.flush(project)
     return db.project_dictize(project)
 
 

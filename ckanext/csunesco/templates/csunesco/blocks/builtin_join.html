@@ -69,7 +69,7 @@
         <p class="cs-hint">{{ _("Your request will be reviewed by the project admin.") }}</p>
       {% else %}
         <p>{{ _("Log in or create a Citizen Scientist account to join this project.") }}</p>
-        <a class="cs-btn cs-btn-primary" href="{{ h.url_for('user.login') }}">{{ _("Log in") }}</a>
+        <a class="cs-btn cs-btn-primary" href="{{ h.csunesco_login_url(ctx.project.slug) or h.url_for('user.login') }}">{{ _("Log in") }}</a>
         <a class="cs-btn cs-btn-secondary"
            href="{{ h.url_for('csunesco.register_citizen', project=ctx.project.slug) }}">{{ _("Register") }}</a>
       {% endif %}

@@ -194,5 +194,21 @@
     });
   });
 
+  var serverError = document.getElementById("cs-reg-error");
+  if (serverError) {
+    var serverFields = {};
+    try { serverFields = JSON.parse(serverError.getAttribute("data-fields") || "{}"); } catch (e) { /* no fields */ }
+    var firstInvalid = null;
+    Object.keys(serverFields).forEach(function (name) {
+      var input = form.elements.namedItem(name);
+      if (input && input.setAttribute) {
+        input.setAttribute("aria-invalid", "true");
+        input.setAttribute("aria-describedby", "cs-reg-error");
+        if (!firstInvalid) { firstInvalid = input; }
+      }
+    });
+    (firstInvalid || serverError).focus();
+  }
+
   renderStrength();
 })();
