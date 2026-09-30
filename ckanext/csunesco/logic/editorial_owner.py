@@ -8,11 +8,6 @@ def enabled():
     return tk.config.get('ckanext.csunesco.editorial_owner') == 'app'
 
 
-def project_intake_in_app():
-    """Move only proposal intake without transferring every editorial page."""
-    return enabled() or tk.config.get('ckanext.csunesco.project_intake_owner') == 'app'
-
-
 def require_bridge(context):
     # CKAN skips normal auth functions for sysadmins, so this check belongs in
     # the action body. Only internal Python callers can set this context flag.
@@ -46,8 +41,9 @@ def redirect(scope='site', key='home', section='portal'):
 
 def editor_link(endpoint, **kwargs):
     """Use app links in existing navigation without losing legacy installations."""
-    if endpoint == 'csunesco.project_new' and project_intake_in_app():
-        return (tk.config.get('ckanext.csunesco.ofform_app_url') or '').rstrip('/') + '/explorer/start'
+    # New proposals stay in CKAN, independently of subsequent app editing.
+    if endpoint == 'csunesco.project_new':
+        return tk.url_for(endpoint, **kwargs)
     if not enabled():
         return tk.url_for(endpoint, **kwargs)
     if endpoint == 'csunesco.site_page_edit':

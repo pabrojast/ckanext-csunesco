@@ -328,15 +328,13 @@ def _resolve_creator(context, data_dict):
 
 
 def csunesco_project_request_create(context, data_dict):
-    from ckanext.csunesco.logic import editorial_owner, portal
-    if editorial_owner.enabled():
-        portal.require_service(context)
     """Create a project request under an authorized CKAN organization.
 
     The sysadmin service token used by Toolbox remains compatible with its
     legacy payload, which has no organization_id. Human portal callers must
     supply an organization where they have create_dataset permission.
     """
+    from ckanext.csunesco.logic import portal
     if not context.get('user'):
         raise tk.NotAuthorized(
             tk._('You must be logged in to request a project'))

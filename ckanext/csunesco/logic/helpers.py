@@ -169,12 +169,9 @@ def csunesco_can_edit_project(project):
 
 
 def csunesco_can_propose_project():
-    """App proposals are open to portal users; legacy org rules stay intact."""
+    """Proposals require a CKAN organization editor/admin or a sysadmin."""
     if not tk.g.user:
         return False
-    from ckanext.csunesco.logic import editorial_owner
-    if editorial_owner.project_intake_in_app():
-        return True
     try:
         import ckan.model as model
         from ckanext.csunesco.logic import auth

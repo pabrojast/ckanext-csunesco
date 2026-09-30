@@ -3,18 +3,26 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from flask import Blueprint, Flask
+from flask import Blueprint, Flask, session, url_for
+from flask_babel import Babel
 from jinja2 import DictLoader, Environment
 import ckan.plugins.toolkit as tk
-from ckanext.csunesco.logic import helpers, auth, editorial_owner
+from ckanext.csunesco import db
+from ckanext.csunesco.logic import helpers, auth, editorial_owner, views, portal, registration, validators
+from ckanext.csunesco.logic.action import projects
+from ckanext.csunesco.tests.test_project_portal import store
 
 
 @pytest.fixture
 def app():
     application = Flask(__name__)
+    application.secret_key = 'registration-test-session'
+    Babel(application)
     cs = Blueprint('csunesco', __name__)
     cs.add_url_rule('/citizen-science/', 'home', lambda: '')
     cs.add_url_rule('/es/citizen-science/project/river', 'project', lambda: '')
+    cs.add_url_rule('/citizen-science/project/new', 'project_new', views.project_new, methods=['GET', 'POST'])
+    cs.add_url_rule('/citizen-science/project/<slug>/edit', 'project_edit', lambda slug: '')
     application.register_blueprint(cs)
     application.add_url_rule('/citizen-science-portal', 'portal', lambda: '')
     application.add_url_rule('/dataset', 'dataset', lambda: '')
@@ -34,48 +42,143 @@ def test_login_return_is_contextual_local_path(app, path, expected):
     assert helpers.csunesco_login_return_url() is None
 
 
-def test_proposal_navigation_uses_app_eligibility_without_changing_legacy_auth(monkeypatch):
-    monkeypatch.setattr(tk, 'g', SimpleNamespace(user='citizen'))
-    monkeypatch.setitem(tk.config, 'ckanext.csunesco.editorial_owner', 'app')
-    monkeypatch.setattr(auth, 'can_propose_project', lambda *a: False)
-    assert helpers.csunesco_can_propose_project()
-    monkeypatch.setitem(tk.config, 'ckanext.csunesco.editorial_owner', 'ckan')
-    assert not helpers.csunesco_can_propose_project()
-    monkeypatch.setitem(tk.config, 'ckanext.csunesco.project_intake_owner', 'app')
-    assert helpers.csunesco_can_propose_project()
-    assert not editorial_owner.enabled()
-    monkeypatch.setattr(tk, 'g', SimpleNamespace(user=None))
-    assert not helpers.csunesco_can_propose_project()
+@pytest.fixture(params=[('ckan', ''), ('ckan', 'app'), ('app', 'app')])
+def ownership(request, monkeypatch):
+    editorial, intake = request.param
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.editorial_owner', editorial)
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.project_intake_owner', intake)
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.ofform_app_url', 'https://app.example/cstoolbox')
 
 
-def test_app_only_intake_redirects_legacy_cta_without_global_editorial_migration(app, monkeypatch):
-    from ckanext.csunesco.logic import views
-    monkeypatch.setitem(tk.config, 'ckanext.csunesco.editorial_owner', 'ckan')
-    monkeypatch.setitem(tk.config, 'ckanext.csunesco.project_intake_owner', 'app')
-    monkeypatch.setitem(tk.config, 'ckanext.csunesco.ofform_app_url', 'https://portal.test/cstoolbox/')
-    monkeypatch.setattr(tk, 'redirect_to', lambda url: url)
-    monkeypatch.setattr(views, '_organization_choices', lambda **kw: pytest.fail('App intake must not require CKAN organization membership'))
-    destination = 'https://portal.test/cstoolbox/explorer/start'
+@pytest.fixture
+def registration_form(store, monkeypatch):
+    # Use the real view, form parsing, schema, action, authorization and DB.
+    # Isolate CKAN identity lookups and the remote Toolbox transport only.
+    from ckan import authz, model
+    _, users = store
+    org = model.Group(name='test-organization', title='Test organization', is_organization=True)
+    db.Session.add(org)
+    db.Session.commit()
+    monkeypatch.setattr(model.Group, 'get', lambda key: org if key in (org.id, org.name) else None)
+    monkeypatch.setattr(authz, 'has_user_permission_for_group_or_org',
+                        lambda org_id, name, permission: name == 'author' and org_id == org.id)
+    monkeypatch.setattr(registration, '_organization_options',
+                        lambda: [{'name': org.name, 'title': org.title}])
+    monkeypatch.setattr(views, '_member_state_choices', lambda: ([], True))
+    monkeypatch.setattr(validators, '_member_state_names', lambda model: {'chile'})
+    monkeypatch.setattr(tk, '_', lambda text: text)
+    monkeypatch.setattr(tk, 'g', SimpleNamespace(user='author'))
+    monkeypatch.setattr(tk, 'url_for', url_for)
+    monkeypatch.setattr(tk, 'redirect_to', lambda endpoint, **kw: ('redirect', url_for(endpoint, **kw)))
+    monkeypatch.setattr(tk, 'render', lambda template, extra_vars: dict(extra_vars, template=template))
+    monkeypatch.setattr(tk, 'h', SimpleNamespace(flash_success=lambda *a: None, flash_notice=lambda *a: None))
+    monkeypatch.setattr(tk, 'get_action', lambda name: projects.csunesco_project_request_create)
+    def check_access(name, context, data):
+        assert name == 'csunesco_project_request_create'
+        if not auth.csunesco_project_request_create(context, data)['success']:
+            raise tk.NotAuthorized('Organization editor required')
+    monkeypatch.setattr(tk, 'check_access', check_access)
+    monkeypatch.setattr(views, '_resolve_cover', lambda *a: (SimpleNamespace(
+        _written=[], urls={}, rollback=lambda: None), {}))
+    monkeypatch.setattr(views, '_apply_image_urls', lambda *a: None)
+    synced = []
+    monkeypatch.setattr(portal, 'send_initial_request', lambda row: synced.append(row.id))
+    return org, users, synced
+
+
+@pytest.mark.parametrize('user,allowed', [(None, False), ('outsider', False), ('author', True), ('reviewer', True)])
+def test_ckan_roles_control_navigation_and_form(app, registration_form, ownership, monkeypatch, user, allowed):
+    monkeypatch.setattr(tk, 'g', SimpleNamespace(user=user))
     with app.test_request_context('/citizen-science/project/new'):
-        assert views.project_new() == destination
-    assert editorial_owner.editor_link('csunesco.project_new') == destination
-    assert not editorial_owner.enabled()
-    monkeypatch.setattr(tk, 'url_for', lambda endpoint, **kw: '/legacy-editor')
-    assert editorial_owner.editor_link('csunesco.site_page_edit') == '/legacy-editor'
+        assert helpers.csunesco_can_propose_project() is allowed
+        result = views.project_new()
+        assert result['template'] == ('csunesco/project_request.html' if allowed else 'csunesco/project_eligibility.html')
+        if allowed:
+            assert [step['key'] for step in result['steps']] == [
+                'identity', 'classification', 'location', 'participation',
+                'dataAccess', 'leadership', 'funding', 'brand']
+        else:
+            assert result['logged_in'] is bool(user)
 
 
-@pytest.mark.parametrize('method,configured,status', [('POST', True, 405), ('GET', False, 503)])
-def test_app_only_intake_fails_closed(app, monkeypatch, method, configured, status):
-    from flask import abort
-    from werkzeug.exceptions import HTTPException
-    from ckanext.csunesco.logic import views
-    monkeypatch.setitem(tk.config, 'ckanext.csunesco.project_intake_owner', 'app')
-    monkeypatch.setitem(tk.config, 'ckanext.csunesco.ofform_app_url', 'https://portal.test/cstoolbox' if configured else '')
-    monkeypatch.setattr(tk, 'abort', abort)
-    with app.test_request_context('/citizen-science/project/new', method=method):
-        with pytest.raises(HTTPException) as error:
-            views.project_new()
-        assert error.value.code == status
+@pytest.mark.parametrize('configured', [False, True])
+def test_new_project_link_is_local(app, ownership, monkeypatch, configured):
+    if not configured:
+        monkeypatch.setitem(tk.config, 'ckanext.csunesco.ofform_app_url', '')
+    monkeypatch.setattr(tk, 'url_for', url_for)
+    with app.test_request_context('/'):
+        assert editorial_owner.editor_link('csunesco.project_new') == '/citizen-science/project/new'
+        assert editorial_owner.editor_link('csunesco.project_new', submitted=1).endswith('?submitted=1')
+
+
+def _valid_proposal(org):
+    return {'title': 'A CKAN proposal', 'organization_id': org.id,
+            'short_description': 'Water monitoring', 'keywords': 'water, river',
+            'water_type': 'River', 'water_data_type': 'Water quantity',
+            'geographic_extent': 'Global', 'countries_present': '1', 'countries': 'chile',
+            'participation_mode': 'open', 'data_access': 'public',
+            'activity_status': 'Active', 'lead_partner_type': 'University',
+            'lead_organisation': org.name, 'request_nonce': 'test-once'}
+
+
+def test_submission_confirmation_and_retry_stay_in_ckan(app, registration_form, ownership):
+    org, _, synced = registration_form
+    with app.test_request_context('/citizen-science/project/new', method='POST', data=_valid_proposal(org)):
+        result = views.project_new()
+        assert result == ('redirect', '/citizen-science/project/new?submitted=1')
+        saved_nonce = session['cs_project_request_saved_nonce']
+    project = db.Session.query(db.CsProject).filter_by(title='A CKAN proposal').one()
+    assert project.status == 'pending'
+    assert project.created_by == 'author'
+    assert synced == [project.id]
+    with app.test_request_context('/citizen-science/project/new', method='POST', data=_valid_proposal(org)):
+        session['cs_project_request_saved_nonce'] = saved_nonce
+        assert views.project_new() == result
+    assert db.Session.query(db.CsProject).filter_by(title='A CKAN proposal').count() == 1
+    with app.test_request_context('/citizen-science/project/new?submitted=1'):
+        assert views.project_new()['success'] is True
+
+
+def test_invalid_submission_preserves_input(app, registration_form, ownership):
+    org, _, synced = registration_form
+    data = _valid_proposal(org)
+    data['title'] = ''
+    with app.test_request_context('/citizen-science/project/new', method='POST', data=data):
+        result = views.project_new()
+        assert 'title' in result['errors']
+        assert result['data']['short_description'] == data['short_description']
+    assert not synced
+    assert db.Session.query(db.CsProject).count() == 1  # only the fixture project
+
+
+def test_draft_is_saved_and_app_outage_does_not_lose_proposal(app, registration_form, ownership, monkeypatch):
+    org, _, _ = registration_form
+    def unavailable(row):
+        raise RuntimeError('App unavailable')
+    monkeypatch.setattr(portal, 'send_initial_request', unavailable)
+    for draft in (False, True):
+        data = {'title': 'Draft', 'organization_id': org.id, 'save_draft': '1'} if draft else _valid_proposal(org)
+        with app.test_request_context('/citizen-science/project/new', method='POST', data=data):
+            assert views.project_new()[0] == 'redirect'
+        project = db.Session.query(db.CsProject).filter_by(title=data['title']).one()
+        assert project.status == ('draft' if draft else 'pending')
+        assert db._load_json(project.extras, {})['_portal_intake']['pending'] is True
+
+
+@pytest.mark.parametrize('user,organization', [('outsider', 'own'), ('author', 'other'), (None, 'own')])
+def test_action_rejects_unprivileged_or_wrong_organization(registration_form, ownership, user, organization):
+    org, _, _ = registration_form
+    with pytest.raises(tk.NotAuthorized):
+        projects.csunesco_project_request_create({'user': user}, {
+            'title': 'Forbidden', 'organization_id': org.id if organization == 'own' else 'other-org'})
+
+
+@pytest.mark.parametrize('user', ['author', 'reviewer'])
+def test_humans_cannot_fetch_private_app_assets(registration_form, ownership, user):
+    org, _, _ = registration_form
+    with pytest.raises(tk.NotAuthorized):
+        projects.csunesco_project_request_create({'user': user}, {
+            'title': 'Forbidden asset', 'organization_id': org.id, 'logo_url': 'asset:19'})
 
 
 def test_header_keeps_other_pages_and_logged_in_users_unchanged():

@@ -43,12 +43,12 @@ def test_project_cta_is_public_and_keeps_configured_destination():
     env = Environment(autoescape=True, loader=FileSystemLoader(os.path.dirname(TPL_DIR)))
     # No permission helper: rendering must not depend on a CKAN session/role.
     env.globals.update(_=lambda value: value, h=SimpleNamespace(
-        csunesco_editor_link=lambda endpoint: 'https://app.example/cstoolbox/explorer/start'))
+        csunesco_editor_link=lambda endpoint: '/citizen-science/project/new'))
     template = env.get_template('csunesco/blocks/site_cta.html')
     for user in (None, 'citizen', 'manager'):
         html = template.render(block={'id': 'create-project'}, g=SimpleNamespace(user=user))
         assert 'Propose a project' in html
-        assert 'href="https://app.example/cstoolbox/explorer/start"' in html
+        assert 'href="/citizen-science/project/new"' in html
     html = template.render(block={'id': 'custom', 'cta_label': 'Start <now>',
         'cta_url': '/citizen-science/project/new'})
     assert 'Start &lt;now&gt;' in html
