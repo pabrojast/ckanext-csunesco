@@ -229,3 +229,8 @@ def test_dataset_search_excludes_unpublished_parents_before_solr(catalogue):
     with pytest.raises(tk.ObjectNotFound):
         managed_data.package_show(original, public_context({'user': 'admin'}), {'id': 'pending-approved'})
     assert managed_data.package_show(original, public_context({'user': 'admin'}), {'id': 'approved-approved'})['id'] == 'approved-approved'
+    rows['approved'].status = None
+    db.Session.commit()
+    unknown = managed_data.package_search(lambda ctx, data: data,
+        public_context({'user': 'admin'}), {'rows': 1})
+    assert '-id:"approved-approved"' in unknown['fq']

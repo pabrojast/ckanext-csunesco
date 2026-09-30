@@ -131,7 +131,8 @@ def package_search(original, context, data_dict):
             db.CsProject, db.CsProject.id == db.CsDataSource.project_id,
         ).filter(sa.or_(
             db.CsDataSource.status.is_(None), db.CsDataSource.status != 'approved',
-            db.CsProject.id.is_(None), ~db.public_project_clause()))
+            db.CsProject.id.is_(None), db.CsProject.status.is_(None),
+            ~db.public_project_clause()))
         hidden.extend(package_id for (package_id,) in unpublished.all() if package_id)
     data_dict = dict(data_dict)
     if hidden:
