@@ -139,3 +139,123 @@ def test_private_is_findable_in_datashare_without_changing_partition_identity(mo
     with pytest.raises(tk.ValidationError):
         managed_data._check_update(context, {'id': 'dataset', 'access_level': 'public'})
     assert source.access_level == 'private'
+
+
+@pytest.fixture
+def render_data(monkeypatch):
+    """Render the shipped snippets, including nested CKAN snippet calls."""
+    from pathlib import Path
+    from jinja2 import Environment, FileSystemLoader
+    from markupsafe import Markup
+    from ckan.lib import jinja_extensions
+    env = Environment(autoescape=True,
+        loader=FileSystemLoader(str(Path(__file__).parents[1] / 'templates')),
+        extensions=[jinja_extensions.SnippetExtension])
+    env.globals.update(_=lambda text: text, h=SimpleNamespace(
+        url_for=lambda endpoint, **params: '/' + endpoint + '/' + str(params.get('id', '')),
+        csunesco_block_type=lambda name: SimpleNamespace(label=name),
+        check_access=lambda *a: False))
+    def render(template, **values):
+        return Markup(env.get_template(template).render(**values))
+    monkeypatch.setattr(jinja_extensions.base, 'render_snippet', render)
+    return render
+
+
+@pytest.mark.parametrize('level,view,download', [
+    ('public', True, True), ('private', False, False),
+    ('findable', False, False), ('viewable', True, False), ('restricted', False, False),
+])
+@pytest.mark.parametrize('authorized', [False, True])
+def test_data_blocks_render_only_the_viewers_allowed_operations(render_data, level, view, download, authorized):
+    view, download = view or authorized, download or authorized
+    source = dict(id='source', status='approved', title='Dataset', ckan_package_id='package',
+                  can_view_resources=view, can_download=download, access_level=level)
+    ctx = dict(project={'structure': {}}, data_sources=[source], approved_sources={'source': source})
+    block = dict(id='data', type='builtin_data')
+    html = render_data('csunesco/blocks/builtin_data.html', block=block, ctx=ctx)
+    assert ('data-series-url=' in html) is view
+    assert ('data-observations-url=' in html) is download
+    assert ('href="/csunesco.data_source_csv/' in html) is download
+    assert ('href="/csunesco.data_source_geojson/' in html) is download
+    assert '/dataset.read/package' in html  # Findable metadata stays discoverable.
+    assert ('Measurements from this dataset are restricted' in html) is not view
+    chart = dict(id='chart', type='chart', data_source_id='source', height=260)
+    html = render_data('csunesco/blocks/chart.html', block=chart, ctx=ctx)
+    assert ('data-series-url=' in html) is view
+    assert ('href="/csunesco.data_source_csv/' in html) is download
+    html = render_data('csunesco/blocks/observation_map.html', block=chart, ctx=ctx)
+    assert ('data-observations-url=' in html) is download
+    html = render_data('csunesco/blocks/data_chat.html', block=chart, ctx=ctx)
+    assert ('class="cs-chat-card"' in html) is view
+    assert ('href="/csunesco.data_source_csv/' in html) is download
+
+
+def test_app_configured_charts_keep_settings_and_respect_download_switch(render_data):
+    source = dict(id='source', status='approved', title='Dataset', can_view_resources=True,
+                  can_download=True, ckan_package_id='package')
+    ctx = dict(project={'structure': {}}, data_sources=[source], approved_sources={'source': source})
+    chart = dict(id='configured', type='chart', data_source_id='source', title='Water quality',
+                 mode='numeric', field='ph', chart='bar', agg='max', group_by='site',
+                 bucket='week', range='90d', height=320)
+    block = dict(id='data', type='builtin_data', source_ids=['source'], charts=[chart],
+                 show_downloads=False, show_maps=False)
+    html = render_data('csunesco/blocks/builtin_data.html', block=block, ctx=ctx)
+    for attr, value in {'mode':'numeric', 'field':'ph', 'type':'bar', 'agg':'max',
+                        'group-by':'site', 'bucket':'week', 'range':'90d'}.items():
+        assert 'data-%s="%s"' % (attr, value) in html
+    assert 'data-observations-url=' not in html
+    assert 'href="/csunesco.data_source_csv/' not in html
+    block['source_ids'] = []
+    html = render_data('csunesco/blocks/builtin_data.html', block=block, ctx=ctx)
+    assert 'data-series-url=' not in html
+
+
+@pytest.mark.parametrize('level,metadata,view,download', [
+    ('public', True, True, True), ('private', True, False, False),
+    ('confidential', False, False, False), ('viewable', True, True, False),
+    ('restricted', True, False, False),
+])
+@pytest.mark.parametrize('user', [None, 'outsider', 'authorized'])
+def test_chart_and_download_endpoints_enforce_current_dataset_rights(monkeypatch, level, metadata, view, download, user):
+    from flask import Flask, g, abort
+    from werkzeug.exceptions import NotFound
+    from ckanext.csunesco.logic import views_data
+    from ckanext.csunesco.logic.action import data
+    authorized = user == 'authorized'
+    caps = dict(can_read_metadata=metadata or authorized,
+                can_view_resources=view or authorized, can_download=download or authorized)
+    source = SimpleNamespace(id='source', status='approved', form_id=1, title='Dataset')
+    monkeypatch.setattr(data.db, 'get_data_source', lambda _: source)
+    monkeypatch.setattr(data.db, 'data_source_dictize', lambda _: dict(id='source', status='approved',
+        form_id=1, ckan_package_id='package', access_level=level))
+    monkeypatch.setattr(tk, 'check_access', lambda *a: True)
+    monkeypatch.setattr(tk, '_', lambda text: text)
+    monkeypatch.setattr(tk, 'abort', abort)
+    actions = {'datashare_access_check': lambda context, _: caps,
+               'csunesco_data_source_show': data.csunesco_data_source_show,
+               'csunesco_data_source_series': data.csunesco_data_source_series,
+               'csunesco_data_source_fields': data.csunesco_data_source_fields}
+    monkeypatch.setattr(tk, 'get_action', lambda name: actions[name])
+    monkeypatch.setattr(tk, 'g', g)
+    reads = []
+    def bundle(*args, **kwargs):
+        reads.append(True)
+        return {'dashboard': {'rows': [], 'schema': {}}, 'csv': 'id\n'}
+    monkeypatch.setattr(data_access, 'bundle', bundle)
+    monkeypatch.setattr(data, 'refresh_project_stats', lambda *a: None)
+    with Flask(__name__).test_request_context('/'):
+        g.user = user
+        for endpoint, allowed in [(views_data.data_source_fields, caps['can_view_resources']),
+                                  (views_data.data_source_series, caps['can_view_resources']),
+                                  (views_data.data_source_csv, caps['can_download']),
+                                  (views_data.data_source_geojson, caps['can_download'])]:
+            reads.clear()
+            if allowed:
+                response = endpoint('source')
+                assert response.status_code == 200
+                assert response.headers['Cache-Control'] == 'no-store'
+                assert reads
+            else:
+                with pytest.raises(NotFound):
+                    endpoint('source')
+                assert not reads

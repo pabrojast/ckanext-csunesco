@@ -21,7 +21,10 @@
     </p>
   </section>
 {% endif %}
-{% if source %}
+{% if source and not source.can_view_resources %}
+  <p class="cs-empty">{{ _("Measurements from this dataset are restricted. Access depends on the dataset's sharing permissions.") }}</p>
+{% endif %}
+{% if source and source.can_view_resources %}
   <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}" id="block-{{ block.id }}"
            aria-labelledby="title-{{ block.id }}">
     {% snippet "csunesco/blocks/_heading.html", block=block %}
@@ -42,7 +45,7 @@
            data-label-unavailable="{{ _('This data is temporarily unavailable. The chart will appear here again once its source is back.') }}"
            data-label-error="{{ _('The chart could not be loaded.') }}">
         <noscript>
-          <p class="cs-empty">{{ _("Charts need JavaScript. You can download the data instead.") }}</p>
+          <p class="cs-empty">{{ _("Charts need JavaScript. You can download the data instead.") if source.can_download else _("Charts need JavaScript.") }}</p>
         </noscript>
         <p class="cs-chart-fallback">
           {{ _("The chart appears here.") }}
@@ -53,7 +56,7 @@
          card into whatever follows. #}
       <figcaption class="cs-block-caption cs-chart-caption">
         {% if block.caption %}<span>{{ block.caption }}</span>{% endif %}
-        {% if show_downloads is not defined or show_downloads %}
+        {% if source.can_download and (show_downloads is not defined or show_downloads) %}
         <a class="cs-link" href="{{ h.url_for('csunesco.data_source_csv', id=source.id) }}">
           {{ _("Download the data (CSV)") }}
         </a>

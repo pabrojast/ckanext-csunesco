@@ -24,9 +24,9 @@
     </p>
   </section>
 {% endif %}
-{% if source %}
+{% if source and source.can_view_resources %}
   {% set can_ask = h.check_access('csunesco_data_chat', {'id': source.id}) %}
-  {% set csv_url = h.url_for('csunesco.data_source_csv', id=source.id) %}
+  {% set csv_url = h.url_for('csunesco.data_source_csv', id=source.id) if source.can_download else '' %}
   <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}"
            id="block-{{ block.id }}" aria-labelledby="title-{{ block.id }}">
     {% snippet "csunesco/blocks/_heading.html", block=block %}
@@ -126,12 +126,12 @@
         <span class="cs-chat-disclaimer">
           {{ _("Answers are written by an AI, but every figure is calculated from this project's own observations — the AI never makes the numbers up. Check them before making decisions.") }}
         </span>
-        <a class="cs-link" href="{{ csv_url }}">{{ _("Download the data (CSV)") }}</a>
+        {% if source.can_download %}<a class="cs-link" href="{{ csv_url }}">{{ _("Download the data (CSV)") }}</a>{% endif %}
       </p>
 
       <noscript>
         <p class="cs-empty">
-          {{ _("Asking questions needs JavaScript. You can download the data instead.") }}
+          {{ _("Asking questions needs JavaScript. You can download the data instead.") if source.can_download else _("Asking questions needs JavaScript.") }}
         </p>
       </noscript>
     </div>

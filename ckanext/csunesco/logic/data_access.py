@@ -44,18 +44,24 @@ def published(source):
     return True
 
 
-def permitted(context, source, capability='can_view_resources'):
+def capabilities(context, source):
+    """Resolve the viewer's metadata, chart and download rights together."""
+    denied = dict(can_read_metadata=False, can_view_resources=False, can_download=False)
     source = as_dict(source)
     if not published(source):
-        return False
+        return denied
     package_id = source.get('ckan_package_id')
     if not package_id:
-        return False
+        return denied
     try:
         access = tk.get_action('datashare_access_check')(dict(context), {'id': package_id})
-        return bool(access.get(capability))
+        return {key: bool(access.get(key)) for key in denied}
     except (tk.ObjectNotFound, tk.NotAuthorized, KeyError):
-        return False
+        return denied
+
+
+def permitted(context, source, capability='can_view_resources'):
+    return capabilities(context, source).get(capability, False)
 
 
 def require(context, source, capability='can_view_resources'):

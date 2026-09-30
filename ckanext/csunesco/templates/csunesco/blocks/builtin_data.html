@@ -49,7 +49,7 @@
     {% endfor %}
   {% endif %}
   {% for ds in approved_sources %}
-    {% if block.charts is not defined %}
+    {% if block.charts is not defined and ds.can_view_resources %}
     {% set count_chart = {'id': block.id ~ '-observations-' ~ ds.id, 'type': 'chart', 'data_source_id': ds.id, 'title': _('Observations by month'), 'mode': 'count', 'chart': 'bar', 'agg': 'count', 'group_by': 'auto', 'bucket': 'month', 'range': 'all', 'height': 220} %}
     {% snippet 'csunesco/blocks/chart.html', block=count_chart, ctx=ctx %}
     {% endif %}
@@ -59,7 +59,10 @@
         {# description is sanitized server-side before storage -> safe. #}
         <div class="cs-rich-text">{{ ds.description | safe }}</div>
       {% endif %}
-      {% if block.show_maps is not defined or block.show_maps %}
+      {% if not ds.can_view_resources %}
+      <p class="cs-empty">{{ _("Measurements from this dataset are restricted. Access depends on the dataset's sharing permissions.") }}</p>
+      {% endif %}
+      {% if ds.can_download and (block.show_maps is not defined or block.show_maps) %}
       <div class="cs-map cs-data-map"
            data-observations-url="{{ h.url_for('csunesco.data_source_geojson', id=ds.id) }}"
            role="img" aria-label="{{ _('Map of the observations collected by this project') }}">
@@ -76,12 +79,14 @@
             {{ _("View dataset on IHP-WINS") }}
           </a>
         {% endif %}
+        {% if ds.can_download %}
         <a class="cs-link" href="{{ h.url_for('csunesco.data_source_csv', id=ds.id) }}">
           {{ _("Download CSV") }}
         </a>
         <a class="cs-link" href="{{ h.url_for('csunesco.data_source_geojson', id=ds.id) }}">
           {{ _("GeoJSON") }}
         </a>
+        {% endif %}
       </p>
       {% endif %}
     </article>

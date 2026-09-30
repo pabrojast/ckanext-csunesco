@@ -37,11 +37,19 @@
               {% if source.project_slug %}
                 <a href="{{ h.url_for('csunesco.project_landing', slug=source.project_slug) }}">
                   {{ source.project_title or _("Project page") }}
-                </a> ·
+                </a>
               {% endif %}
-              <a href="{{ h.url_for('csunesco.data_source_csv', id=source.id) }}">CSV</a> ·
+              {% if source.ckan_package_id %}
+              · <a href="{{ h.url_for('dataset.read', id=source.ckan_package_id) }}">{{ _("View dataset on IHP-WINS") }}</a>
+              {% endif %}
+              {% if source.can_download %}
+              · <a href="{{ h.url_for('csunesco.data_source_csv', id=source.id) }}">CSV</a> ·
               <a href="{{ h.url_for('csunesco.data_source_geojson', id=source.id) }}">GeoJSON</a>
+              {% endif %}
             </p>
+            {% if not source.can_view_resources %}
+              <p class="cs-hint">{{ _("Measurements from this dataset are restricted. Access depends on the dataset's sharing permissions.") }}</p>
+            {% endif %}
           </li>
         {% endfor %}
       </ul>

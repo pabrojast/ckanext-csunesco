@@ -17,7 +17,7 @@
     </p>
   </section>
 {% endif %}
-{% if source %}
+{% if source and source.can_download %}
   <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}" id="block-{{ block.id }}"
            aria-labelledby="title-{{ block.id }}">
     {% snippet "csunesco/blocks/_heading.html", block=block %}

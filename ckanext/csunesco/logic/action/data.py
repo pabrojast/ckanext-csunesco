@@ -375,11 +375,14 @@ def csunesco_data_source_list(context, data_dict):
     if status:
         query = query.filter(db.CsDataSource.status == status)
     rows = query.order_by(db.CsDataSource.created.desc(), db.CsDataSource.id).all()
-    visible = [row for row in rows if (row.status != 'approved' and privileged) or
-               data_access.permitted(context, row, 'can_read_metadata')]
+    visible = []
+    for row in rows:
+        access = data_access.capabilities(context, row)
+        if (row.status != 'approved' and privileged) or access['can_read_metadata']:
+            visible.append(dict(db.data_source_dictize(row), **access))
     return {
         'count': len(visible),
-        'results': [db.data_source_dictize(row) for row in visible[offset:offset + limit]],
+        'results': visible[offset:offset + limit],
         'limit': limit,
         'offset': offset,
     }
@@ -396,9 +399,10 @@ def csunesco_data_source_show(context, data_dict):
     if (data_source.status != 'approved'
             and not _can_view_unapproved(context, data_source)):
         raise tk.NotAuthorized(tk._('Not authorized to view this data source'))
-    if data_source.status == 'approved':
-        data_access.require(context, data_source, 'can_read_metadata')
-    return db.data_source_dictize(data_source)
+    access = data_access.capabilities(context, data_source)
+    if data_source.status == 'approved' and not access['can_read_metadata']:
+        raise tk.ObjectNotFound(tk._('Data source not found'))
+    return dict(db.data_source_dictize(data_source), **access)
 
 
 # ---------------------------------------------------------------------------

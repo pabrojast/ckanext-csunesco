@@ -152,6 +152,22 @@ def test_public_sources_stay_separate_from_editor_preview(catalogue):
     assert {s['status'] for s in preview['data_sources']} == {'approved', 'pending', 'rejected'}
 
 
+@pytest.mark.parametrize('metadata,view,download', [
+    (True, True, True), (True, True, False), (True, False, False), (False, False, False),
+])
+def test_source_catalogue_carries_current_viewer_rights_into_public_blocks(catalogue, metadata, view, download):
+    rows, actions = catalogue
+    caps = dict(can_read_metadata=metadata, can_view_resources=view, can_download=download)
+    actions['datashare_access_check'] = lambda *a: caps
+    project = db.project_dictize(rows['approved'])
+    context = page_render.build_context({'user': 'member'}, project, [{'type': 'builtin_data'}])
+    assert len(context['data_sources']) == int(metadata)
+    assert len(context['approved_sources']) == int(metadata)
+    if metadata:
+        source = context['data_sources'][0]
+        assert {key: source[key] for key in caps} == caps
+
+
 @pytest.mark.parametrize('state', ['pending', 'draft', 'rejected', 'archived', 'withdrawn'])
 def test_source_proxy_cannot_read_an_unpublished_project(catalogue, state):
     from ckanext.csunesco.logic import data_access
