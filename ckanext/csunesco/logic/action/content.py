@@ -376,6 +376,10 @@ def csunesco_content_create(context, data_dict):
         raise tk.NotAuthorized(
             tk._('You must be logged in to add content'))
     tk.check_access('csunesco_content_create', context, data_dict)
+    from ckanext.csunesco.logic import deliveries
+    receipt, delivered = deliveries.begin(context, data_dict, 'csunesco_content_create')
+    if delivered is not None:
+        return delivered
 
     data_dict = data_dict or {}
     project, organization = _resolve_scope(data_dict)
@@ -449,8 +453,11 @@ def csunesco_content_create(context, data_dict):
     content.created = now
     content.modified = now
     model.Session.add(content)
+    model.Session.flush()
+    result = db.content_dictize(content)
+    deliveries.complete(receipt, result)
     model.Session.commit()
-    return db.content_dictize(content)
+    return result
 
 
 def csunesco_content_update(context, data_dict):

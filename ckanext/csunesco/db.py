@@ -298,9 +298,20 @@ cs_chat_usage_table = Table(
 )
 
 
+# Private bridge receipts, committed with the created domain object.
+cs_delivery_table = Table(
+    'cs_delivery', metadata,
+    Column('delivery_id', types.UnicodeText, primary_key=True),
+    Column('action', types.UnicodeText, nullable=False),
+    Column('checksum', types.UnicodeText, nullable=False),
+    Column('result_json', types.Text, nullable=False),
+    Column('created', types.DateTime, default=_utcnow),
+)
+
 # All tables this plugin owns; ``ensure_tables`` only ever touches these so we
 # never accidentally reach for core CKAN tables.
 _ALL_TABLES = [
+    cs_delivery_table,
     cs_project_table,
     cs_project_member_table,
     cs_content_table,

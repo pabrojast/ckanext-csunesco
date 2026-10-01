@@ -339,6 +339,10 @@ def csunesco_project_request_create(context, data_dict):
         raise tk.NotAuthorized(
             tk._('You must be logged in to request a project'))
     tk.check_access('csunesco_project_request_create', context, data_dict)
+    from ckanext.csunesco.logic import deliveries
+    receipt, delivered = deliveries.begin(context, data_dict, 'csunesco_project_request_create')
+    if delivered is not None:
+        return delivered
 
     schema = cs_schema.project_request_schema()
     # Keep only whitelisted keys so navl never reports "unexpected field"; the
@@ -417,8 +421,11 @@ def csunesco_project_request_create(context, data_dict):
     if project.status == 'pending':
         from ckanext.csunesco.logic import approval_events
         approval_events.record(project)
+    model.Session.flush()
+    result = db.project_dictize(project)
+    deliveries.complete(receipt, result)
     model.Session.commit()
-    return db.project_dictize(project)
+    return result
 
 
 # Form field -> ``cs_project`` column for the fields an edit may change.

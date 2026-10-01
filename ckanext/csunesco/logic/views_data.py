@@ -118,13 +118,7 @@ def data_source_geojson(id):
         geojson = ofform.rows_to_geojson(data)
     except ofform.OfformError:
         return _upstream_error(UPSTREAM_UNAVAILABLE)
-    # Piggyback: the freshly fetched data keeps the project's observation
-    # counters current (every landing-page map view refreshes them). Fail-soft.
-    try:
-        from ckanext.csunesco.logic.action.data import refresh_project_stats
-        refresh_project_stats(source['project_id'])
-    except Exception:
-        log.warning('csunesco: stats refresh from proxy failed')
+    # Statistics are refreshed by the periodic snapshot worker.
     response = Response(json.dumps(geojson), mimetype='application/json')
     response.headers['Cache-Control'] = _CACHE_CONTROL
     return response
