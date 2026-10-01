@@ -183,15 +183,25 @@ def link_projects(context, data):
     links = data.get('projects')
     if not isinstance(links, list):
         raise tk.ValidationError({'projects': ['Expected project mappings']})
+    from ckanext.csunesco.logic.editorial_owner import project_app_id
+    existing_links = {row.id: project_app_id(row) for row in db.Session.query(db.CsProject).all()}
+    prepared = []
     for link in links:
+        if not isinstance(link, dict):
+            raise tk.ValidationError({'projects': ['Invalid project mapping']})
         project = db.get_project(link.get('ckan_id'))
         app_id = link.get('app_project_id')
-        if not project or not isinstance(app_id, int) or app_id < 1:
+        if not project or type(app_id) is not int or app_id < 1:
             raise tk.ValidationError({'projects': ['Invalid project mapping']})
         extras = db._load_json(project.extras, {})
-        existing = portal.metadata(project).get('app_project_id') or extras.get('_editor_app_project_id')
+        existing = existing_links.get(project.id)
         if existing and existing != app_id:
             raise tk.ValidationError({'projects': ['Project already linked to another app record']})
+        if any(value == app_id and key != project.id for key, value in existing_links.items()):
+            raise tk.ValidationError({'projects': ['App record already linked to another project']})
+        existing_links[project.id] = app_id
+        prepared.append((project, extras, app_id))
+    for project, extras, app_id in prepared:
         extras['_editor_app_project_id'] = app_id
         project.extras = portal.canonical(extras); db.Session.add(project)
     db.Session.commit()

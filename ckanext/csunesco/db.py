@@ -1148,6 +1148,7 @@ def project_dictize(project):
             result.setdefault(key, value)
         portal = extras.get('_portal') or {}
         result['portal_managed'] = bool(portal.get('app_project_id'))
+        result['portal_published'] = bool(portal.get('published_revision'))
         result['app_project_id'] = portal.get('app_project_id')
     return result
 

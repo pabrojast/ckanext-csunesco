@@ -474,6 +474,7 @@ def csunesco_project_update(context, data_dict):
     project = db.get_project(data_dict.get('id') or data_dict.get('slug'))
     if project is None:
         raise tk.ObjectNotFound(tk._('Project not found'))
+    require_bridge(context, project)
     from ckanext.csunesco.logic import portal
     if portal.managed(project):
         raise tk.NotAuthorized('Save a project publication in the CS Toolbox')

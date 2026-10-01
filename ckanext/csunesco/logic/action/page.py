@@ -194,6 +194,7 @@ def csunesco_project_page_update(context, data_dict):
     tk.check_access('csunesco_project_page_update', context, data_dict)
     data_dict = data_dict or {}
     project = _require_project(data_dict)
+    require_bridge(context, project)
     from ckanext.csunesco.logic import portal
     if portal.managed(project) and not context.get('csunesco_portal_sync'):
         raise tk.NotAuthorized('Edit this project page in the CS Toolbox')
@@ -268,6 +269,7 @@ def csunesco_project_page_submit(context, data_dict):
     tk.check_access('csunesco_project_page_update', context, data_dict)
     data_dict = data_dict or {}
     project = _require_project(data_dict)
+    require_bridge(context, project)
     if not auth.can_manage_project(context, project.id):
         raise tk.NotAuthorized(tk._('Not authorized to edit this page'))
 

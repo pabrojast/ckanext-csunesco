@@ -52,23 +52,7 @@
     {% endif %}
     {% if project.logo_url %}<div class="cs-project-logo-frame"><img class="cs-project-logo" src="{{ project.logo_url }}" alt="{{ project.title }}" style="object-position: {{ project.logo_focal_x if project.get('logo_focal_x') is not none else 50 }}% {{ project.logo_focal_y if project.get('logo_focal_y') is not none else 50 }}%;{% if project.logo_zoom and project.logo_zoom > 100 %}transform:scale({{ project.logo_zoom / 100 }});transform-origin: {{ project.logo_focal_x if project.get('logo_focal_x') is not none else 50 }}% {{ project.logo_focal_y if project.get('logo_focal_y') is not none else 50 }}%;{% endif %}"></div>{% endif %}
     <h1 id="cs-project-title">{{ project.title }}</h1>
-    {% if project.short_description %}
-      <p class="cs-project-hero-desc">{{ project.short_description | striptags }}</p>
-    {% endif %}
   </section>
-
-  {# ---- The project's own details, from the project form. OUTSIDE the block
-        loop for the same reason the hero is: this is the project's identity,
-        not composed page content, and a manager must not be able to hide the
-        countries or the contact address by reordering their page. Renders
-        nothing when the project has none of these fields set. --------- #}
-  {% if not project.portal_managed %}{% snippet "csunesco/snippets/project_facts.html", project=project %}{% endif %}
-
-  {# ---- Phase-2 structure mirror (spec section 7), pushed by the CS Toolbox
-        app. Also OUTSIDE the block loop: audience filtering (public vs
-        participants-only) is enforced by the snippet itself and must not be
-        bypassable by page composition. Renders nothing without data. ---- #}
-  {% if not project.portal_managed %}{% snippet "csunesco/snippets/project_structure.html", project=project %}{% endif %}
 
   {# ---- Trusted toggle (sysadmin-only policy lever, P2): trusted projects
         publish news/events without review. Deliberately OUTSIDE the block

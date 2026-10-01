@@ -253,8 +253,5 @@ def test_structure_snippet_gates_the_participants_only_fields():
         source = handle.read()
     assert "csunesco_field_audience_ok('timeframe_start'" in source
     assert "csunesco_field_audience_ok('local_govt_engagement'" in source
-    # And the landing actually includes the snippet outside the block loop.
-    landing = os.path.join(
-        PKG_DIR, 'templates', 'csunesco', 'project_landing.html')
-    with open(landing, 'r') as handle:
-        assert 'snippets/project_structure.html' in handle.read()
+    # Public project composition is exercised with actual templates and roles
+    # in test_project_page_composition; it no longer inserts this legacy snippet.

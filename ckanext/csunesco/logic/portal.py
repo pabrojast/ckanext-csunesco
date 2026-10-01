@@ -670,6 +670,7 @@ def preview_view(ticket):
                                if k not in constants.FIELD_AUDIENCE}
         public['workplan'] = []
         public['portal_managed'] = True
+        public['portal_published'] = True  # Render the authorized candidate, not the old page.
         ctx = page_render.build_context({'user': None}, public, candidate['blocks'],
                                        has_region=bool(public.get('region_geojson')), can_manage=False, preview=True)
         ctx['contacts'] = {k: candidate.get('project', {}).get(k) for k in ('contact_person', 'contact_email')}
@@ -715,6 +716,7 @@ def candidate_preview(project_dict, page):
     if candidate:
         project_dict.update(_public_project(candidate))
         project_dict['portal_managed'] = True
+        project_dict['portal_published'] = True
         project_dict['structure'] = {k: v for k, v in candidate.get('structure', {}).items()
                                      if k not in constants.FIELD_AUDIENCE}
         project_dict['workplan'] = []

@@ -8,10 +8,23 @@ def enabled():
     return tk.config.get('ckanext.csunesco.editorial_owner') == 'app'
 
 
-def require_bridge(context):
+def project_app_id(project):
+    """Verified editor linkage is independent of an approved publication."""
+    from ckanext.csunesco.logic import portal
+    if project is None:
+        return None
+    return (portal.metadata(project).get('app_project_id')
+            or db._load_json(project.extras, {}).get('_editor_app_project_id'))
+
+
+def project_enabled(project):
+    return enabled() or bool(project_app_id(project))
+
+
+def require_bridge(context, project=None):
     # CKAN skips normal auth functions for sysadmins, so this check belongs in
     # the action body. Only internal Python callers can set this context flag.
-    if enabled() and not context.get('csunesco_portal_sync'):
+    if project_enabled(project) and not context.get('csunesco_portal_sync'):
         raise tk.NotAuthorized('Edit this information in the Citizen Science app')
 
 
@@ -20,9 +33,8 @@ def editor_url(scope='site', key='home', section='portal'):
     if not base:
         return None
     if scope == 'project':
-        from ckanext.csunesco.logic import portal
         row = db.get_project(key)
-        app_id = (portal.metadata(row).get('app_project_id') or db._load_json(row.extras, {}).get('_editor_app_project_id')) if row else None
+        app_id = project_app_id(row)
         if app_id:
             return '%s/projects/%s/space/%s' % (base, int(app_id), section)
         return base + '/explorer/projects/' + quote(str(key), safe='')
@@ -44,16 +56,16 @@ def editor_link(endpoint, **kwargs):
     # New proposals stay in CKAN, independently of subsequent app editing.
     if endpoint == 'csunesco.project_new':
         return tk.url_for(endpoint, **kwargs)
-    if not enabled():
-        return tk.url_for(endpoint, **kwargs)
-    if endpoint == 'csunesco.site_page_edit':
-        return editor_url()
-    if endpoint == 'csunesco.initiative_page_edit':
-        return editor_url('initiative', kwargs['name'])
+    if endpoint == 'csunesco.site_page_edit' and enabled():
+        return editor_url() or tk.url_for(endpoint, **kwargs)
+    if endpoint == 'csunesco.initiative_page_edit' and enabled():
+        return editor_url('initiative', kwargs['name']) or tk.url_for(endpoint, **kwargs)
     if endpoint == 'csunesco.content_edit':
         content = db.get_content(kwargs['id'])
-        if content and content.project_id:
-            return editor_url('project', content.project_id, 'news')
+        if content and content.project_id and project_enabled(db.get_project(content.project_id)):
+            return editor_url('project', content.project_id, 'news') or tk.url_for(endpoint, **kwargs)
         return tk.url_for(endpoint, **kwargs)
     section = {'csunesco.project_edit': 'details', 'csunesco.project_page_edit': 'portal', 'csunesco.content_new': 'news'}.get(endpoint)
-    return editor_url('project', kwargs['slug'], section) if section else tk.url_for(endpoint, **kwargs)
+    if section and project_enabled(db.get_project(kwargs['slug'])):
+        return editor_url('project', kwargs['slug'], section) or tk.url_for(endpoint, **kwargs)
+    return tk.url_for(endpoint, **kwargs)

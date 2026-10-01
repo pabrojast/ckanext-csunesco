@@ -43,6 +43,49 @@ _CONTENT_BLOCKS = frozenset(('builtin_news_events', 'content_list'))
 BUILTIN_CONTENT_LIMIT = 6
 
 
+def app_publication(project):
+    return bool(project.get('portal_published', project.get('portal_managed')))
+
+
+def project_blocks(project, blocks):
+    """Compose legacy facts inside the page, without changing stored revisions.
+
+    A hidden block counts as present. Empty and app-published compositions are
+    deliberate and must not acquire extra sections.
+    """
+    result = list(blocks or [])
+    if not result or app_publication(project):
+        return result
+    from ckanext.csunesco.logic import portal
+    kinds = {block.get('type') for block in result}
+    if 'builtin_about' not in kinds and any(project.get(key) for key in (
+            'short_description', 'landing_content', 'countries', 'start_date',
+            'end_date', 'biosphere_reserve', 'open_participation', 'stakeholders')):
+        result.insert(0, {'id': 'about', 'type': 'builtin_about'})
+    if 'project_facts' not in kinds and any(project.get(key) for key in (
+            portal.LEADERSHIP_FIELDS + ('contact_person', 'contact_email'))):
+        result.append({'id': 'project-facts', 'type': 'project_facts'})
+    if 'project_structure' not in kinds and any(project.get(key) for key in (
+            'structure', 'workplan', 'target_group', 'how_to_participate')):
+        result.append({'id': 'project-structure', 'type': 'project_structure'})
+    return result
+
+
+def project_display_data(project):
+    """Resolve old aliases once; explicit empty app values remain empty."""
+    result = dict(project)
+    result['_app_publication'] = app_publication(project)
+    structure = dict(project.get('structure') or {})
+    if not app_publication(project):
+        for old, new in (('start_date', 'timeframe_start'), ('end_date', 'timeframe_end'),
+                         ('how_to_participate', 'how_to_participate'),
+                         ('target_group', 'target_groups')):
+            if new not in structure and project.get(old):
+                structure[new] = [project[old]] if old == 'target_group' else project[old]
+    result['structure'] = structure
+    return result
+
+
 def build_context(context, project, blocks, has_region=False,
                   can_manage=False, preview=False, scope=None,
                   initiative=None):
@@ -58,6 +101,8 @@ def build_context(context, project, blocks, has_region=False,
     project-only, so a forged one in stored JSON simply resolves to nothing.
     """
     types = {block.get('type') for block in blocks or []}
+    if project is not None:
+        project = project_display_data(project)
     # Public blocks reflect publication, even for a moderator. Explicit draft
     # previews retain the editor's access to pending sources and content.
     listing_context = context if preview else public_context(context)
@@ -102,9 +147,8 @@ def build_context(context, project, blocks, has_region=False,
     ctx['contacts'] = {}
     if project is not None and context.get('user'):
         from ckanext.csunesco import db
-        from ckanext.csunesco.logic import portal
         stored = db.get_project(project['id'])
-        if stored and portal.managed(stored):
+        if stored and app_publication(project):
             ctx['contacts'] = db._load_json(stored.extras, {}).get('_portal_contacts', {})
         else:
             ctx['contacts'] = {k: project.get(k) for k in ('contact_person', 'contact_email')}

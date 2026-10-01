@@ -1,11 +1,15 @@
+{% set selected = namespace(fields=[]) %}
+{% for field in ['lead_partner_type', 'lead_organisation', 'other_organisations', 'funding_body', 'funding_programme', 'international_frameworks', 'project_document_url'] %}
+  {% if (block.fields is not defined or field in block.fields) and ctx.project.get(field) %}{% set selected.fields = selected.fields + [field] %}{% endif %}
+{% endfor %}
+{% if selected.fields or ctx.contacts.contact_person or ctx.contacts.contact_email %}
 <section class="cs-card cs-project-selected-fields">
   <h2>{{ block.title or _('Leadership & funding') }}</h2>
   <dl class="cs-portal-info-grid">
-  {% for field in ['lead_partner_type', 'lead_organisation', 'other_organisations', 'funding_body', 'funding_programme', 'international_frameworks', 'project_document_url'] %}
-    {% if (block.fields is not defined or field in block.fields) and ctx.project.get(field) %}
+  {% for field in selected.fields %}
       <div><dt>{{ _(field | replace('_', ' ') | capitalize) }}</dt><dd>{% if field == 'project_document_url' %}<a href="{{ ctx.project.get(field) }}" target="_blank" rel="noopener noreferrer">{{ _('Project document') }}</a>{% else %}{{ h.csunesco_portal_field_value(ctx.project.get(field)) }}{% endif %}</dd></div>
-    {% endif %}
   {% endfor %}
   {% if ctx.contacts.contact_person or ctx.contacts.contact_email %}<div><dt>{{ _('Contact') }}</dt><dd>{{ ctx.contacts.contact_person or '' }}{% if ctx.contacts.contact_email %} <a href="mailto:{{ ctx.contacts.contact_email }}">{{ ctx.contacts.contact_email }}</a>{% endif %}</dd></div>{% endif %}
   </dl>
 </section>
+{% endif %}

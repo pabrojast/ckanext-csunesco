@@ -153,6 +153,7 @@ def csunesco_project_structure_upsert(context, data_dict):
     project = db.get_project(key)
     if project is None:
         raise tk.ObjectNotFound(tk._('Project not found'))
+    require_bridge(context, project)
 
     from ckanext.csunesco.logic import portal
     if portal.managed(project):

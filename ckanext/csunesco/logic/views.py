@@ -308,6 +308,7 @@ def project_landing(slug):
     # exactly the section order this page had before it became block-driven --
     # so there is one rendering path, not a default template plus a custom one.
     blocks = _published_blocks(project['id'])
+    blocks = page_render.project_blocks(project, blocks)
     blocks = page_render.visible_blocks(blocks)
     ctx = page_render.build_context(
         _context(), project, blocks,
@@ -766,17 +767,11 @@ def project_new():
 
 
 def project_edit(slug):
-    from ckanext.csunesco.logic import editorial_owner
-    if editorial_owner.enabled():
-        return editorial_owner.redirect("project", slug, "details")
-    from ckanext.csunesco.logic import portal
     from ckanext.csunesco import db
+    from ckanext.csunesco.logic import editorial_owner
     row = db.get_project(slug)
-    if row and portal.managed(row):
-        destination = portal.editor_url(row)
-        if destination:
-            return tk.redirect_to(destination)
-        return tk.abort(503, 'Project editor is not configured')
+    if editorial_owner.project_enabled(row):
+        return editorial_owner.redirect('project', slug, 'details')
 
     """GET the staged form pre-filled for ``slug``; POST saves the changes.
 

@@ -168,16 +168,9 @@ def _take_drops(project_id):
 
 def project_page_edit(slug):
     from ckanext.csunesco.logic import editorial_owner
-    if editorial_owner.enabled():
-        return editorial_owner.redirect('project', slug)
-    from ckanext.csunesco.logic import portal
-    from ckanext.csunesco import db
     row = db.get_project(slug)
-    if row and portal.managed(row):
-        destination = portal.editor_url(row)
-        if destination:
-            return tk.redirect_to(destination)
-        return tk.abort(503, 'Project editor is not configured')
+    if editorial_owner.project_enabled(row):
+        return editorial_owner.redirect('project', slug, 'portal')
 
     """GET the page editor for ``slug``; POST applies one operation and saves."""
     if not tk.g.user:
@@ -358,6 +351,7 @@ def project_page_preview(slug):
     # cannot check what they switched off without switching it back on.
     blocks = [block for block in _initial_blocks(page)
               if block.get('type') in blocks_module.BLOCK_TYPES]
+    blocks = page_render.project_blocks(project, blocks)
     ctx = page_render.build_context(
         _context(), project, blocks, has_region=has_region,
         can_manage=True, preview=True)

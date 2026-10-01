@@ -607,3 +607,24 @@ def test_preview_placeholder_does_not_fetch_remote_media(store):
     payload['blocks'].append(blocks.normalize_block({'type': 'image', 'items': [{'url': '/csunesco/images/preview-unavailable.svg'}]}))
     result = snapshots.materialize_media(project, payload)
     assert result['blocks'][-1]['items'][0]['url'] == '/csunesco/images/preview-unavailable.svg'
+
+
+def test_first_app_submission_preserves_old_public_composition_until_approval(store):
+    from ckanext.csunesco.logic import page_render
+    project, _ = store
+    project.short_description = 'Existing approved description'
+    project.project_document_url = 'https://example.test/approved-report'
+    db.Session.commit()
+    candidate = envelope(project)
+    next(b for b in candidate['payload']['blocks'] if b['type'] == 'builtin_about')['html'] = '<p>New approved description</p>'
+    candidate['checksum'] = portal.checksum(candidate['payload'])
+    result = portal.apply(ctx(), candidate)
+    old = db.project_dictize(project)
+    assert old['portal_managed'] and not old['portal_published']
+    composed = page_render.project_blocks(old, blocks.default_blocks())
+    assert any(b['type'] == 'project_facts' for b in composed)
+    assert page_render.project_display_data(old)['short_description'] == 'Existing approved description'
+    page_actions.csunesco_project_page_approve(ctx('reviewer'), {'project_id': project.id, 'draft_hash': result['draft_hash']})
+    approved = db.project_dictize(project)
+    assert approved['portal_published']
+    assert page_render.project_blocks(approved, candidate['payload']['blocks']) == candidate['payload']['blocks']
