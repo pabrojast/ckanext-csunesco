@@ -68,6 +68,8 @@ def _not_authorized_response():
 
 def _redirect_dashboard(tab):
     """PRG back to the dashboard, re-opening ``tab`` via a URL fragment."""
+    if tab == 'managers':
+        return redirect(tk.h.url_for('csunesco.manager_reviews'))
     url = tk.h.url_for('csunesco.admin_dashboard')
     return redirect('{0}#tab-{1}'.format(url, tab))
 
@@ -255,16 +257,8 @@ def admin_dashboard():
             import ckan.model as model
             for profile in cs_db.pending_managers():
                 user = model.User.get(profile.user_id)
-                pending_managers.append({
-                    'username': user.name if user else profile.user_id,
-                    'fullname': getattr(user, 'fullname', None),
-                    'email': getattr(user, 'email', None) if user else None,
-                    'org_name_requested': profile.org_name_requested,
-                    'org_id': profile.org_id,
-                    'org_type': profile.org_type,
-                    'org_title': profile.org_title,
-                    'org_role': profile.org_role,
-                })
+                from ckanext.csunesco.logic.onboarding import profile_dict
+                pending_managers.append(profile_dict(user, profile))
         except Exception:
             log.warning('csunesco: pending manager list unavailable')
 
@@ -395,7 +389,10 @@ def join_reject(project_id, user_id):
 
 
 def manager_approve(username):
-    return _decide('csunesco_manager_approve', {'username': username},
+    return _decide('csunesco_manager_approve', {'username': username,
+                   'reason': (request.form.get('reason') or '').strip() or None,
+                   'organization_id': request.form.get('organization_id'),
+                   'organization_role': request.form.get('organization_role')},
                    'managers', tk._('Manager account approved.'))
 
 
@@ -620,3 +617,21 @@ def page_reject(project_id):
                    {'project_id': project_id, 'reason': reason},
                    'pages', tk._('Project page sent back to its author.'),
                    gone_message=tk._('That page is no longer awaiting review — its author has edited it again.'))
+
+
+def manager_reviews():
+    if not _is_sysadmin():
+        return _not_authorized_response()
+    status = request.args.get('status', 'pending')
+    q = request.args.get('q', '').strip()[:100]
+    offset = _positive_int(request.args.get('offset'), 0)
+    try:
+        result = tk.get_action('csunesco_manager_list')(_context(), {
+            'status': status, 'q': q, 'offset': offset, 'limit': PANEL_PAGE_SIZE})
+    except tk.ValidationError:
+        tk.abort(400, tk._('Invalid filter'))
+    from ckanext.csunesco.logic.registration import _organization_options
+    return tk.render('csunesco/manager_reviews.html', extra_vars={
+        'result': result, 'status': status, 'q': q, 'offset': offset,
+        'page_size': PANEL_PAGE_SIZE,
+        'organizations': _organization_options()})

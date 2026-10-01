@@ -2,6 +2,9 @@
 import ckan.plugins.toolkit as tk
 
 MESSAGES = {
+    'language_invalid': 'Choose a supported language and keep other language below 65 characters.',
+    'logo_invalid': 'Use a PNG, JPG or WebP image, at most 2 MB.',
+    'motivation_invalid': 'Tell us your motivation in 20 to 500 characters.',
     'required': 'Please complete the required fields.',
     'email_invalid': 'Enter a valid email address.',
     'username_invalid': 'Use at least 2 characters: lowercase letters, numbers, hyphens or underscores.',

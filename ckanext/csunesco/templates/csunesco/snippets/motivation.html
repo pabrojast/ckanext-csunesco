@@ -1,0 +1,8 @@
+<fieldset class="cs-register-fieldset cs-motivation">
+  <legend><span class="cs-step-number">4</span> {{ _("Motivation") }}</legend>
+  <label for="cs-motivation">{{ _("Why do you want to join?") }}</label>
+  <p class="cs-hint">{% if manager_form %}{{ _("In a few lines, tell us why you would like to run a citizen science project, what it would be about and what your role would be.") }}{% else %}{{ _("Tell us why you would like to take part and how you would like to contribute. Project managers will see this when reviewing your request.") }}{% endif %}</p>
+  <textarea id="cs-motivation" name="motivation" rows="5" minlength="20" maxlength="500" required aria-describedby="cs-motivation-hint cs-motivation-count">{{ data.motivation or '' }}</textarea>
+  <p id="cs-motivation-hint" class="cs-hint" data-default="{{ _('20 to 500 characters.') }}" data-error="{{ _('Tell us your motivation in 20 to 500 characters.') }}">{{ _("20 to 500 characters.") }}</p>
+  <p id="cs-motivation-count" class="cs-hint cs-character-count" aria-live="polite"><span data-motivation-count>{{ (data.motivation or '')|length }}</span> / 500</p>
+</fieldset>

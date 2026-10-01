@@ -16,13 +16,14 @@ Manager approval: Project Manager accounts are double-gated (email
 verification, then a sysadmin decision). ``csunesco_manager_approve`` is the
 step that activates the account AND materializes the declared organization --
 creating it when the manager asked for a new one, then adding them as a member
-with the derived capacity (new org -> admin, existing org -> editor).
+with the derived capacity (new org -> admin, existing org -> requested Member/Admin).
 ``csunesco_manager_reject`` records the decline and leaves the account pending
 (never deleted: the decision is reversible and the email stays reachable).
 """
 import datetime
 import logging
 import re
+import secrets
 
 import ckan.plugins.toolkit as tk
 import ckan.model as model
@@ -41,6 +42,10 @@ def csunesco_register_citizen_scientist(context, data_dict):
     """Register a Citizen Scientist account (server-to-server, idempotent)."""
     tk.check_access('csunesco_register_citizen_scientist', context, data_dict)
     data_dict = data_dict or {}
+    verification_required = tk.asbool(data_dict.get('require_email_verification', False))
+    motivation = str(data_dict.get('motivation') or '').strip()
+    if verification_required and not 20 <= len(motivation) <= 500:
+        raise tk.ValidationError(problem('motivation_invalid', 'motivation'))
 
     email = (data_dict.get('email') or '').strip()
     username = (data_dict.get('username') or '').lower().strip()
@@ -66,7 +71,8 @@ def csunesco_register_citizen_scientist(context, data_dict):
             .first()
         )
         if profile is not None:
-            if (existing_user.state != 'active'
+            if ((existing_user.state != 'active' and not (existing_user.state == 'pending'
+                    and profile.profile_type == 'citizen' and profile.verification_token and not profile.email_verified))
                     or str(existing_user.email or '').lower() != email.lower()
                     or not existing_user.validate_password(password)):
                 raise tk.ValidationError(problem('username_taken', 'username'))
@@ -75,8 +81,10 @@ def csunesco_register_citizen_scientist(context, data_dict):
                 'username': existing_user.name,
                 'id': existing_user.id,
                 'existed': True,
+                'verification_pending': not profile.email_verified,
             }
 
+    verification_token = secrets.token_urlsafe(32) if verification_required else None
     try:
         new_user = create_citizen_scientist(context, {
             'email': email,
@@ -84,18 +92,26 @@ def csunesco_register_citizen_scientist(context, data_dict):
             'fullname': fullname,
             'password': password,
             'country': country,
+            'motivation': motivation,
+            'registration_project_slug': data_dict.get('project_slug'),
+            'language': str(data_dict.get('language') or ''),
+            'language_other': str(data_dict.get('language_other') or ''),
             'date_of_birth': date_of_birth,
             'nationality': nationality,
             'gender': gender,
             # Optional for this trusted action: ofform already enforces terms
             # before sending its legacy payload, which must remain unchanged.
             'terms_accepted': terms_accepted,
-        })
+        }, verification_token=verification_token)
     except tk.ValidationError as exc:
         # Mantener los códigos públicos y ocultar detalles internos.
         raise tk.ValidationError(from_validation(exc))
 
+    if verification_token:
+        from ckanext.csunesco.logic.registration import _send_verification_email
+        _send_verification_email(fullname or username, email, verification_token)
     return {
+        'verification_pending': bool(verification_token),
         'status': 'success',
         'username': new_user['name'],
         'id': new_user['id'],
@@ -122,6 +138,7 @@ def _resolve_manager_profile(data_dict):
     profile = (
         model.Session.query(db.CsCitizenScientist)
         .filter(db.CsCitizenScientist.user_id == user.id)
+        .with_for_update()
         .first()
     )
     if profile is None or profile.profile_type != 'manager':
@@ -143,20 +160,8 @@ def _org_slug(title):
 
 
 def _profile_dictize(user, profile):
-    return {
-        'user_id': user.id,
-        'username': user.name,
-        'fullname': user.fullname,
-        'email': user.email,
-        'profile_type': profile.profile_type,
-        'org_id': profile.org_id,
-        'org_name_requested': profile.org_name_requested,
-        'org_type': profile.org_type,
-        'org_title': profile.org_title,
-        'org_role': profile.org_role,
-        'email_verified': bool(profile.email_verified),
-        'manager_decision': profile.manager_decision,
-    }
+    from ckanext.csunesco.logic.onboarding import profile_dict
+    return profile_dict(user, profile)
 
 
 def csunesco_manager_approve(context, data_dict):
@@ -167,6 +172,8 @@ def csunesco_manager_approve(context, data_dict):
     derived capacity. Idempotent on re-approve: an already-approved manager
     returns success without duplicating the membership.
     """
+    from ckanext.csunesco.logic.onboarding import review_context
+    context = review_context(context, data_dict or {})
     tk.check_access('csunesco_manager_approve', context, data_dict)
     user, profile = _resolve_manager_profile(data_dict)
 
@@ -177,12 +184,31 @@ def csunesco_manager_approve(context, data_dict):
             'The manager has not verified their email address yet')]})
 
     org_id = profile.org_id
-    capacity = 'admin' if profile.org_name_requested else 'editor'
+    # A reviewer can explicitly resolve a new-organization request against an
+    # existing organization, without implicitly granting its admin role.
+    resolved = (data_dict or {}).get('organization_id')
+    if resolved:
+        org = model.Group.get(resolved)
+        capacity = (data_dict or {}).get('organization_role')
+        if not org or not org.is_organization or org.state != 'active' or capacity not in ('member', 'admin'):
+            raise tk.ValidationError({'organization': ['Select an active organization and Member or Admin.']})
+        org_id = org.id
+    capacity = 'admin' if profile.org_name_requested else (profile.org_role or 'member')
+    if resolved:
+        capacity = data_dict['organization_role']
+    if capacity not in ('member', 'admin', 'editor'):
+        raise tk.ValidationError({'org_role': ['Invalid organization role']})
     # Materialize the organization intent BEFORE activating so a failure here
     # leaves the account pending and the action safely retryable.
-    if profile.org_name_requested and not profile.org_id:
+    if profile.org_name_requested and not org_id:
+        from ckanext.csunesco.logic.onboarding import exact_org_match, lock_org_creation
+        lock_org_creation(profile.org_name_requested)
+        if exact_org_match(profile.org_name_requested):
+            raise tk.ValidationError({'organization': [tk._('An organization with this name now exists. Resolve the affiliation before approving.')]})
         org = tk.get_action('organization_create')(
-            dict(context), {
+            dict(context, defer_commit=True), {
+                'description': profile.org_description or '',
+                'image_url': profile.org_image_url or '',
                 'name': _org_slug(profile.org_name_requested),
                 'title': profile.org_name_requested,
                 'extras': [
@@ -192,7 +218,7 @@ def csunesco_manager_approve(context, data_dict):
             })
         org_id = org['id']
     if org_id:
-        tk.get_action('organization_member_create')(dict(context), {
+        tk.get_action('organization_member_create')(dict(context, defer_commit=True), {
             'id': org_id,
             'username': user.name,
             'role': capacity,
@@ -202,10 +228,16 @@ def csunesco_manager_approve(context, data_dict):
     profile.org_id = org_id
     profile.org_role = capacity
     profile.manager_decision = 'approved'
+    profile.manager_review_reason = str((data_dict or {}).get('reason') or '').strip()[:1000] or None
     profile.manager_reviewed_by = current_user_id(context)
     profile.manager_reviewed_at = datetime.datetime.utcnow()
     model.Session.commit()
 
+    try:
+        from ckanext.colab.controller import get_all_organizations_cached
+        get_all_organizations_cached.cache_clear()
+    except ImportError:
+        pass
     _send_decision_email(user, approved=True)
     return dict(_profile_dictize(user, profile), existed=False)
 
@@ -217,10 +249,18 @@ def csunesco_manager_reject(context, data_dict):
     and reviewer are recorded, and the person is told by email. Nothing is
     deleted -- a wrong call can be reversed by approving afterwards.
     """
+    from ckanext.csunesco.logic.onboarding import review_context
+    context = review_context(context, data_dict or {})
     tk.check_access('csunesco_manager_reject', context, data_dict)
     user, profile = _resolve_manager_profile(data_dict)
 
+    if profile.manager_decision == 'approved':
+        raise tk.ValidationError({'status': ['An approved account must be managed through account administration.']})
+    reason = str((data_dict or {}).get('reason') or '').strip()[:1000]
+    if profile.manager_decision == 'rejected' and (profile.manager_review_reason or '') == reason:
+        return _profile_dictize(user, profile)
     profile.manager_decision = 'rejected'
+    profile.manager_review_reason = reason
     profile.manager_reviewed_by = current_user_id(context)
     profile.manager_reviewed_at = datetime.datetime.utcnow()
     model.Session.commit()

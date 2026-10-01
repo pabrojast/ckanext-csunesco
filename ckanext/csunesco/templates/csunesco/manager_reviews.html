@@ -1,0 +1,39 @@
+{% extends "csunesco/base.html" %}
+{% from 'csunesco/snippets/registration_dossier.html' import dossier with context %}
+{% block subtitle %}{{ _('Review PM accounts') }}{% endblock %}
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+{% block cs_content %}
+<div class="cs-review-inbox">
+  <a class="cs-link" href="{{ h.url_for('csunesco.admin_dashboard') }}">&larr; {{ _('Review projects and join requests') }}</a>
+  <p class="cs-review-eyebrow">{{ _('Citizen Science administration') }}</p>
+  <h1>{{ _('Project Manager accounts') }}</h1>
+  <p class="cs-register-muted">{{ _('Account approval establishes organization membership. Project proposals are reviewed separately.') }}</p>
+  <form method="get" class="cs-review-filters">
+    <label>{{ _('Search applicants') }}<input type="search" name="q" value="{{ q }}" placeholder="{{ _('Name, username or email') }}"></label>
+    <label>{{ _('Status') }}<select name="status">{% for key, label in [('pending',_('Pending review')),('unverified',_('Email not verified')),('approved',_('Approved')),('rejected',_('Rejected')),('all',_('All requests'))] %}<option value="{{ key }}" {% if status == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <button class="cs-btn cs-btn-primary" type="submit">{{ _('Search') }}</button><span class="cs-results-count">{{ result.count }}</span>
+  </form>
+  <div class="cs-review-cards">
+  {% for person in result.results %}
+    <article class="cs-review-account">
+      <div class="cs-review-account-head"><div><h2>{{ person.fullname or person.username }}</h2><p>{{ person.email }} · {{ person.username }}</p><p>{{ person.organization_title or _('Not provided') }}</p></div><span class="cs-status-badge">{{ _(person.manager_decision or ('Pending review' if person.email_verified else 'Email not verified')) }}</span></div>
+      <details class="cs-dossier-details"><summary>{{ _('View registration details') }}</summary>{{ dossier(person) }}</details>
+      {% if person.manager_decision != 'approved' and person.email_verified %}
+      <form class="cs-review-decision" method="post" action="{{ h.url_for('csunesco.manager_approve', username=person.username) }}" data-confirm="{{ _('Save this account review decision?') }}">
+          {{ h.csrf_input() }}
+          <label for="reason-{{ person.user_id }}">{{ _('Reviewer note (optional)') }}</label>
+          <textarea id="reason-{{ person.user_id }}" name="reason" rows="2" maxlength="1000"></textarea>
+          {% if person.org_name_requested %}<details class="cs-affiliation"><summary>{{ _('Use an existing organization instead') }}</summary><p class="cs-hint">{{ _('Only choose this if the requested organization already exists. Confirm the membership role before approval.') }}</p><label>{{ _('Organization') }}<select name="organization_id"><option value="">{{ _('Create the requested organization') }}</option>{% for org in organizations %}<option value="{{ org.name }}">{{ org.title }}</option>{% endfor %}</select></label><label>{{ _('Role in existing organization') }}<select name="organization_role"><option value="member">{{ _('Member') }}</option><option value="admin">{{ _('Admin') }}</option></select></label></details>{% endif %}
+          <div class="cs-review-decision-buttons">
+            <button class="cs-btn cs-btn-secondary" type="submit" formaction="{{ h.url_for('csunesco.manager_reject', username=person.username) }}">{{ _('Reject') }}</button>
+            <button class="cs-btn cs-btn-primary" type="submit">{{ _('Approve account') }}</button>
+          </div>
+      </form>
+      {% endif %}
+    </article>
+  {% else %}<p class="cs-empty">{{ _('No requests match these filters.') }}</p>{% endfor %}
+  </div>
+  <nav class="cs-review-pagination" aria-label="{{ _('Pagination') }}">{% if offset > 0 %}<a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.manager_reviews', status=status, q=q, offset=[0, offset-page_size]|max) }}">{{ _('Previous') }}</a>{% endif %}<span>{{ offset + 1 if result.count else 0 }}–{{ [offset+page_size,result.count]|min }} / {{ result.count }}</span>{% if offset+page_size < result.count %}<a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.manager_reviews', status=status, q=q, offset=offset+page_size) }}">{{ _('Next') }}</a>{% endif %}</nav>
+</div>
+{% endblock %}
+{% block scripts %}{{ super() }}{% asset 'csunesco/csunesco-js' %}{% endblock %}

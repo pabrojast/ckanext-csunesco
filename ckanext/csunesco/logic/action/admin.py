@@ -207,6 +207,8 @@ def csunesco_project_review_show(context, data_dict):
     creator = model.User.get(project.created_by) if project.created_by else None
     result['created_by_name'] = (
         (creator.display_name or creator.name) if creator else u'')
+    from ckanext.csunesco.logic.onboarding import profile_dict
+    result['registration'] = profile_dict(creator)
     history = result.get('edit_history')
     result['edit_history'] = history if isinstance(history, list) else []
     return result

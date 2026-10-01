@@ -12,7 +12,7 @@
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
-  <div class="cs-register-page">
+  <div class="cs-register-page cs-onboarding cs-onboarding-citizen">
     <section class="cs-register-shell" aria-labelledby="cs-reg-title">
       <div class="cs-register-topbar">
         <a class="cs-register-back" href="{{ (h.csunesco_login_url() or h.url_for('user.login')) }}">
@@ -68,7 +68,7 @@
 
         <form method="post"
               action="{{ h.url_for('csunesco.register_citizen') }}"
-              class="cs-register-form" id="cs-register-form" novalidate
+              class="cs-register-form" id="cs-register-form" enctype="multipart/form-data" novalidate
               data-recaptcha-key="{{ recaptcha_publickey or '' }}"
               data-sending-label="{{ _('Sending…') }}"
               data-submit-label="{{ _('Create account') }}"
@@ -77,7 +77,8 @@
           {{ h.csrf_input() }}
 
           <fieldset class="cs-register-fieldset">
-            <legend>{{ _("Create your account") }}</legend>
+            <legend><span class="cs-step-number">1</span> {{ _("Create your account") }}</legend><div class="cs-field"><label for="cs-language">{{ _("Preferred language") }}</label><select id="cs-language" name="language">{% for code, title in [('en','English'),('fr','Français'),('es','Español'),('ar','العربية'),('pt','Português'),('uk','Українська')] %}<option value="{{ code }}" {% if (data.language or h.lang()) == code %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></div>
+            <div class="cs-field"><label for="cs-language-other">{{ _('Other language (optional)') }}</label><input type="text" id="cs-language-other" name="language_other" maxlength="64" value="{{ data.language_other or '' }}"></div>
 
             <div class="cs-field">
               <label for="cs-fullname">{{ _("Full name") }}</label>
@@ -153,41 +154,10 @@
                  data-default="" data-error="{{ _('Passwords do not match.') }}"></p>
             </div>
 
-            {% if projects %}
-              <div class="cs-register-join-box">
-                <label for="cs-project">{{ _("Join a project") }}</label>
-                <p class="cs-hint">
-                  {{ _("Pick a project from the list. Project invitation links select it automatically.") }}
-                </p>
-                {% if selected_project %}
-                  <span class="cs-register-join-badge">
-                    {{ _("Joining: %(project)s", project=selected_project.title) }}
-                  </span>
-                {% endif %}
-                <select id="cs-project" name="project">
-                  <option value="">{{ _("Choose a project…") }}</option>
-                  {% for project in projects %}
-                    {% set project_id = project.id|string %}
-                    <option value="{{ project.slug }}"
-                      {% if data.project == project.slug or data.project == project_id %}selected{% endif %}>
-                      {{ project.title }}
-                    </option>
-                  {% endfor %}
-                </select>
-              </div>
-            {% endif %}
-
-            <div class="cs-register-terms">
-              <input type="checkbox" id="cs-terms" name="terms" value="yes"
-                     aria-describedby="cs-terms-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-              <label for="cs-terms">{{ _("I accept the terms of participation.") }}</label>
-            </div>
-            <p id="cs-terms-hint" class="cs-hint cs-field-message"
-               data-default="" data-error="{{ _('Please accept the terms to continue.') }}"></p>
           </fieldset>
 
           <fieldset class="cs-register-fieldset">
-            <legend>{{ _("About you") }}</legend>
+            <legend><span class="cs-step-number">2</span> {{ _("About you") }}</legend>
             <p class="cs-hint">
               {{ _("Never public. Used only to understand the age and gender groups within projects.") }}
             </p>
@@ -245,6 +215,41 @@
 
             {% snippet "csunesco/snippets/why_demographics.html" %}
           </fieldset>
+
+          <fieldset class="cs-register-fieldset"><legend><span class="cs-step-number">3</span> {{ _('Join a project') }}</legend>
+            {% if projects %}
+              <div class="cs-register-join-box">
+                <label for="cs-project">{{ _("Join a project") }}</label>
+                <p class="cs-hint">
+                  {{ _("Pick a project from the list. Project invitation links select it automatically.") }}
+                </p>
+                {% if selected_project %}
+                  <span class="cs-register-join-badge">
+                    {{ _("Joining: %(project)s", project=selected_project.title) }}
+                  </span>
+                {% endif %}
+                <select id="cs-project" name="project">
+                  <option value="">{{ _("Choose a project…") }}</option>
+                  {% for project in projects %}
+                    {% set project_id = project.id|string %}
+                    <option value="{{ project.slug }}"
+                      {% if data.project == project.slug or data.project == project_id %}selected{% endif %}>
+                      {{ project.title }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+            {% else %}<p class="cs-hint">{{ _('Joining a project is optional. You can choose one after creating your account.') }}</p>{% endif %}
+
+          </fieldset>
+          {% set manager_form = false %}{% include 'csunesco/snippets/motivation.html' %}
+            <div class="cs-register-terms">
+              <input type="checkbox" id="cs-terms" name="terms" value="yes"
+                     aria-describedby="cs-terms-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
+              <label for="cs-terms">{{ _("I accept the terms of participation.") }}</label>
+            </div>
+            <p id="cs-terms-hint" class="cs-hint cs-field-message"
+               data-default="" data-error="{{ _('Please accept the terms to continue.') }}"></p>
 
           {% if recaptcha_publickey %}
             <input type="hidden" name="recaptcha_response" id="cs-recaptcha-response">

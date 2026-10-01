@@ -15,7 +15,7 @@
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
-  <div class="cs-register-page">
+  <div class="cs-register-page cs-onboarding cs-onboarding-pm">
     <section class="cs-register-shell" aria-labelledby="cs-reg-title">
       <div class="cs-register-topbar">
         <a class="cs-register-back" href="{{ (h.csunesco_login_url() or h.url_for('user.login')) }}">
@@ -56,7 +56,7 @@
           {{ _("Project Managers propose and run citizen science projects on behalf of an organization. Your account will be reviewed by a platform administrator before it is activated.") }}
         </p>
         <p class="cs-register-muted">
-          {{ _("Once approved, you become an editor of your organization on this portal (or the administrator of a newly created one) — that membership is what unlocks proposing projects.") }}
+          {{ _("Once approved, you join your organization with the reviewed role and can propose citizen science projects. A new organization makes you its administrator.") }}
           <a class="cs-link" href="{{ h.csunesco_editor_link('csunesco.project_new') }}">{{ _("Who can propose a project?") }}</a>
         </p>
 
@@ -70,7 +70,7 @@
 
         <form method="post"
               action="{{ h.url_for('csunesco.register_manager') }}"
-              class="cs-register-form" id="cs-register-form" novalidate
+              class="cs-register-form" id="cs-register-form" enctype="multipart/form-data" novalidate
               data-recaptcha-key="{{ recaptcha_publickey or '' }}"
               data-sending-label="{{ _('Sending…') }}"
               data-submit-label="{{ _('Create account') }}"
@@ -79,7 +79,7 @@
           {{ h.csrf_input() }}
 
           <fieldset class="cs-register-fieldset">
-            <legend>{{ _("Create your account") }}</legend>
+            <legend><span class="cs-step-number">1</span> {{ _("Create your account") }}</legend>
 
             <div class="cs-field">
               <label for="cs-fullname">{{ _("Full name") }}</label>
@@ -157,7 +157,7 @@
           </fieldset>
 
           <fieldset class="cs-register-fieldset">
-            <legend>{{ _("About you") }}</legend>
+            <legend><span class="cs-step-number">2</span> {{ _("About you") }}</legend>
             <p class="cs-hint">
               {{ _("Never public. Used only to understand the age and gender groups within projects.") }}
             </p>
@@ -217,7 +217,7 @@
           </fieldset>
 
           <fieldset class="cs-register-fieldset">
-            <legend>{{ _("Your organization") }}</legend>
+            <legend><span class="cs-step-number">3</span> {{ _("Your organization") }}</legend>
 
             <div class="cs-field">
               <label for="cs-org-type">{{ _("Organization type") }}</label>
@@ -237,6 +237,12 @@
 
             <div class="cs-field">
               <label for="cs-org-name">{{ _("Organization name") }}</label>
+              <div id="cs-org-picker" hidden data-url="{{ h.url_for_static('/api/colab/organizations') }}">
+                <input id="cs-org-search" type="search" autocomplete="off" aria-label="{{ _('Search your organization') }}" aria-controls="cs-org-results" placeholder="{{ _('Search by full name or keyword') }}">
+                <p id="cs-org-status" class="cs-hint" role="status" data-loading="{{ _('Loading organizations…') }}" data-error="{{ _('Organizations could not be loaded. Try again.') }}" data-empty="{{ _('No organizations match your search.') }}"></p>
+                <ul id="cs-org-results" class="cs-org-results"></ul>
+                <button type="button" id="cs-org-new" class="cs-btn cs-btn-secondary">{{ _('My organization is not listed — create a new one') }}</button>
+              </div>
               <select id="cs-org-name" name="org_name" required aria-required="true"
                       aria-describedby="cs-org-name-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
                 <option value="">{{ _("Select…") }}</option>
@@ -260,6 +266,12 @@
                      value="{{ data.new_org_name or '' }}" maxlength="200">
             </div>
 
+            <div id="cs-org-extra" hidden>
+              <div class="cs-field"><label for="cs-org-description">{{ _('Organization description (optional)') }}</label><textarea id="cs-org-description" name="org_description" rows="4" maxlength="5000">{{ data.org_description or '' }}</textarea></div>
+              <div class="cs-field"><label for="cs-org-logo">{{ _('Organization logo (optional)') }}</label><input id="cs-org-logo" type="file" name="org_logo" accept="image/png,image/jpeg,image/webp"><p class="cs-hint">{{ _('PNG, JPG or WebP, up to 2 MB. Select the file again if the form reports an error.') }}</p></div>
+              <p id="cs-org-similar" class="cs-hint" role="status" data-similar="{{ _('Similar organizations already exist:') }}"></p>
+              <button id="cs-org-back" type="button" class="cs-btn cs-btn-secondary">{{ _('Search again') }}</button>
+            </div>
             <div class="cs-field">
               <label for="cs-org-title">{{ _("Title within represented organization") }}</label>
               <input type="text" id="cs-org-title" name="org_title"
@@ -273,10 +285,13 @@
               </p>
             </div>
 
-            <p id="cs-org-role-note" class="cs-hint"
-               data-role-admin="{{ _('You will be the Admin of the new organization.') }}"
-               data-role-editor="{{ _('You will join the organization as an Editor, able to upload datasets and create projects.') }}"></p>
-
+            <div class="cs-field"><label for="cs-org-role">{{ _("Role in organization") }}</label>
+              <select id="cs-org-role" name="org_role"><option value="member" {% if data.org_role != 'admin' %}selected{% endif %}>{{ _("Member") }}</option><option value="admin" {% if data.org_role == 'admin' %}selected{% endif %}>{{ _("Admin") }}</option></select>
+              <p id="cs-org-role-note" class="cs-hint" data-role-admin="{{ _('You will be the Admin of the new organization.') }}" data-role-member="{{ _('Your requested role will be reviewed before membership is granted.') }}"></p>
+            </div>
+          </fieldset>
+          {% set manager_form = true %}{% include 'csunesco/snippets/motivation.html' %}
+          <fieldset class="cs-register-consent">
             <div class="cs-register-terms">
               <input type="checkbox" id="cs-terms" name="responsibilities" value="yes"
                      aria-describedby="cs-terms-hint{% if errors and errors.message %} cs-reg-error{% endif %}">

@@ -161,12 +161,30 @@ def _is_org_admin(context, org_id):
         return False
 
 
+def can_propose_for_org(context, org_id):
+    if _is_org_editor(context, org_id):
+        return True
+    user = _user_obj(context)
+    if user is None:
+        return False
+    from ckanext.csunesco import db
+    profile = db.get_citizen_scientist(user.id)
+    org = model.Group.get(org_id)
+    requested = model.Group.get(profile.org_id) if profile and profile.org_id else None
+    if not (profile and profile.profile_type == 'manager'
+            and profile.manager_decision == 'approved' and profile.email_verified
+            and user.state == 'active' and org and requested and org.id == requested.id and org.state == 'active'):
+        return False
+    import ckan.authz as authz
+    return authz.users_role_for_group_or_org(org.id, user.name) in ('member', 'editor', 'admin')
+
+
 def can_propose_project(context, organization_id=None):
-    """Portal eligibility: sysadmin or admin/editor of a CKAN organization."""
+    """Portal eligibility: sysadmin, organization editor, or approved PM member."""
     if _is_sysadmin(context):
         return True
     if organization_id:
-        return _is_org_editor(context, organization_id)
+        return can_propose_for_org(context, organization_id)
     user_obj = _user_obj(context)
     if user_obj is None:
         return False
@@ -174,7 +192,7 @@ def can_propose_project(context, organization_id=None):
         organizations = (model.Session.query(model.Group.id)
                          .filter(model.Group.is_organization.is_(True))
                          .filter(model.Group.state == 'active').all())
-        return any(_is_org_editor(context, org_id)
+        return any(can_propose_for_org(context, org_id)
                    for (org_id,) in organizations)
     except Exception:
         return False
@@ -435,10 +453,10 @@ def csunesco_project_request_create(context, data_dict):
         return {'success': True}
     organization_id = (data_dict or {}).get('organization_id')
     if (context.get('user') and organization_id
-            and _is_org_editor(context, organization_id)):
+            and can_propose_for_org(context, organization_id)):
         return {'success': True}
     return {'success': False,
-            'msg': tk._('Only an organization admin or editor can propose a project')}
+            'msg': tk._('Only an approved Project Manager or organization admin/editor can propose a project')}
 
 
 def _project_for_auth(data_dict):
@@ -983,6 +1001,10 @@ def get_auth_functions():
             csunesco_initiative_page_publish,
         'csunesco_register_citizen_scientist':
             csunesco_register_citizen_scientist,
+        'csunesco_registration_review_show': lambda c, d: {'success': bool(c.get('user'))},
+        'csunesco_manager_list': lambda c, d: {'success': bool(c.get('user'))},
+        'csunesco_registration_project_review': lambda c, d: {'success': bool(c.get('user'))},
+        'csunesco_registration_resend': csunesco_manager_approve,
         'csunesco_manager_approve': csunesco_manager_approve,
         'csunesco_manager_reject': csunesco_manager_reject,
         'csunesco_project_structure_upsert':

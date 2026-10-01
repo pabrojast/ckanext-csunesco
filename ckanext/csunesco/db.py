@@ -270,6 +270,13 @@ cs_citizen_scientist_table = Table(
     # org (``org_id``, role editor) or a requested new one
     # (``org_name_requested``, role admin) -- the org itself is only created
     # when a sysadmin approves the account (``manager_decision``).
+    Column('registration_project_slug', types.UnicodeText),
+    Column('motivation', types.UnicodeText),
+    Column('language', types.UnicodeText),
+    Column('language_other', types.UnicodeText),
+    Column('org_description', types.UnicodeText),
+    Column('org_image_url', types.UnicodeText),
+    Column('manager_review_reason', types.UnicodeText),
     Column('profile_type', types.UnicodeText, default=u'citizen'),
     Column('org_id', types.UnicodeText),
     Column('org_name_requested', types.UnicodeText),
@@ -431,6 +438,13 @@ _AUTO_HEAL_COLUMNS = [
     ('cs_citizen_scientist', 'email_verified', 'BOOLEAN DEFAULT FALSE'),
     ('cs_citizen_scientist', 'verification_token', 'TEXT'),
     ('cs_citizen_scientist', 'token_created', 'TIMESTAMP'),
+    ('cs_citizen_scientist', 'registration_project_slug', 'TEXT'),
+    ('cs_citizen_scientist', 'motivation', 'TEXT'),
+    ('cs_citizen_scientist', 'language', 'TEXT'),
+    ('cs_citizen_scientist', 'language_other', 'TEXT'),
+    ('cs_citizen_scientist', 'org_description', 'TEXT'),
+    ('cs_citizen_scientist', 'org_image_url', 'TEXT'),
+    ('cs_citizen_scientist', 'manager_review_reason', 'TEXT'),
     ('cs_citizen_scientist', 'profile_type', "TEXT DEFAULT 'citizen'"),
     ('cs_citizen_scientist', 'org_id', 'TEXT'),
     ('cs_citizen_scientist', 'org_name_requested', 'TEXT'),
@@ -572,7 +586,8 @@ def get_or_create_citizen_scientist(user_id, country=None,
                                     verification_token=None,
                                     date_of_birth=None, nationality=None,
                                     gender=None, terms_accepted=False,
-                                    manager=None):
+                                    manager=None, motivation=None, language=None,
+                                    language_other=None, registration_project_slug=None, defer_commit=False):
     """Idempotently mark a CKAN user as a Citizen Scientist.
 
     Inserts one ``cs_citizen_scientist`` row per ``user_id``; if a row already
@@ -602,6 +617,10 @@ def get_or_create_citizen_scientist(user_id, country=None,
     profile.date_of_birth = date_of_birth
     profile.nationality = nationality or None
     profile.gender = gender or None
+    profile.registration_project_slug = registration_project_slug
+    profile.motivation = motivation or None
+    profile.language = language or None
+    profile.language_other = language_other or None
     if terms_accepted:
         profile.terms_accepted_at = _utcnow()
     if manager:
@@ -614,6 +633,8 @@ def get_or_create_citizen_scientist(user_id, country=None,
         profile.org_type = manager.get('org_type') or None
         profile.org_title = manager.get('org_title') or None
         profile.org_role = manager.get('org_role') or None
+        profile.org_description = manager.get('org_description') or None
+        profile.org_image_url = manager.get('org_image_url') or None
         profile.responsibilities_accepted_at = _utcnow()
     if verification_token:
         profile.email_verified = False
@@ -623,7 +644,8 @@ def get_or_create_citizen_scientist(user_id, country=None,
         # No token -> trusted server-to-server creation; nothing to verify.
         profile.email_verified = True
     Session.add(profile)
-    Session.commit()
+    if not defer_commit:
+        Session.commit()
     return profile
 
 
@@ -1905,6 +1927,8 @@ def pending_joins(project_ids=None, limit=20, offset=0):
         # every caller is a moderator of the row. Deliberately NOT added to
         # csunesco_project_show, which exposes usernames only, on purpose.
         item['user_email'] = getattr(user, 'email', None) if user else None
+        from ckanext.csunesco.logic.onboarding import profile_dict
+        item['registration'] = profile_dict(user, profile)
         item['user_country'] = getattr(profile, 'country', None)
         item['email_verified'] = bool(
             getattr(profile, 'email_verified', False))

@@ -367,9 +367,9 @@ def csunesco_project_request_create(context, data_dict):
 
     organization = _resolve_organization(data)
     if (organization is not None and not auth._is_sysadmin(context)
-            and not auth._is_org_editor(context, organization.id)):
+            and not auth.can_propose_for_org(context, organization.id)):
         raise tk.NotAuthorized(tk._(
-            'Only an organization admin or editor can propose a project'))
+            'Only an approved Project Manager or organization admin/editor can propose a project'))
 
     from ckanext.csunesco.logic import snapshots
     data.update(app_assets)
@@ -510,7 +510,7 @@ def csunesco_project_update(context, data_dict):
     if 'organization_id' in data:
         organization = _resolve_organization(data)
         if (organization is not None and not auth._is_sysadmin(context)
-                and not auth._is_org_editor(context, organization.id)):
+                and not auth.can_propose_for_org(context, organization.id)):
             raise tk.NotAuthorized(tk._(
                 'You cannot move this project to that organization'))
 

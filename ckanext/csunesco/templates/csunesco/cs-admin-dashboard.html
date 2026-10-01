@@ -1,3 +1,4 @@
+{% from 'csunesco/snippets/registration_dossier.html' import dossier with context %}
 {% extends "csunesco/base.html" %}
 
 {#
@@ -222,6 +223,7 @@
         IHP Admin approves or declines the user account"). A standalone band
         rather than a tab: the queue is usually empty and must be impossible
         to miss when it is not. #}
+  {% if is_sysadmin %}<a class="cs-btn cs-btn-primary" href="{{ h.url_for('csunesco.manager_reviews') }}">{{ _('Review PM accounts') }}{% if pending_managers %} ({{ pending_managers|length }}){% endif %}</a>{% endif %}
   {% if is_sysadmin and pending_managers %}
     <section class="cs-card" id="tab-managers"
              aria-labelledby="cs-managers-title">
@@ -246,6 +248,7 @@
                 {% if manager.org_role %} · {{ _("role:") }} {{ manager.org_role }}{% endif %}
               </p>
             </div>
+            <details class="cs-dossier-details"><summary>{{ _("View registration details") }}</summary>{{ dossier(manager) }}</details>
             <div class="cs-managers-actions">
               <form method="post"
                     action="{{ h.url_for('csunesco.manager_approve', username=manager.username) }}">
@@ -348,7 +351,7 @@
                             action="{{ h.url_for('csunesco.project_approve', id=p.id) }}"
                             data-confirm="{{ _('Approve this project?') }}">
                         {{ h.csrf_input() }}
-                        <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
+                        <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm" {% if j is defined and j.registration and j.registration.email_verification_required and not j.email_verified %}disabled title="{{ _('Email verification is required before approval.') }}"{% endif %}>{{ _("Approve") }}</button>
                       </form>
                       <form method="post" class="cs-reject-form"
                             action="{{ h.url_for('csunesco.project_reject', id=p.id) }}"
@@ -376,69 +379,18 @@
          aria-labelledby="cs-tabbtn-joins" data-tabpanel="joins">
       <h2 class="cs-visually-hidden">{{ _("Join requests") }}</h2>
       {% if join_requests %}
-        <div class="cs-table-scroll">
-          <table class="cs-admin-table">
-            <thead>
-              <tr>
-                <th scope="col">{{ _("User") }}</th>
-                <th scope="col">{{ _("Project") }}</th>
-                <th scope="col">{{ _("Actions") }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for j in join_requests %}
-                <tr>
-                  {#
-                    Everything known about the applicant, so the decision can be
-                    made here. This cell used to hold a bare username: whoever
-                    approved was told nothing about who they were letting in.
-  
-                    The email is PERSONAL DATA and appears only here -- every
-                    caller of this panel is a moderator of the row. It is
-                    deliberately absent from csunesco_project_show, which
-                    publishes usernames and nothing more.
-                  #}
-                  <td data-label="{{ _('User') }}">
-                    <strong>{{ j.user_name or j.user_id }}</strong>
-                    {% if j.user_login and j.user_login != j.user_name %}
-                      <span class="cs-muted">({{ j.user_login }})</span>
-                    {% endif %}
-                    <br>
-                    <span class="cs-muted">
-                      {%- if j.user_email %}{{ j.user_email }}{% endif -%}
-                      {%- if j.user_email and j.user_country %} · {% endif -%}
-                      {%- if j.user_country %}{{ h.csunesco_member_state_title(j.user_country) }}{% endif -%}
-                    </span>
-                    {% if not j.email_verified %}
-                      <br>
-                      <span class="cs-wb-chip cs-wb-chip-work">{{ _("Email not verified") }}</span>
-                    {% endif %}
-                    {% if j.note %}
-                      <p class="cs-join-note">{{ j.note }}</p>
-                    {% endif %}
-                    {% if j.source == 'app' %}
-                      <span class="cs-muted">{{ _("via the CS Toolbox app") }}</span>
-                    {% endif %}
-                  </td>
-                  <td data-label="{{ _('Project') }}">{{ j.project_title or j.project_id }}</td>
-                  <td data-label="{{ _('Actions') }}" class="cs-admin-actions">
-                    <form method="post"
-                          action="{{ h.url_for('csunesco.join_approve', project_id=j.project_id, user_id=j.user_id) }}"
-                          data-confirm="{{ _('Approve this join request?') }}">
-                      {{ h.csrf_input() }}
-                      <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
-                    </form>
-                    <form method="post"
-                          action="{{ h.url_for('csunesco.join_reject', project_id=j.project_id, user_id=j.user_id) }}"
-                          data-confirm="{{ _('Reject this join request?') }}">
-                      {{ h.csrf_input() }}
-                      <button type="submit" class="cs-btn cs-btn-danger cs-btn-sm">{{ _("Reject") }}</button>
-                    </form>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+        <div class="cs-review-cards">
+          {% for j in join_requests %}
+          <article class="cs-review-account">
+            <div class="cs-review-account-head"><div><h3>{{ j.user_name or j.user_login }}</h3><p>{{ j.user_email }} · {{ j.user_login }}</p><p><strong>{{ j.project_title }}</strong></p></div>{% if j.registration.email_verification_required and not j.email_verified %}<span class="cs-status-badge">{{ _('Email not verified') }}</span>{% endif %}</div>
+            <details class="cs-dossier-details"><summary>{{ _('View registration details') }}</summary>{{ dossier(j.registration or {}) }}</details>
+            {% if j.note %}<p class="cs-join-note">{{ j.note }}</p>{% endif %}
+            <div class="cs-review-account-actions">
+              <form method="post" action="{{ h.url_for('csunesco.join_reject', project_id=j.project_id, user_id=j.user_id) }}" data-confirm="{{ _('Reject this join request?') }}">{{ h.csrf_input() }}<button class="cs-btn cs-btn-secondary" type="submit">{{ _('Reject') }}</button></form>
+              <form method="post" action="{{ h.url_for('csunesco.join_approve', project_id=j.project_id, user_id=j.user_id) }}" data-confirm="{{ _('Approve this join request?') }}">{{ h.csrf_input() }}<button type="submit" class="cs-btn cs-btn-primary" {% if j.registration.email_verification_required and not j.email_verified %}disabled title="{{ _('Email verification is required before approval.') }}"{% endif %}>{{ _('Approve') }}</button></form>
+            </div>
+          </article>
+          {% endfor %}
         </div>
       {% else %}
         <p class="cs-empty cs-wb-empty">{{ h.csunesco_icon('inbox', 22) }} {{ _("No join requests are awaiting review.") }}</p>
@@ -560,7 +512,7 @@
                             action="{{ h.url_for('csunesco.content_approve', id=c.id) }}"
                             data-confirm="{{ _('Approve this content?') }}">
                         {{ h.csrf_input() }}
-                        <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
+                        <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm" {% if j is defined and j.registration and j.registration.email_verification_required and not j.email_verified %}disabled title="{{ _('Email verification is required before approval.') }}"{% endif %}>{{ _("Approve") }}</button>
                       </form>
                       <form method="post" class="cs-reject-form"
                             action="{{ h.url_for('csunesco.content_reject', id=c.id) }}"
@@ -763,7 +715,7 @@
                             {% endfor %}
                           </select>
                         {% endif %}
-                        <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm">{{ _("Approve") }}</button>
+                        <button type="submit" class="cs-btn cs-btn-primary cs-btn-sm" {% if j is defined and j.registration and j.registration.email_verification_required and not j.email_verified %}disabled title="{{ _('Email verification is required before approval.') }}"{% endif %}>{{ _("Approve") }}</button>
                       </form>
                       <form method="post" class="cs-reject-form"
                             action="{{ h.url_for('csunesco.data_source_reject', id=d.id) }}"

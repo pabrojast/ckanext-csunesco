@@ -109,6 +109,7 @@ def test_web_registration_creates_immediate_join_and_keeps_verification(
         'password': 'long-enough',
         'confirm_password': 'long-enough',
         'terms': 'yes',
+        'motivation': 'I want to monitor our river with local schools.',
         'fullname': 'Maria Example',
         'date_of_birth': '1990-05-17',
         'nationality': 'cl',
@@ -145,7 +146,7 @@ def test_ofform_legacy_action_payload_remains_valid(monkeypatch):
     monkeypatch.setattr(tk, 'check_access', lambda *args, **kwargs: True)
     monkeypatch.setattr(model.User, 'get', staticmethod(lambda value: None))
 
-    def create(context, data):
+    def create(context, data, **kwargs):
         captured.update(data)
         return {'name': 'maria', 'id': 'user-1'}
 
@@ -155,6 +156,7 @@ def test_ofform_legacy_action_payload_remains_valid(monkeypatch):
         'email': 'maria@example.org',
         'username': 'maria',
         'password': 'long-enough',
+        'motivation': 'I want to monitor our river with local schools.',
         'fullname': 'Maria',
         'country': 'Chile',
     })
@@ -170,7 +172,7 @@ def test_ofform_action_accepts_optional_profile_fields(monkeypatch):
     monkeypatch.setattr(model.User, 'get', staticmethod(lambda value: None))
     monkeypatch.setattr(
         registration_action, 'create_citizen_scientist',
-        lambda context, data: captured.update(data) or {
+        lambda context, data, **kwargs: captured.update(data) or {
             'name': 'maria', 'id': 'user-1'})
 
     registration_action.csunesco_register_citizen_scientist({}, {
@@ -201,6 +203,9 @@ def test_generate_username_slugifies_and_dedupes(monkeypatch):
 
 def test_create_citizen_scientist_generates_a_username_when_blank(monkeypatch):
     created = {}
+    from ckanext.csunesco import db
+    monkeypatch.setattr(db, 'get_or_create_citizen_scientist', lambda *a, **k: None)
+    monkeypatch.setattr(model.Session, 'commit', lambda: None)
     monkeypatch.setattr(registration, 'check_access', lambda *a, **k: True)
     monkeypatch.setattr(model.User, 'get', staticmethod(lambda name: None))
     monkeypatch.setattr(
@@ -209,6 +214,7 @@ def test_create_citizen_scientist_generates_a_username_when_blank(monkeypatch):
             'id': 'user-1', 'name': data['name']})
     out = registration.create_citizen_scientist({}, {
         'email': 'ana@example.org',
+        'motivation': 'I want to monitor our river with local schools.',
         'fullname': 'Ana Flores',
         'password': 'long-enough',
     })
@@ -235,6 +241,7 @@ def test_web_registration_requires_the_demographic_block(app, monkeypatch):
         'password': 'long-enough',
         'confirm_password': 'long-enough',
         'terms': 'yes',
+        'motivation': 'I want to monitor our river with local schools.',
         'fullname': 'Maria Example',
         'date_of_birth': '1990-05-17',
         'gender': 'female',
@@ -258,6 +265,7 @@ _MANAGER_FORM = {
     'email': 'pm@example.org',
     'password': 'long-enough',
     'confirm_password': 'long-enough',
+    'motivation': 'I want to monitor our river with local schools.',
     'fullname': 'Paula Manager',
     'date_of_birth': '1985-02-03',
     'gender': 'female',
@@ -272,6 +280,8 @@ _MANAGER_FORM = {
 
 def _manager_post(app, monkeypatch, overrides=None):
     captured = {}
+    from ckanext.csunesco.logic import onboarding
+    monkeypatch.setattr(onboarding, 'exact_org_match', lambda title: False)
     monkeypatch.setattr(registration, '_registration_retry_after', lambda: None)
     monkeypatch.setattr(registration, '_recaptcha_configured', lambda: False)
     monkeypatch.setattr(registration, '_render_manager', lambda values: values)
@@ -309,13 +319,13 @@ def test_manager_registration_new_org_derives_admin(app, monkeypatch):
     assert out['pending_verification'] is True
 
 
-def test_manager_registration_existing_org_derives_editor(app, monkeypatch):
+def test_manager_registration_existing_org_requests_member(app, monkeypatch):
     out, captured = _manager_post(app, monkeypatch, {
         'org_name': 'existing-org', 'new_org_name': ''})
     manager = captured['created']['manager']
     assert manager['org_id'] == 'existing-org'
     assert manager['org_name_requested'] is None
-    assert manager['org_role'] == 'editor'
+    assert manager['org_role'] == 'member'
 
 
 def test_manager_registration_requires_the_org_block(app, monkeypatch):
@@ -360,7 +370,7 @@ def test_verify_activates_a_citizen_account(monkeypatch):
     monkeypatch.setattr(cs_db, 'verify_citizen_scientist', lambda p: p)
     monkeypatch.setattr(model.User, 'get', staticmethod(lambda uid: user))
     monkeypatch.setattr(model.Session, 'commit', lambda: None)
-    monkeypatch.setattr(registration, '_render_verify', lambda state: state)
+    monkeypatch.setattr(registration, '_render_verify', lambda state, project_slug=None: state)
     assert registration.verify_citizen('tok') == 'ok'
     assert activated['called'] is True
 
@@ -374,7 +384,7 @@ def test_verify_keeps_a_manager_account_pending(monkeypatch):
     monkeypatch.setattr(
         model.User, 'get',
         staticmethod(lambda uid: pytest.fail('manager must not be activated')))
-    monkeypatch.setattr(registration, '_render_verify', lambda state: state)
+    monkeypatch.setattr(registration, '_render_verify', lambda state, project_slug=None: state)
     assert registration.verify_citizen('tok') == 'manager_pending'
 
 

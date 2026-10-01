@@ -410,7 +410,7 @@ def _organization_choices(eligible_only=False, include_id=None):
         for choice in choices:
             group = model.Group.get(choice['name'])
             group_id = group.id if group is not None else choice['name']
-            if auth._is_org_editor(context, group_id) or group_id == include_id:
+            if auth.can_propose_for_org(context, group_id) or group_id == include_id:
                 item = dict(choice)
                 item['id'] = group_id
                 allowed.append(item)

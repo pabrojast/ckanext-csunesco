@@ -328,10 +328,10 @@ def create_citizen_scientist(context, data, verification_token=None):
     ``user_create`` action (using the passed ``context``) and idempotently
     inserts the ``cs_citizen_scientist`` profile row (persisting ``country``).
 
-    When ``verification_token`` is given (the WEB self-registration path) the new
+    When ``verification_token`` is given (web and current app registrations) the new
     account is held in CKAN ``pending`` state -- it cannot log in until the
     emailed ``/verify`` link activates it -- and the token is stored on its
-    profile. With no token (the trusted API/ofform path) the account is active
+    profile. With no token (legacy trusted API callers) the account is active
     and the profile lands already verified.
 
     Every validation/creation failure is collapsed into a single generic
@@ -350,6 +350,18 @@ def create_citizen_scientist(context, data, verification_token=None):
         # Store a stable human compatibility value alongside the ISO code.
         country = _country_name(nationality, 'en')
     terms_accepted = bool(data.get('terms_accepted'))
+    motivation = str(data.get('motivation') or '').strip()
+    language = str(data.get('language') or '').strip()
+    language_other = str(data.get('language_other') or '').strip()
+    if motivation and not 20 <= len(motivation) <= 500:
+        raise ValidationError(problem('motivation_invalid', 'motivation'))
+    if language and language not in ('en', 'es', 'fr', 'ar', 'pt', 'uk') or len(language_other) > 64:
+        raise ValidationError(problem('language_invalid', 'language', 'language_other'))
+    project_slug = data.get('registration_project_slug')
+    if project_slug:
+        from ckanext.csunesco import db
+        selected = db.get_project(project_slug)
+        project_slug = selected.slug if selected and selected.status == 'approved' else None
 
     # Username is optional (spec: generated from the name when blank). This is
     # ADDITIVE for the API path: a payload that sends one behaves exactly as
@@ -370,7 +382,7 @@ def create_citizen_scientist(context, data, verification_token=None):
     check_access('user_create', context)
 
     try:
-        new_user = tk.get_action('user_create')(context, {
+        new_user = tk.get_action('user_create')(dict(context, defer_commit=True), {
             'name': username,
             'email': email,
             'password': password,
@@ -390,23 +402,20 @@ def create_citizen_scientist(context, data, verification_token=None):
         log.warning('csunesco: unexpected error creating citizen scientist')
         raise ValidationError(problem('service_unavailable'))
 
-    # Web path: hold the account in ``pending`` state until the emailed link is
+    # Verified-registration path: hold the account in ``pending`` state until the emailed link is
     # opened. Both CKAN core login and the custom authenticator gate on
-    # ``user.is_active()``, so a pending account cannot sign in.
+    # ``user.is_active``, so a pending account cannot sign in.
     if verification_token:
         try:
             user_obj = model.User.get(new_user['id'])
             if user_obj is not None:
                 user_obj.set_pending()
-                model.Session.commit()
         except Exception:
             model.Session.rollback()
-            log.warning('csunesco: could not set pending state on new account')
+            raise ValidationError(problem('service_unavailable'))
 
-    # NON-ATOMICITY CAVEAT: the account now exists, but the profile insert below
-    # is a SEPARATE transaction -- if it fails the user is still created. We log
-    # a generic warning and continue rather than crash or leak internals. The
-    # profile insert is idempotent (unique user_id), so retries are safe.
+    # Commit the CKAN account, pending state and private profile together.
+    # A failed profile write must not leave an active account without a dossier.
     try:
         from ckanext.csunesco import db
         db.get_or_create_citizen_scientist(
@@ -416,11 +425,15 @@ def create_citizen_scientist(context, data, verification_token=None):
             nationality=nationality,
             gender=gender,
             terms_accepted=terms_accepted,
-            manager=data.get('manager'))
+            manager=data.get('manager'), motivation=motivation,
+            language=language, language_other=language_other,
+            registration_project_slug=project_slug,
+            defer_commit=True)
+        model.Session.commit()
     except Exception:
         model.Session.rollback()
-        log.warning('csunesco: citizen scientist profile row could not be '
-                    'created (account already exists)')
+        log.warning('csunesco: registration transaction failed')
+        raise ValidationError(problem('service_unavailable'))
 
     return new_user
 
@@ -498,6 +511,9 @@ def register_citizen():
     date_of_birth = request.form.get('date_of_birth', '').strip()
     nationality = request.form.get('nationality', '').strip().upper()
     gender = request.form.get('gender', '').strip()
+    motivation = request.form.get('motivation', '').strip()
+    language = request.form.get('language', '').strip()
+    language_other = request.form.get('language_other', '').strip()
     project_value = request.form.get('project', '').strip()
     terms = request.form.get('terms')
 
@@ -509,6 +525,7 @@ def register_citizen():
         'date_of_birth': date_of_birth,
         'nationality': nationality,
         'gender': gender,
+        'motivation': motivation, 'language': language, 'language_other': language_other,
         'project': project_value,
     }
 
@@ -538,6 +555,9 @@ def register_citizen():
     if not fullname or not date_of_birth or not gender or not nationality:
         missing = [k for k in ('fullname', 'date_of_birth', 'gender', 'nationality') if not data[k]]
         return _fail(errors=problem('required', *missing))
+
+    if not 20 <= len(motivation) <= 500:
+        return _fail(errors=problem('motivation_invalid', 'motivation'))
 
     # Password: required, min length, must match confirmation.
     if not password or len(password) < MIN_PASSWORD_LENGTH:
@@ -579,6 +599,8 @@ def register_citizen():
             'date_of_birth': parsed_dob,
             'nationality': parsed_nationality,
             'gender': parsed_gender,
+            'motivation': motivation, 'language': language, 'language_other': language_other,
+            'registration_project_slug': project_value,
             'terms_accepted': True,
         }, verification_token=verification_token)
     except NotAuthorized:
@@ -627,7 +649,14 @@ def register_citizen():
 def _organization_options():
     """Existing CKAN organizations for the PM form, fail-soft and sorted."""
     try:
-        rows = tk.get_action('organization_list')({
+        try:
+            from ckanext.colab.controller import get_all_organizations_cached
+        except ImportError:
+            get_all_organizations_cached = None
+        if get_all_organizations_cached:
+            # Form validation needs a fresh catalog after another PM was approved.
+            get_all_organizations_cached.cache_clear()
+        rows = get_all_organizations_cached() if get_all_organizations_cached else tk.get_action('organization_list')({
             'model': model, 'session': model.Session,
             'user': getattr(tk.g, 'user', None),
         }, {'all_fields': True, 'limit': 1000})
@@ -675,11 +704,16 @@ def register_manager():
     date_of_birth = request.form.get('date_of_birth', '').strip()
     nationality = request.form.get('nationality', '').strip().upper()
     gender = request.form.get('gender', '').strip()
+    motivation = request.form.get('motivation', '').strip()
+    language = request.form.get('language', '').strip()
+    language_other = request.form.get('language_other', '').strip()
     org_type = request.form.get('org_type', '').strip()
     org_name = request.form.get('org_name', '').strip()
     new_org_name = request.form.get('new_org_name', '').strip()
     org_title = request.form.get('org_title', '').strip()
     responsibilities = request.form.get('responsibilities')
+    org_role = request.form.get('org_role', 'member').strip()
+    org_description = request.form.get('org_description', '').strip()
 
     data = {
         'email': email,
@@ -693,6 +727,9 @@ def register_manager():
         'new_org_name': new_org_name,
         'org_title': org_title,
     }
+
+    data.update(motivation=motivation, language=language, language_other=language_other,
+                org_role=org_role, org_description=org_description)
 
     def _fail(status=200, headers=None, errors=None):
         rendered = _render_manager({
@@ -721,7 +758,12 @@ def register_manager():
     if not org_title:
         return _fail(errors=problem('organization_invalid', 'org_name', 'org_title', 'org_type', 'new_org_name'))
 
-    # Organization: an existing one (role editor) XOR a new one (role admin).
+    if not 20 <= len(motivation) <= 500:
+        return _fail(errors=problem('motivation_invalid', 'motivation'))
+    if org_role not in ('member', 'admin') or len(org_description) > 5000:
+        return _fail(errors=problem('organization_invalid', 'org_role', 'org_description'))
+
+    # A new organization makes the applicant its admin after review.
     creating_org = org_name == '__new__'
     if creating_org and not new_org_name:
         return _fail(errors=problem('organization_invalid', 'org_name', 'org_title', 'org_type', 'new_org_name'))
@@ -759,6 +801,16 @@ def register_manager():
         'session': model.Session,
         'user': tk.g.user,
     }
+    org_image_url = None
+    logo_upload = None
+    if creating_org:
+        from ckanext.csunesco.logic.onboarding import store_org_logo, exact_org_match
+        if exact_org_match(new_org_name):
+            return _fail(errors=problem('organization_invalid', 'new_org_name'))
+        try:
+            org_image_url, logo_upload = store_org_logo(request.files.get('org_logo'))
+        except ValidationError as exc:
+            return _fail(errors=from_validation(exc))
     verification_token = secrets.token_urlsafe(32)
 
     try:
@@ -770,22 +822,33 @@ def register_manager():
             'date_of_birth': parsed_dob,
             'nationality': parsed_nationality,
             'gender': parsed_gender,
+            'motivation': motivation, 'language': language, 'language_other': language_other,
             'terms_accepted': True,
             'manager': {
                 'org_id': org_id,
                 'org_name_requested': new_org_name if creating_org else None,
                 'org_type': org_type,
                 'org_title': org_title,
-                # Derived, never chosen: a new org starts with its requester
-                # as admin; joining an existing org grants editor.
-                'org_role': 'admin' if creating_org else 'editor',
+                # New organizations start with the requester as admin;
+                # existing organizations use the requested Member/Admin role.
+                'org_role': 'admin' if creating_org else org_role,
+                'org_description': org_description if creating_org else None,
+                'org_image_url': org_image_url,
             },
         }, verification_token=verification_token)
     except NotAuthorized:
+        if logo_upload:
+            logo_upload.rollback()
         log.warning('csunesco: user_create not authorized for PM register')
         return _fail(errors=problem('registration_disabled'))
     except ValidationError as exc:
+        if logo_upload:
+            logo_upload.rollback()
         return _fail(errors=from_validation(exc))
+    except Exception:
+        if logo_upload:
+            logo_upload.rollback()
+        raise
 
     _send_verification_email(fullname or username, email, verification_token)
 
@@ -797,10 +860,10 @@ def register_manager():
     })
 
 
-def _render_verify(state):
+def _render_verify(state, project_slug=None):
     """Render the /verify result page for a single ``state`` string."""
     return tk.render('csunesco/verify_result.html',
-                     extra_vars={'state': state})
+                     extra_vars={'state': state, 'project_slug': project_slug})
 
 
 def verify_citizen(token):
@@ -839,7 +902,7 @@ def verify_citizen(token):
         log.warning('csunesco: could not activate a verified citizen scientist')
         return _render_verify('error')
 
-    return _render_verify('manager_pending' if is_manager else 'ok')
+    return _render_verify('manager_pending' if is_manager else 'ok', getattr(profile, 'registration_project_slug', None))
 
 
 def resend_verification():

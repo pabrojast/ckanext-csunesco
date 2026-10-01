@@ -258,6 +258,10 @@ def csunesco_join_approve(context, data_dict):
     data_dict = data_dict or {}
     project_id, user_id = _resolve_membership_keys(data_dict)
 
+    profile = db.get_citizen_scientist(user_id)
+    if profile and getattr(profile, 'verification_token', None) and not profile.email_verified:
+        raise tk.ValidationError({'email_verified': [tk._('The applicant must verify their email before approval.')]})
+
     member = db.project_member(project_id, user_id)
     if member is None:
         raise tk.ObjectNotFound(tk._('Membership not found'))

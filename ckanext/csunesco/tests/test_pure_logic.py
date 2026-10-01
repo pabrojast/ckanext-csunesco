@@ -972,6 +972,7 @@ def test_is_sysadmin_tolerates_flask_login_anonymous_user():
 
 def test_project_proposal_auth_requires_an_editable_organization(monkeypatch):
     auth = pytest.importorskip('ckanext.csunesco.logic.auth')
+    monkeypatch.setattr(auth, '_user_obj', lambda context: None)
     monkeypatch.setattr(auth, '_is_sysadmin', lambda context: False)
     monkeypatch.setattr(
         auth, '_is_org_editor',

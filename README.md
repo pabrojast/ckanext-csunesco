@@ -10,9 +10,10 @@ workflow — see [`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
 ## Features
 
 - **Citizen-Scientist self-registration** — a colab-style blueprint at
-  `/citizen-science/register-citizen` that creates an active CKAN account with
+  `/citizen-science/register-citizen` that creates a pending CKAN account with
   **no organization** and flags a CS profile; optional reCAPTCHA v3. Also exposed
-  server-to-server as `csunesco_register_citizen_scientist` for ofform.
+  server-to-server as `csunesco_register_citizen_scientist` for ofform, including
+  email verification before activation.
 - **Initiatives & projects** — the four initiatives (Be Resilient, Island Watch,
   River Watch, C4Water) are CKAN groups; CS projects are first-class rows with a
   request → approve/reject lifecycle (`csunesco_project_*`). Join requests use
@@ -130,7 +131,7 @@ and the service-only handling of private Toolbox assets remain supported.
 | GET·POST | `/citizen-science/register-citizen` | Citizen Scientist self-registration (optional `?project=<id-or-slug>`; account created **pending**, selected join filed immediately) | public — gated by `ckan.auth.create_user_via_web`; reuses core `user_create` auth |
 | GET | `/citizen-science/verify/<token>` | Activate a pending account via its emailed link | public (single-use token) |
 | GET·POST | `/citizen-science/verify/resend` | Request a fresh verification link | public (generic response) |
-| GET·POST | `/citizen-science/project/new` | Propose a project (**eight-stage form**) | sysadmin or an editor/admin of the selected organization |
+| GET·POST | `/citizen-science/project/new` | Propose a project (**eight-stage form**) | sysadmin, organization editor/admin, or approved PM with verified email and membership in that organization |
 | GET·POST | `/citizen-science/project/<slug>/edit` | Correct a project's own details (same staged form; does **not** re-open review) | sysadmin, initiative admin, that project's admin **or** the author while it is unapproved |
 | POST | `/citizen-science/project/<slug>/resubmit` | Send a **rejected** project back for review | same as edit |
 | POST | `/citizen-science/project/<slug>/delete` | Permanently delete an unapproved proposal | proposer, scoped administrator or sysadmin |
@@ -180,7 +181,7 @@ enumerate accounts.
 | `csunesco_project_resubmit` | same set — sends a **rejected** project back to the queue (`rejected → pending`, clearing the reason and the stale review stamp). Only valid from `rejected`; approving it still needs a sysadmin/ADM |
 | `csunesco_content_list`, `csunesco_content_show` | public (read; approved only — **except** a manager reading their own project, who also sees its pending/rejected rows) |
 | — `csunesco_content_list` filters (all optional, additive) | `content_type` · `project_id`/`project`/`project_slug` · `project_ids` (list or CSV of ids/slugs, ≤50 — the "news from my projects" feed) · `organization` (id/name) · `initiative` · `status` (privileged callers only: sysadmin, the scope's managers, or an **initiative admin filtering their own initiative**) · `featured` · `q` (title+body, wildcards escaped) · `date_from`/`date_to` (over `COALESCE(publish_date, created)`) · `upcoming` (events only) · `created_by` · `source` (`app`/`ckan`, NULL-safe) · `sort` (`publish_date`\|`created`\|`title` × `asc`\|`desc`) · `include_project` (batch-decorates owner title/slug) · `include_body` · `limit`/`offset` |
-| `csunesco_project_request_create` | sysadmin or an editor/admin of the selected organization |
+| `csunesco_project_request_create` | sysadmin, organization editor/admin, or approved PM with verified email and membership in that organization |
 | `csunesco_my_projects` | authenticated (the projects **you** administer, whatever your role) |
 | `csunesco_data_chat` | authenticated — one plain-language question about an **approved** data source; per-user daily quota |
 | `csunesco_content_create`, `csunesco_content_update` | sysadmin, initiative admin **or** project admin (an explicit `source: 'app'` forces `pending` even for sysadmins) |
@@ -245,7 +246,39 @@ The canonical **country** plus private date/nationality/gender/terms fields are
 persisted on the CS profile. Requires a working SMTP config (`smtp.*`). The
 server-to-server `csunesco_register_citizen_scientist` action remains backwards
 compatible and may accept the same optional profile fields; trusted (sysadmin)
-callers still create active, already-verified accounts.
+callers may still create active, already-verified accounts when the verification
+flag is omitted. Ofform sends `require_email_verification=true` and receives
+`id` plus `verification_pending`, so new app accounts follow email verification
+as well. Existing active accounts are not changed.
+
+
+### Onboarding and private registration review
+
+- Both forms require a **20–500 character motivation**, stored privately with
+  identity, demographics, language and consent timestamps. The PM form uses the
+  Colab organization catalog and offers **Member/Admin**, without Editor.
+- A requested new organization may include a description and logo. Approval
+  creates the IHP-WINS organization and adds the PM as Admin in one transaction.
+  Existing-organization requests retain the requested Member/Admin role. If an
+  organization with the same normalized name already exists, a reviewer must
+  explicitly select it and its membership role before approving.
+- `/citizen-science/admin/manager-accounts` provides search, status filters,
+  pagination, full private dossiers and decision notes. PM account decisions
+  remain separate from project-proposal decisions. An approved PM with Member
+  capacity can propose a CS project without general CKAN editing rights.
+- `csunesco_registration_review_show`, `csunesco_manager_list` and
+  `csunesco_registration_project_review` serve private app reviews. Trusted
+  requests include both `actor_username` and `actor_id`; permissions are checked
+  against that active reviewer. `csunesco_registration_resend` provides a
+  throttled, generic verification-mail response for the trusted backend.
+- Project/QR context survives verification and login. Pending citizen join
+  requests cannot be approved before email verification; repeat registration or
+  approval does not duplicate the account, organization or membership.
+
+**Release order:** update this plugin before the matching Ofform backend and
+frontend. Schema updates are additive/nullable. Configure working CKAN SMTP,
+Colab and `ckanext.csunesco.ofform_app_url`; existing accounts keep their current
+verification and activation states.
 
 ## Configuration
 

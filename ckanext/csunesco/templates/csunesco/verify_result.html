@@ -21,7 +21,7 @@
     </section>
     <section class="cs-card" aria-label="{{ _('Next step') }}">
       <p>{{ _("You can now log in with your username and password.") }}</p>
-      <a class="cs-btn cs-btn-primary" href="{{ h.url_for('user.login') }}">
+      <a class="cs-btn cs-btn-primary" href="{{ h.csunesco_login_url(project_slug) or h.url_for('user.login') }}">
         {{ _("Log in") }}
       </a>
     </section>
@@ -57,7 +57,7 @@
       </a>
       <p class="cs-form-footer">
         {{ _("Already verified?") }}
-        <a href="{{ h.url_for('user.login') }}">{{ _("Log in") }}</a>
+        <a href="{{ h.csunesco_login_url(project_slug) or h.url_for('user.login') }}">{{ _("Log in") }}</a>
       </p>
     </section>
   {% endif %}

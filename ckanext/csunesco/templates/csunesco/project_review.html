@@ -1,3 +1,4 @@
+{% from 'csunesco/snippets/registration_dossier.html' import dossier with context %}
 {% extends "csunesco/base.html" %}
 
 {% block subtitle %}{{ _("Review project") }} - {{ project.title }}{% endblock %}
@@ -107,6 +108,7 @@
     {% else %}<p class="cs-muted">{{ _("Not provided") }}</p>{% endif %}
   </section>
 
+  {{ dossier(project.registration or {}) }}
   <section class="cs-section" aria-labelledby="review-history-title">
     <h2 id="review-history-title">{{ _("Edit history") }}</h2>
     {% if project.edit_history %}

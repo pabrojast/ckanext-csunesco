@@ -22,6 +22,8 @@
    * element exists in the page. Username is deliberately absent -- it is
    * optional (the server generates one from the name when blank). */
   var fields = [
+    { input: document.getElementById("cs-motivation"), hint: hintFor("cs-motivation"),
+      valid: function(el) { var n = Array.from(el.value.trim()).length; return n >= 20 && n <= 500; } },
     { input: email, hint: hintFor("cs-email"),
       valid: function (el) {
         return /^[^@\s]+@[^@\s]+$/.test((el.value || "").trim());
@@ -123,17 +125,23 @@
 
   /* Manager form only: choosing "create a new organization" reveals the name
    * input and flips the derived role note (new org -> Admin, existing ->
-   * Editor). Server-side derivation is authoritative; this is presentation. */
+   * Member/Admin). Server validation is authoritative; this is presentation. */
   var orgName = document.getElementById("cs-org-name");
   var newOrgField = document.getElementById("cs-new-org-field");
   var roleNote = document.getElementById("cs-org-role-note");
   if (orgName && newOrgField) {
+    var wasCreating = false;
     var syncOrgChoice = function () {
       var creating = orgName.value === "__new__";
       newOrgField.hidden = !creating;
+      var extra = document.getElementById("cs-org-extra");
+      if (extra) extra.hidden = !creating;
+      var role = document.getElementById("cs-org-role");
+      if (role) { role.querySelector('[value="member"]').disabled = creating; if (creating) role.value = "admin"; else if (wasCreating) role.value = "member"; }
+      wasCreating = creating;
       if (roleNote) {
         var label = roleNote.getAttribute(
-          creating ? "data-role-admin" : "data-role-editor");
+          creating ? "data-role-admin" : "data-role-member");
         roleNote.textContent = label || "";
       }
     };
@@ -157,7 +165,7 @@
     renderStrength();
     if (invalid.length) {
       event.preventDefault();
-      invalid[0].focus();
+      (invalid[0].hidden && invalid[0] === orgName ? document.getElementById("cs-org-search") : invalid[0]).focus();
       return;
     }
 
@@ -207,8 +215,51 @@
         if (!firstInvalid) { firstInvalid = input; }
       }
     });
-    (firstInvalid || serverError).focus();
+    (firstInvalid && firstInvalid.hidden && firstInvalid === orgName ? document.getElementById("cs-org-search") : (firstInvalid || serverError)).focus();
   }
 
+  var motivation = document.getElementById("cs-motivation");
+  if (motivation) motivation.addEventListener("input", function() {
+    document.querySelector('[data-motivation-count]').textContent = Array.from(motivation.value).length;
+  });
+  var fullname = document.getElementById("cs-fullname");
+  var manualUsername = Boolean(username && username.value);
+  if (username && fullname) {
+    username.addEventListener("input", function() { manualUsername = true; });
+    fullname.addEventListener("input", function() {
+      if (!manualUsername) username.value = fullname.value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
+    });
+  }
+  var picker = document.getElementById("cs-org-picker");
+  if (picker && orgName) {
+    picker.hidden = false;
+    var search = document.getElementById("cs-org-search");
+    var results = document.getElementById("cs-org-results");
+    var status = document.getElementById("cs-org-status");
+    var orgs = [];
+    function fold(text) { return String(text || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+    function matches(text) { var words=fold(text).split(/\s+/).filter(Boolean); return orgs.filter(function(o) { var hay=fold(o.title+" "+o.name);return words.every(function(w){return hay.indexOf(w)!==-1;}); }).sort(function(a,b){var q=fold(text); var score=function(o){var t=fold(o.title);return t===q?3:t.indexOf(q)===0?2:1;};return score(b)-score(a)||a.title.localeCompare(b.title);}); }
+    function render() {
+      results.textContent = "";
+      var found=matches(search.value); status.textContent=found.length ? "" : status.dataset.empty;
+      found.slice(0,10).forEach(function(org) {
+        var li=document.createElement("li"), button=document.createElement("button");
+        button.type="button"; button.textContent=org.title || org.name;
+        button.addEventListener("click", function(){orgName.value=org.name;orgName.dispatchEvent(new Event("change"));search.value=org.title || org.name;results.textContent="";status.textContent=search.value;});
+        li.appendChild(button);results.appendChild(li);
+      });
+    }
+    status.textContent=status.dataset.loading;
+    fetch(picker.dataset.url, {credentials:"same-origin"}).then(function(res){if(!res.ok)throw new Error();return res.json();}).then(function(data){
+      if(!Array.isArray(data.results))throw new Error();orgs=data.results;
+      Array.from(orgName.options).forEach(function(opt){if(opt.value && opt.value!=="__new__" && !orgs.some(function(o){return o.name===opt.value;}))orgs.push({name:opt.value,title:opt.text});});
+      orgs.forEach(function(o){if(!Array.from(orgName.options).some(function(opt){return opt.value===o.name;})){var opt=new Option(o.title || o.name,o.name);orgName.add(opt);}});
+      orgName.hidden=true; if (orgName.value && orgName.value !== "__new__") search.value=orgName.options[orgName.selectedIndex].text; render();
+    }).catch(function(){status.textContent=status.dataset.error;orgName.hidden=false;});
+    search.addEventListener("input", function(){orgName.value="";orgName.dispatchEvent(new Event("change"));render();});
+    document.getElementById("cs-org-new").addEventListener("click",function(){orgName.value="__new__";orgName.dispatchEvent(new Event("change"));document.getElementById("cs-new-org-name").focus();});
+    document.getElementById("cs-org-back").addEventListener("click",function(){orgName.value="";orgName.dispatchEvent(new Event("change"));search.focus();render();});
+    document.getElementById("cs-new-org-name").addEventListener("input",function(e){var box=document.getElementById("cs-org-similar");var list=e.target.value.trim().length>=2?matches(e.target.value).slice(0,5):[];box.textContent=list.length?box.dataset.similar+" "+list.map(function(o){return o.title;}).join(", "):"";});
+  }
   renderStrength();
 })();

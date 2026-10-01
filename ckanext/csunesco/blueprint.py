@@ -670,3 +670,10 @@ def portal_partition_media(source_id, digest):
     return snapshots.partition_asset_view(source_id, digest)
 
 csunesco_bp.add_url_rule('/portal/partition-media/<source_id>/<digest>', 'portal_partition_media', portal_partition_media, methods=['GET'])
+
+
+def manager_reviews():
+    from ckanext.csunesco.logic import views_admin
+    return views_admin.manager_reviews()
+
+csunesco_bp.add_url_rule('/admin/manager-accounts', 'manager_reviews', manager_reviews, methods=['GET'])
