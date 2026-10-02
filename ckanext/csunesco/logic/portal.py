@@ -671,13 +671,14 @@ def preview_view(ticket):
         public['workplan'] = []
         public['portal_managed'] = True
         public['portal_published'] = True  # Render the authorized candidate, not the old page.
-        ctx = page_render.build_context({'user': None}, public, candidate['blocks'],
+        preview_blocks = page_render.group_about_sections(candidate['blocks'])
+        ctx = page_render.build_context({'user': None}, public, preview_blocks,
                                        has_region=bool(public.get('region_geojson')), can_manage=False, preview=True)
         ctx['contacts'] = {k: candidate.get('project', {}).get(k) for k in ('contact_person', 'contact_email')}
         ctx['region_url'] = '/citizen-science/portal/preview-region/' + ticket
         ctx['news_events'] = candidate.get('contents', [])
         body = tk.render('csunesco/project_landing.html', extra_vars={
-            'project': public, 'blocks': candidate['blocks'], 'ctx': ctx,
+            'project': public, 'blocks': preview_blocks, 'ctx': ctx,
             'is_draft_preview': True, 'portal_readonly_preview': True,
             'preview_parent_origin': tk.config.get('ckanext.csunesco.portal_preview_origin')})
     response = Response(body)

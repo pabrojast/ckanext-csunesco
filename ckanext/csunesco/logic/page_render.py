@@ -47,6 +47,25 @@ def app_publication(project):
     return bool(project.get('portal_published', project.get('portal_managed')))
 
 
+def group_about_sections(blocks):
+    """Group matching About headings, retaining all prose and editable IDs."""
+    about = next((i for i, block in enumerate(blocks)
+                  if block.get('type') == 'builtin_about' and not block.get('hidden')), None)
+    if about is None:
+        return blocks
+    heading = str(blocks[about].get('title') or 'About this project').strip().casefold()
+    narrative = [i for i, block in enumerate(blocks)
+                 if block.get('type') == 'rich_text' and not block.get('hidden')
+                 and str(block.get('title') or '').strip().casefold() == heading]
+    if not narrative:
+        return blocks
+    combined = dict(blocks[about], _about_narratives=[dict(blocks[i], title='') for i in narrative])
+    positions = set(narrative + [about])
+    first = min(positions)
+    return [combined if i == first else block for i, block in enumerate(blocks)
+            if i == first or i not in positions]
+
+
 def project_blocks(project, blocks):
     """Compose legacy facts inside the page, without changing stored revisions.
 
@@ -55,7 +74,7 @@ def project_blocks(project, blocks):
     """
     result = list(blocks or [])
     if not result or app_publication(project):
-        return result
+        return group_about_sections(result)
     from ckanext.csunesco.logic import portal
     kinds = {block.get('type') for block in result}
     if 'builtin_about' not in kinds and any(project.get(key) for key in (
@@ -68,7 +87,7 @@ def project_blocks(project, blocks):
     if 'project_structure' not in kinds and any(project.get(key) for key in (
             'structure', 'workplan', 'target_group', 'how_to_participate')):
         result.append({'id': 'project-structure', 'type': 'project_structure'})
-    return result
+    return group_about_sections(result)
 
 
 def project_display_data(project):

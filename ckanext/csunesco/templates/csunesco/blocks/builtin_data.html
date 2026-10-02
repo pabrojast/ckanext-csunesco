@@ -50,7 +50,7 @@
   {% endif %}
   {% for ds in approved_sources %}
     {% if block.charts is not defined and ds.can_view_resources %}
-    {% set count_chart = {'id': block.id ~ '-observations-' ~ ds.id, 'type': 'chart', 'data_source_id': ds.id, 'title': _('Observations by month'), 'mode': 'count', 'chart': 'bar', 'agg': 'count', 'group_by': 'auto', 'bucket': 'month', 'range': 'all', 'height': 220} %}
+    {% set count_chart = {'id': block.id ~ '-observations-' ~ ds.id, 'type': 'chart', 'data_source_id': ds.id, 'title': _('Observations by month') ~ ' — ' ~ ds.title, 'mode': 'count', 'chart': 'bar', 'agg': 'count', 'group_by': 'auto', 'bucket': 'month', 'range': 'all', 'height': 220} %}
     {% snippet 'csunesco/blocks/chart.html', block=count_chart, ctx=ctx %}
     {% endif %}
     <article class="cs-data-source">

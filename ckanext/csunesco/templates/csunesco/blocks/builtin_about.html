@@ -4,6 +4,9 @@
   {% if block.intro %}<p class="cs-section-intro">{{ block.intro }}</p>{% endif %}
   {% set about_html = block.html if project._app_publication and block.html is defined else (block.html or project.landing_content) %}
   {% if about_html %}<div class="cs-rich-text">{{ about_html | safe }}</div>{% elif project.short_description and not (project._app_publication and block.html is defined) %}<p>{{ project.short_description }}</p>{% endif %}
+  {% for narrative in block._about_narratives or [] %}
+    {% snippet 'csunesco/snippets/block_render.html', block=narrative, ctx=ctx %}
+  {% endfor %}
   <dl class="cs-portal-info-grid">
     {% if project.countries %}<div><dt>{{ _('Country') }}</dt><dd>{% for state in h.csunesco_member_state_titles(project.countries) %}{{ state.title }}{{ ', ' if not loop.last }}{% endfor %}</dd></div>{% endif %}
     {% set dates = project.structure or {} %}

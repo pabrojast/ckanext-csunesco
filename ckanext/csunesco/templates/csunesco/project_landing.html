@@ -102,7 +102,7 @@
 
   {% if ctx.can_manage and not is_draft_preview %}
     <p class="cs-page-edit-bar">
-      <a class="cs-btn cs-btn-secondary cs-btn-sm" href="{{ h.csunesco_editor_link('csunesco.project_page_edit', slug=project.slug) }}">{{ _("Edit page sections") }}</a>
+      <a class="cs-btn cs-btn-primary cs-btn-sm" href="{{ h.csunesco_editor_link('csunesco.project_page_edit', slug=project.slug) }}">{{ _("Edit project page") }}</a>
       {% if h.csunesco_can_edit_project(project) %}
         <a class="cs-btn cs-btn-secondary cs-btn-sm" href="{{ h.csunesco_editor_link('csunesco.project_edit', slug=project.slug) }}">{{ _("Edit project details") }}</a>
       {% endif %}

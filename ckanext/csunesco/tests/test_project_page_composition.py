@@ -96,6 +96,21 @@ def test_presentation_does_not_modify_saved_blocks_or_project():
     assert composed[0]['title'] == 'Our river'
 
 
+@pytest.mark.parametrize('published', [False, True])
+def test_about_narrative_and_canonical_fields_share_heading_without_losing_text(render_project, published):
+    candidate = [dict(id='narrative', type='rich_text', title='About this project', html='<p>Historical narrative</p>'),
+                 dict(id='about', type='builtin_about', html='<p>Canonical description</p>'),
+                 dict(id='secret', type='rich_text', title='About this project', html='<p>Private narrative</p>', hidden=True)]
+    html = render_project(dict(portal_published=published), candidate)
+    assert html.count('>About this project<') == 1
+    assert html.count('Historical narrative') == 1
+    assert html.count('Canonical description') == 1
+    assert 'Private narrative' not in html
+    assert candidate[0]['title'] == 'About this project'
+    assert '_about_narratives' not in candidate[1]
+    assert len(page_render.group_about_sections([candidate[0], dict(candidate[1], hidden=True)])) == 2
+
+
 def test_pending_first_app_publication_still_renders_old_approved_page(render_project):
     html = render_project(dict(portal_managed=True, portal_published=False,
                                short_description='Approved legacy description',

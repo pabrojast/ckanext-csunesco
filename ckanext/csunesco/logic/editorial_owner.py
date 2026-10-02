@@ -1,5 +1,6 @@
 """One editorial owner after the app migration has been verified."""
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
+import re
 import ckan.plugins.toolkit as tk
 from ckanext.csunesco import db
 
@@ -48,6 +49,17 @@ def redirect(scope='site', key='home', section='portal'):
     destination = editor_url(scope, key, section)
     if not destination:
         return tk.abort(503, 'The app editor is not configured')
+    section_id = request.args.get('open', '')
+    if section == 'portal' and re.fullmatch(r'[A-Za-z0-9_-]{1,128}', section_id):
+        if scope == 'project':
+            from ckanext.csunesco.logic import blocks
+            project = db.get_project(key)
+            page = db.get_project_page(project.id) if project else None
+            for block in blocks.blocks_from_json(page.published_json, default=[]) if page else []:
+                if block['id'] == section_id and (block['type'] in blocks.DEFAULT_BLOCK_TYPES or block['type'] in ('project_facts', 'project_structure')):
+                    section_id = block['type']
+                    break
+        destination += '?' + urlencode({'open': section_id})
     return tk.redirect_to(destination)
 
 

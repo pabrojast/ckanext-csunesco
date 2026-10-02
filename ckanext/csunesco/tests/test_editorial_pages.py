@@ -1,4 +1,5 @@
 import copy
+import json
 import time
 import pytest
 import ckan.plugins.toolkit as tk
@@ -166,6 +167,16 @@ def test_legacy_get_redirects_to_shared_section_and_post_is_rejected(store, monk
     app.secret_key = "isolated-editor-route-test"
     with app.test_request_context('/'):
         assert function(project.slug) == 'https://app.example/projects/42/space/' + section
+    if section == 'portal':
+        with app.test_request_context('/?open=about&next=https://untrusted.example'):
+            assert function(project.slug) == 'https://app.example/projects/42/space/portal?open=about'
+        with app.test_request_context('/?open=https://untrusted.example'):
+            assert function(project.slug) == 'https://app.example/projects/42/space/portal'
+        saved = db.get_or_create_project_page(project.id)
+        saved.published_json = json.dumps([{'id': 'legacy-about', 'type': 'builtin_about'}])
+        db.Session.add(saved); db.Session.commit()
+        with app.test_request_context('/?open=legacy-about'):
+            assert function(project.slug) == 'https://app.example/projects/42/space/portal?open=builtin_about'
     from werkzeug.exceptions import MethodNotAllowed
     with app.test_request_context('/', method='POST'), pytest.raises(MethodNotAllowed):
         function(project.slug)
