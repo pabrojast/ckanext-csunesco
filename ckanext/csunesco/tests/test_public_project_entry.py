@@ -47,6 +47,15 @@ def test_login_return_is_contextual_local_path(app, path, expected):
     assert helpers.csunesco_login_return_url() is None
 
 
+def test_login_return_restores_locale_stripped_by_ckan_middleware(app, monkeypatch):
+    from ckan.lib import i18n
+    monkeypatch.setattr(i18n, 'get_locales', lambda: ['en', 'es'])
+    monkeypatch.setitem(tk.config, 'ckan.root_path', '')
+    with app.test_request_context('/citizen-science/project/river?tab=data',
+            environ_overrides={'CKAN_LANG': 'es', 'CKAN_LANG_IS_DEFAULT': False}):
+        assert helpers.csunesco_login_return_url() == '/es/citizen-science/project/river?tab=data'
+
+
 @pytest.fixture(params=[('ckan', ''), ('ckan', 'app'), ('app', 'app')])
 def ownership(request, monkeypatch):
     editorial, intake = request.param

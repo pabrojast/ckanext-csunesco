@@ -210,7 +210,10 @@ def csunesco_login_return_url():
         return None
     if not path.startswith('/') or path.startswith('//') or '\\' in path:
         return None
-    return request.full_path if request.query_string else path
+    local = request.full_path if request.query_string else path
+    # CKAN's language middleware strips the locale from request.path. Restore
+    # it with the same URL builder used for the login link itself.
+    return tk.url_for(local) if 'CKAN_LANG' in request.environ else local
 
 
 def csunesco_can_manage_project(project_id):
