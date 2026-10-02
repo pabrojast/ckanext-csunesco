@@ -664,11 +664,11 @@ GNU Affero General Public License (AGPL) v3.0.
 
 ### Acceso Citizen Science y avisos de revisión
 
-`h.csunesco_login_url()` dirige las entradas públicas de Citizen Science a
-`ckanext.csunesco.ofform_app_url/login?next=/projects`; una entrada de proyecto
-conserva su slug. El login general del catálogo y el de inscripción, edición y
-administración de proyectos siguen en CKAN. Sin URL de app válida se conserva
-el login de CKAN.
+`h.csunesco_login_url()` mantiene el inicio de sesión de Citizen Science en
+CKAN y conserva la página local de origen en `came_from`, incluidos el idioma
+y los parámetros de consulta. Después de verificar un correo, vuelve al
+proyecto asociado o al inicio del portal para no reutilizar el enlace de
+verificación. El login general del catálogo mantiene su comportamiento.
 
 Con el token de callback existente, los proyectos enviados a revisión y las
 solicitudes de participación del portal generan eventos privados y durables

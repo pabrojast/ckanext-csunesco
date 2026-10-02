@@ -183,29 +183,17 @@ def csunesco_can_propose_project():
 
 
 def csunesco_login_url(project_slug=None):
-    """Entrada contextual a la app; los editores y altas de CKAN siguen aquí."""
-    from flask import has_request_context, request
-    from urllib.parse import quote, urlencode, urlsplit
-    if not has_request_context():
-        return None
+    """Use CKAN authentication and return to the current Citizen Science page."""
+    from flask import request
     local = csunesco_login_return_url()
     if local is None:
         return None
     endpoint = (request.endpoint or '').split('.')[-1]
-    ckan_endpoints = {'project_new', 'project_edit', 'project_page_edit',
-                      'site_page_edit', 'initiative_page_edit', 'content_new',
-                      'content_edit', 'admin_dashboard'}
-    if endpoint in ckan_endpoints or '/admin' in request.path:
-        return tk.url_for('user.login', came_from=local)
-    base = str(tk.config.get('ckanext.csunesco.ofform_app_url') or '').rstrip('/')
-    parsed = urlsplit(base)
-    if parsed.scheme not in {'https', 'http'} or not parsed.netloc:
-        return tk.url_for('user.login', came_from=local)
-    slug = project_slug
-    if not slug and endpoint == 'project_landing':
-        slug = (request.view_args or {}).get('slug')
-    destination = '/explorer/projects/' + quote(str(slug), safe='') if slug else '/projects'
-    return base + '/login?' + urlencode({'next': destination})
+    if endpoint == 'verify_citizen':
+        # Verification tokens are single-use; do not return to a consumed link.
+        local = (tk.url_for('csunesco.project_landing', slug=project_slug)
+                 if project_slug else tk.url_for('csunesco.index'))
+    return tk.url_for('user.login', came_from=local)
 
 
 def csunesco_login_return_url():

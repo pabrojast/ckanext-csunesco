@@ -19,12 +19,16 @@ def app():
     application.secret_key = 'registration-test-session'
     Babel(application)
     cs = Blueprint('csunesco', __name__)
-    cs.add_url_rule('/citizen-science/', 'home', lambda: '')
+    cs.add_url_rule('/citizen-science/', 'index', lambda: '')
     cs.add_url_rule('/es/citizen-science/project/river', 'project', lambda: '')
     cs.add_url_rule('/citizen-science/project/new', 'project_new', views.project_new, methods=['GET', 'POST'])
     cs.add_url_rule('/citizen-science/project/<slug>', 'project_landing', lambda slug: '')
     cs.add_url_rule('/citizen-science/project/<slug>/edit', 'project_edit', lambda slug: '')
+    cs.add_url_rule('/citizen-science/verify/<token>', 'verify_citizen', lambda token: '')
     application.register_blueprint(cs)
+    user = Blueprint('user', __name__)
+    user.add_url_rule('/user/login', 'login', lambda: '')
+    application.register_blueprint(user)
     application.add_url_rule('/citizen-science-portal', 'portal', lambda: '')
     application.add_url_rule('/dataset', 'dataset', lambda: '')
     return application
@@ -204,19 +208,37 @@ def test_header_keeps_other_pages_and_logged_in_users_unchanged():
     assert calls == []
 
 
-@pytest.mark.parametrize('path,next_path', [
-    ('/citizen-science/', '/projects'),
-    ('/citizen-science-portal', '/projects'),
-    ('/citizen-science/project/river', '/explorer/projects/river'),
-    ('/citizen-science/?next=https://outside.test', '/projects'),
+@pytest.mark.parametrize('path', [
+    '/citizen-science/',
+    '/citizen-science-portal',
+    '/citizen-science/project/river',
+    '/es/citizen-science/project/river?tab=data',
+    '/citizen-science/?next=https://outside.test',
 ])
-def test_app_login_is_scoped_and_retains_project_context(app, monkeypatch, path, next_path):
+def test_portal_login_stays_in_ckan_and_retains_context(app, ownership, monkeypatch, path):
     from urllib.parse import urlsplit, parse_qs
-    monkeypatch.setitem(tk.config, 'ckanext.csunesco.ofform_app_url', 'https://app.example/cstoolbox')
+    monkeypatch.setattr(tk, 'url_for', url_for)
     with app.test_request_context(path):
         target = urlsplit(helpers.csunesco_login_url())
-        assert target.netloc == 'app.example' and target.path == '/cstoolbox/login'
-        assert parse_qs(target.query) == {'next': [next_path]}
+        assert not target.netloc and target.path == '/user/login'
+        assert parse_qs(target.query) == {'came_from': [path]}
+
+
+@pytest.mark.parametrize('slug,destination', [
+    ('river', '/citizen-science/project/river'),
+    (None, '/citizen-science/'),
+])
+def test_verification_login_returns_to_portal_without_reusing_token(app, monkeypatch, slug, destination):
+    from urllib.parse import urlsplit, parse_qs
+    monkeypatch.setattr(tk, 'url_for', url_for)
+    with app.test_request_context('/citizen-science/verify/used-token'):
+        target = urlsplit(helpers.csunesco_login_url(slug))
+        assert not target.netloc and target.path == '/user/login'
+        assert parse_qs(target.query) == {'came_from': [destination]}
+
+
+def test_login_url_outside_request_context():
+    assert helpers.csunesco_login_url() is None
 
 
 @pytest.mark.parametrize('path', ['/citizen-science/project/new', '/citizen-science/project/river/edit'])
