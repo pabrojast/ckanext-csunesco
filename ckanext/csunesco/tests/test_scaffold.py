@@ -327,3 +327,16 @@ def test_citizen_join_step_is_qr_only_and_optional():
     vendor = os.path.join(PKG_DIR, 'public', 'csunesco', 'vendor')
     assert os.path.isfile(os.path.join(vendor, 'jsQR.js'))
     assert os.path.isfile(os.path.join(vendor, 'JSQR-LICENSE.txt'))
+
+
+def test_confirmation_screens_list_the_real_next_steps():
+    citizen = _template_source('register_citizen.html')
+    manager = _template_source('register_manager.html')
+    for source in (citizen, manager):
+        assert 'Check your inbox' in source
+        assert 'cs-confirm-steps' in source
+        assert "url_for('csunesco.resend_verification')" in source
+    # A Project Manager cannot sign in until an administrator approves the
+    # account, so proposing a project can only come after that step.
+    assert manager.index('Wait for account approval') < \
+        manager.index('Submit your project')

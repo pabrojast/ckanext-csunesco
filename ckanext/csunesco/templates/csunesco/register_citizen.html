@@ -31,26 +31,58 @@
       </div>
 
       {% if pending_verification %}
-        <div class="cs-register-success" role="status">
-          <span class="cs-register-success-icon" aria-hidden="true">
-            {{ h.csunesco_icon('check', 28) }}
-          </span>
-          <h1 id="cs-reg-title">{{ _("Almost there — check your email") }}</h1>
-          <p>{{ _("We've sent you a link to activate your account.") }}</p>
-          {% if email %}
-            <p class="cs-register-muted">{{ _("Sent to:") }} <strong>{{ email }}</strong></p>
-          {% endif %}
-          {% if join_project %}
-            <p class="cs-register-join-success">
-              {{ _("Your request to join %(project)s has also been sent to the project manager.", project=join_project.title) }}
-            </p>
-          {% endif %}
-          <p class="cs-register-muted">
-            {{ _("The link expires in 48 hours. If it doesn't arrive, check your spam folder or request a new one.") }}
+        {# Confirmation: what was sent and the steps that follow. Step 2 names
+           what this portal really offers a signed-in visitor (the request form
+           on the project page); scanning a QR code happens in the Toolbox. #}
+        <div class="cs-register-success cs-confirm" role="status">
+          <span class="cs-confirm-mail" aria-hidden="true">{{ h.csunesco_icon('mail', 36) }}</span>
+          <span class="cs-role-chip">{{ _("Citizen Scientist") }}</span>
+          <h1 id="cs-reg-title">{{ _("Check your inbox") }}</h1>
+          <p>
+            {% if email %}
+              {{ _("We've sent a confirmation email to") }} <strong>{{ email }}</strong>.
+            {% else %}
+              {{ _("We've sent you a confirmation email.") }}
+            {% endif %}
           </p>
-          <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.resend_verification') }}">
-            {{ _("Resend verification email") }}
-          </a>
+          <ol class="cs-confirm-steps">
+            <li class="cs-confirm-step is-active">
+              <span class="cs-confirm-num" aria-hidden="true">1</span>
+              <div class="cs-confirm-card">
+                <h2>{{ _("Confirm your email") }}</h2>
+                <p>{{ _("Click the link in the email to activate your account. The link expires in 48 hours.") }}</p>
+              </div>
+            </li>
+            {% if join_project %}
+              <li class="cs-confirm-step is-done">
+                <span class="cs-confirm-num" aria-hidden="true">{{ h.csunesco_icon('check', 16) }}</span>
+                <div class="cs-confirm-card">
+                  <h2>{{ _("Project chosen") }}</h2>
+                  <p>{{ _("Your request to join %(project)s has also been sent to the project manager.", project=join_project.title) }}</p>
+                </div>
+              </li>
+            {% else %}
+              <li class="cs-confirm-step">
+                <span class="cs-confirm-num" aria-hidden="true">2</span>
+                <div class="cs-confirm-card">
+                  <h2>{{ _("Choose your project") }}</h2>
+                  <p>{{ _("Sign in, open your project's page and select Request to join. In the Toolbox app you can also scan the QR code provided by your Project Manager.") }}</p>
+                </div>
+              </li>
+            {% endif %}
+            <li class="cs-confirm-step">
+              <span class="cs-confirm-num" aria-hidden="true">3</span>
+              <div class="cs-confirm-card">
+                <h2>{{ _("Wait for approval") }}</h2>
+                <p>{{ _("The project manager reviews your request. You'll be notified once you're in.") }}</p>
+              </div>
+            </li>
+          </ol>
+          <a class="cs-btn cs-btn-primary cs-confirm-back" href="{{ h.url_for('csunesco.index') }}">{{ _("Back to Citizen Science") }}</a>
+          <p class="cs-register-muted">
+            {{ _("Didn't receive it? Check your spam folder or") }}
+            <a href="{{ h.url_for('csunesco.resend_verification') }}">{{ _("resend the email") }}</a>.
+          </p>
         </div>
       {% else %}
         <h1 id="cs-reg-title" class="cs-register-title">{{ _("Become a Citizen Scientist") }}</h1>

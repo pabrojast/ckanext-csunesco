@@ -89,6 +89,8 @@ ICONS = {
                    '<path d="M21.5 14.5 19 5.5A2 2 0 0 0 17 4h-1.5A1.5 1.5 0 0 '
                    '0 14 5.5V12"/>'),
     'clock': '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>',
+    'mail': ('<rect x="3" y="5" width="18" height="14" rx="2"/>'
+             '<path d="m3 7 9 6 9-6"/>'),
     'qr': ('<rect x="3" y="3" width="7" height="7" rx="1"/>'
            '<rect x="14" y="3" width="7" height="7" rx="1"/>'
            '<rect x="3" y="14" width="7" height="7" rx="1"/>'

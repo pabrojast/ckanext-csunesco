@@ -48,21 +48,48 @@
           <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.index') }}">{{ _("Back to Citizen Science") }}</a>
         </div>
       {% elif pending_verification %}
-        <div class="cs-register-success" role="status">
-          <span class="cs-register-success-icon" aria-hidden="true">
-            {{ h.csunesco_icon('check', 28) }}
-          </span>
-          <h1 id="cs-reg-title">{{ _("Almost there — check your email") }}</h1>
-          <p>{{ _("We've sent you a link to confirm your email address.") }}</p>
-          {% if email %}
-            <p class="cs-register-muted">{{ _("Sent to:") }} <strong>{{ email }}</strong></p>
-          {% endif %}
-          <p class="cs-register-muted">
-            {{ _("After you confirm your email, a platform administrator will review and approve your Project Manager account. You'll be notified by email.") }}
+        {# Confirmation. The order is the real one: a Project Manager cannot
+           sign in -- and so cannot propose a project -- until an administrator
+           approves the account (see csunesco_manager_approve). #}
+        <div class="cs-register-success cs-confirm" role="status">
+          <span class="cs-confirm-mail" aria-hidden="true">{{ h.csunesco_icon('mail', 36) }}</span>
+          <span class="cs-role-chip">{{ _("Project Manager") }}</span>
+          <h1 id="cs-reg-title">{{ _("Check your inbox") }}</h1>
+          <p>
+            {% if email %}
+              {{ _("We've sent a confirmation email to") }} <strong>{{ email }}</strong>.
+            {% else %}
+              {{ _("We've sent you a confirmation email.") }}
+            {% endif %}
           </p>
-          <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.resend_verification') }}">
-            {{ _("Resend verification email") }}
-          </a>
+          <ol class="cs-confirm-steps">
+            <li class="cs-confirm-step is-active">
+              <span class="cs-confirm-num" aria-hidden="true">1</span>
+              <div class="cs-confirm-card">
+                <h2>{{ _("Confirm your email") }}</h2>
+                <p>{{ _("Click the link in the email to validate your address. The link expires in 48 hours.") }}</p>
+              </div>
+            </li>
+            <li class="cs-confirm-step">
+              <span class="cs-confirm-num" aria-hidden="true">2</span>
+              <div class="cs-confirm-card">
+                <h2>{{ _("Wait for account approval") }}</h2>
+                <p>{{ _("A platform administrator reviews your Project Manager account and organization. We'll email you; you can sign in once it is approved.") }}</p>
+              </div>
+            </li>
+            <li class="cs-confirm-step">
+              <span class="cs-confirm-num" aria-hidden="true">3</span>
+              <div class="cs-confirm-card">
+                <h2>{{ _("Submit your project") }}</h2>
+                <p>{{ _("Sign in to the Citizen Science Portal and fill in the form describing your project. An administrator reviews it before you can invite citizen scientists and start collecting data.") }}</p>
+              </div>
+            </li>
+          </ol>
+          <a class="cs-btn cs-btn-primary cs-confirm-back" href="{{ h.url_for('csunesco.index') }}">{{ _("Back to Citizen Science") }}</a>
+          <p class="cs-register-muted">
+            {{ _("Didn't receive it? Check your spam folder or") }}
+            <a href="{{ h.url_for('csunesco.resend_verification') }}">{{ _("resend the email") }}</a>.
+          </p>
         </div>
       {% else %}
         <h1 id="cs-reg-title" class="cs-register-title">{{ _("Request Project Manager access") if existing_account else _("Register as a Project Manager") }}</h1>

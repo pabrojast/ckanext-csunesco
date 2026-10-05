@@ -4699,3 +4699,76 @@
   object-fit: cover;
 }
 #cs-qr-status:empty { display: none; }
+
+/* "Check your inbox" confirmation shown after either registration form. The
+   darker ink keeps white numbers and chip text readable on both accents. */
+.cs-onboarding { --registration-ink: #005a9c; --registration-tint: #e8f1fa; }
+.cs-onboarding-citizen { --registration-ink: #0f6f66; --registration-tint: #e2f4f1; }
+.cs-confirm-mail {
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  margin: 0.6rem 0;
+  border-radius: 50%;
+  background: var(--registration-accent);
+  box-shadow: 0 0 0 9px var(--registration-tint);
+  color: #fff;
+}
+.cs-role-chip {
+  display: inline-flex;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--registration-tint);
+  color: var(--registration-ink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.cs-confirm-steps {
+  width: 100%;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: start;
+}
+.cs-confirm-step { position: relative; display: flex; gap: 14px; padding-bottom: 12px; }
+.cs-confirm-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 15px;
+  top: 36px;
+  bottom: 2px;
+  width: 2px;
+  background: #e3e8ee;
+}
+.cs-confirm-num {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: 2px solid #e3e8ee;
+  border-radius: 50%;
+  background: #fff;
+  color: #5a6b7b;
+  font-size: 13px;
+  font-weight: 700;
+}
+.cs-confirm-step.is-active .cs-confirm-num,
+.cs-confirm-step.is-done .cs-confirm-num {
+  border-color: var(--registration-ink);
+  background: var(--registration-ink);
+  color: #fff;
+}
+.cs-confirm-card { flex: 1; padding: 10px 14px; border: 1px solid #e3e8ee; border-radius: 8px; }
+.cs-confirm-step.is-active .cs-confirm-card { border-color: var(--registration-accent); }
+.cs-confirm .cs-confirm-card h2 { margin: 0; font-size: 0.95rem; color: #212529; }
+.cs-confirm .cs-confirm-card p { margin: 3px 0 0; color: #5a6b7b; font-size: 0.87rem; line-height: 1.45; }
+.cs-confirm .cs-confirm-back {
+  align-self: stretch;
+  background: var(--registration-ink);
+  text-align: center;
+}
+.cs-confirm .cs-register-muted a { color: var(--registration-ink); font-weight: 700; }
