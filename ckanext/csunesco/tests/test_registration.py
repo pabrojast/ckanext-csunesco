@@ -81,6 +81,63 @@ def test_project_value_resolves_toolbox_ids_and_skips_closed_projects():
         {'slug': '12', 'title': 'Twelve', 'app_id': '40'}]
 
 
+def test_unlinked_projects_get_their_toolbox_id_from_the_app(app, monkeypatch):
+    """A freshly approved project has no recorded Toolbox id: its portal page
+    was never published from the app. Its recruitment QR must still resolve."""
+    rows = [
+        {'id': 'p1', 'slug': 'river-x', 'title': 'River X', 'app_project_id': 12},
+        {'id': 'p2', 'slug': 'new-project', 'title': 'New project'},
+    ]
+    asked = []
+    monkeypatch.setattr(tk, 'get_action', lambda name: (
+        lambda context, data: {'results': [dict(row) for row in rows],
+                               'count': len(rows)}))
+    monkeypatch.setattr(registration, '_editor_app_ids', lambda: {})
+    monkeypatch.setattr(
+        registration, '_toolbox_project_ids',
+        lambda: asked.append(1) or {'new-project': '26', 'river-x': '99'})
+
+    with app.test_request_context('/register'):
+        g.user = ''
+        projects = registration._registration_projects()
+        by_slug = dict((row['slug'], row['app_id']) for row in projects)
+        # The recorded link wins; the Toolbox is asked once, for the unlinked one.
+        assert by_slug == {'river-x': '12', 'new-project': '26'}
+        assert len(asked) == 1
+        assert registration._selected_project(
+            projects, '26')['slug'] == 'new-project'
+
+        # Nothing to look up when every project is already linked.
+        rows[1]['app_project_id'] = 26
+        del asked[:]
+        registration._registration_projects()
+        assert asked == []
+
+
+def test_toolbox_public_project_ids_are_cached_and_fail_soft(monkeypatch):
+    from ckanext.csunesco.logic import ofform
+    calls = []
+
+    def fetch(path, timeout=None):
+        calls.append(path)
+        return (b'[{"id": 26, "slug": "local-slug", "ckan_slug": "portal-slug"},'
+                b' {"id": 7, "slug": "only-local", "ckan_slug": null}]')
+
+    ofform.cache_clear()
+    monkeypatch.setattr(ofform, '_fetch', fetch)
+    assert ofform.public_project_ids() == {'portal-slug': '26', 'only-local': '7'}
+    assert ofform.public_project_ids() == {'portal-slug': '26', 'only-local': '7'}
+    assert calls == ['/public/projects']
+
+    def broken(path, timeout=None):
+        raise ofform.OfformError('network error')
+
+    ofform.cache_clear()
+    monkeypatch.setattr(ofform, '_fetch', broken)
+    assert ofform.public_project_ids() == {}
+    ofform.cache_clear()
+
+
 def test_limiter_counts_successful_consumptions_and_releases(monkeypatch):
     limiter = registration._RegistrationLimiter()
     clock = {'now': 10.0}

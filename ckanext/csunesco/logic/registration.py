@@ -249,11 +249,23 @@ def _editor_app_ids():
         return {}
 
 
+def _toolbox_project_ids():
+    """Toolbox ids by portal slug, straight from the app (fail-soft)."""
+    try:
+        from ckanext.csunesco.logic import ofform
+        return ofform.public_project_ids()
+    except Exception:
+        log.warning('csunesco: Toolbox project ids unavailable')
+        return {}
+
+
 def _registration_projects():
     """All approved projects for sign-up, fail-soft and capped at 500.
 
     Each row gains ``app_id``: the Toolbox project id, which is what the QR
-    code a Project Manager shares from the app carries.
+    code a Project Manager shares from the app carries. A project only records
+    that id here once its portal page is published from the app, so a freshly
+    approved one is looked up in the Toolbox itself.
     """
     projects = []
     try:
@@ -275,8 +287,13 @@ def _registration_projects():
     projects = sorted(projects[:MAX_REGISTRATION_PROJECTS],
                       key=lambda row: (row.get('title') or '').casefold())
     editor_ids = _editor_app_ids()
+    toolbox_ids = None
     for row in projects:
         app_id = row.get('app_project_id') or editor_ids.get(row.get('id'))
+        if not app_id:
+            if toolbox_ids is None:
+                toolbox_ids = _toolbox_project_ids()
+            app_id = toolbox_ids.get(row.get('slug'))
         row['app_id'] = str(app_id) if app_id else None
     return projects
 

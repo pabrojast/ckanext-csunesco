@@ -196,6 +196,36 @@ def _fetch(path, timeout=REQUEST_TIMEOUT):
         raise OfformError('network error')
 
 
+def public_project_ids():
+    """``{portal slug: Toolbox project id}`` for the app's public projects.
+
+    The recruitment QR codes Project Managers share carry the Toolbox id, and
+    the Toolbox is the only place that knows it for a project whose portal page
+    was never published from the app. Fail-soft and cached like every other
+    fetch here, with the short probe timeout: this runs while a public form is
+    being rendered.
+    """
+    key = ('public-projects',)
+    try:
+        cached = _cached_or_raise(key)
+    except OfformError:
+        return {}
+    if cached is not None:
+        return cached
+    try:
+        rows = json.loads(_fetch('/public/projects', timeout=PROBE_TIMEOUT))
+        ids = {}
+        for row in rows if isinstance(rows, list) else []:
+            slug = row.get('ckan_slug') or row.get('slug')
+            if slug and row.get('id') is not None:
+                ids[str(slug)] = str(row['id'])
+    except (OfformError, ValueError, AttributeError, TypeError):
+        _cache_failure(key, 'public projects unavailable')
+        return {}
+    _cache_set(key, ids)
+    return ids
+
+
 def fetch_dashboard_data(form_id, timeout=REQUEST_TIMEOUT):
     from ckanext.csunesco.logic import snapshots
     try:
