@@ -320,6 +320,13 @@ def _render(extra_vars):
     return tk.render('csunesco/register_citizen.html', extra_vars=extra_vars)
 
 
+def get_on_board():
+    """GET /get-on-board: choose between the two registration paths."""
+    return tk.render('csunesco/get_on_board.html', extra_vars={
+        'logged_in': bool(getattr(tk.g, 'user', None)),
+    })
+
+
 def create_citizen_scientist(context, data, verification_token=None):
     """Core create-user + CS-profile flow, shared by the web view and the API.
 

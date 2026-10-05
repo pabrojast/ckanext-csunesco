@@ -18,8 +18,8 @@
   <div class="cs-register-page cs-onboarding cs-onboarding-pm">
     <section class="cs-register-shell" aria-labelledby="cs-reg-title">
       <div class="cs-register-topbar">
-        <a class="cs-register-back" href="{{ h.url_for('csunesco.index') if existing_account else (h.csunesco_login_url() or h.url_for('user.login')) }}">
-          <span aria-hidden="true">&larr;</span> {{ _("Back to Citizen Science") if existing_account else _("Back to sign in") }}
+        <a class="cs-register-back" href="{{ h.url_for('csunesco.index') if existing_account else h.url_for('csunesco.get_on_board') }}">
+          <span aria-hidden="true">&larr;</span> {{ _("Back to Citizen Science") if existing_account else _("Back") }}
         </a>
       </div>
 
@@ -346,10 +346,6 @@
         </form>
 
         {% if not existing_account %}
-        <p class="cs-register-footer">
-          {{ _("Joining as a volunteer instead?") }}
-          <a href="{{ h.url_for('csunesco.register_citizen') }}">{{ _("Register as a Citizen Scientist") }}</a>
-        </p>
         <p class="cs-register-footer">
           {{ _("Already have an account?") }}
           <a href="{{ (h.csunesco_login_url() or h.url_for('user.login')) }}">{{ _("Sign in") }}</a>

@@ -109,6 +109,12 @@ def join_project(slug):
     return views.join_project(slug)
 
 
+def get_on_board():
+    """Role chooser: register as a Citizen Scientist or a Project Manager."""
+    from ckanext.csunesco.logic import registration
+    return registration.get_on_board()
+
+
 def register_citizen():
     """Citizen Scientist self-registration (GET form / POST create account)."""
     from ckanext.csunesco.logic import registration
@@ -460,6 +466,10 @@ csunesco_bp.add_url_rule('/project/<slug>/join', 'join_project', join_project,
 # The participant's hub (spec "My projects" for CS members; managers keep the
 # admin dashboard). Static rule, so it never collides with /project/<slug>.
 csunesco_bp.add_url_rule('/my-projects', 'my_projects', my_projects,
+                         methods=['GET'])
+# The "Get on board" role chooser the home banner links to. It only links on to
+# the two registration forms below; it writes nothing.
+csunesco_bp.add_url_rule('/get-on-board', 'get_on_board', get_on_board,
                          methods=['GET'])
 # Resolves to /citizen-science/register-citizen (blueprint prefix). Parallel to
 # CKAN's /user/register but with no organization step. Keep the endpoint name

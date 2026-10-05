@@ -255,3 +255,28 @@ def test_structure_snippet_gates_the_participants_only_fields():
     assert "csunesco_field_audience_ok('local_govt_engagement'" in source
     # Public project composition is exercised with actual templates and roles
     # in test_project_page_composition; it no longer inserts this legacy snippet.
+
+
+# --------------------------------------------------------------------------- #
+# "Get on board" role chooser and the simplified joining flow (Oct 2026).     #
+# --------------------------------------------------------------------------- #
+
+def _template_source(*parts):
+    path = os.path.join(PKG_DIR, 'templates', 'csunesco', *parts)
+    with open(path, 'r') as handle:
+        return handle.read()
+
+
+def test_get_on_board_routes_to_both_registration_forms():
+    with open(os.path.join(PKG_DIR, 'blueprint.py'), 'r') as handle:
+        assert "'/get-on-board', 'get_on_board'" in handle.read()
+    chooser = _template_source('get_on_board.html')
+    assert "url_for('csunesco.register_citizen')" in chooser
+    assert "url_for('csunesco.register_manager')" in chooser
+    # The forms go back to the chooser instead of cross-linking each other.
+    citizen = _template_source('register_citizen.html')
+    manager = _template_source('register_manager.html')
+    assert "url_for('csunesco.get_on_board')" in citizen
+    assert "url_for('csunesco.get_on_board')" in manager
+    assert "url_for('csunesco.register_manager')" not in citizen
+    assert "url_for('csunesco.register_citizen')" not in manager

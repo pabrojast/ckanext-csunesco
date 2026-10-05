@@ -82,6 +82,13 @@ ICONS = {
     'inbox': ('<path d="M6.5 6h11L20 13v5H4v-5z"/>'
               '<path d="M4 13h4.5l1.5 2.5h4L15.5 13H20"/>'),
     'arrow-right': '<path d="M4 12h15M13 6l6 6-6 6"/>',
+    'binoculars': ('<circle cx="6" cy="16" r="4"/><circle cx="18" cy="16" r="4"/>'
+                   '<path d="M10 16h4M10 9h4"/>'
+                   '<path d="M2.5 14.5 5 5.5A2 2 0 0 1 7 4h1.5A1.5 1.5 0 0 1 10 '
+                   '5.5V12"/>'
+                   '<path d="M21.5 14.5 19 5.5A2 2 0 0 0 17 4h-1.5A1.5 1.5 0 0 '
+                   '0 14 5.5V12"/>'),
+    'clock': '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>',
 }
 
 # Unknown slug: a visible neutral dot, never an empty box. The verify guard

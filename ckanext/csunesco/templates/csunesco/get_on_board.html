@@ -1,0 +1,58 @@
+{% extends "csunesco/base.html" %}
+
+{#
+  "Get on board": the role chooser the home banner links to. It only routes to
+  the two registration forms (or, for a signed-in visitor, to the next useful
+  step for that role); it holds no form and writes nothing.
+#}
+
+{% block subtitle %}{{ _("Get on board") }}{% endblock %}
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
+{% block cs_content %}
+  <nav class="cs-context-nav" aria-label="{{ _('Back') }}">
+    <a class="cs-link" href="{{ h.url_for('csunesco.index') }}">&larr; {{ _("Back to Citizen Science") }}</a>
+  </nav>
+
+  <section class="cs-roles" aria-labelledby="cs-roles-title">
+    <header class="cs-roles-head">
+      <h1 id="cs-roles-title">{{ _("Get on board with us!") }}</h1>
+      <p>{{ _("Whether you want to collect data in your community or lead a project of your own, choose the role that fits you and create your account in a few minutes.") }}</p>
+    </header>
+
+    <div class="cs-role-grid">
+      <article class="cs-role-card cs-role-card-citizen" aria-labelledby="cs-role-citizen-title">
+        <span class="cs-role-icon" aria-hidden="true">{{ h.csunesco_icon('binoculars', 26) }}</span>
+        <h2 id="cs-role-citizen-title">{{ _("Citizen Scientist") }}</h2>
+        <p class="cs-role-description">{{ _("You want to contribute to science in your area. Join an existing project, collect water observations in the field with the Toolbox app, and follow your contributions on the Data Viewer.") }}</p>
+        <p class="cs-role-badge">{{ h.csunesco_icon('clock', 14) }} {{ _("Joining a project needs its Project Manager's approval") }}</p>
+        {% if logged_in %}
+          <a class="cs-role-cta" href="{{ h.url_for('csunesco.project_list') }}">{{ _("Browse projects") }} {{ h.csunesco_icon('arrow-right', 16) }}</a>
+        {% else %}
+          <a class="cs-role-cta" href="{{ h.url_for('csunesco.register_citizen') }}">{{ _("Join as a Citizen Scientist") }} {{ h.csunesco_icon('arrow-right', 16) }}</a>
+        {% endif %}
+      </article>
+
+      <article class="cs-role-card cs-role-card-manager" aria-labelledby="cs-role-manager-title">
+        <span class="cs-role-icon" aria-hidden="true">{{ h.csunesco_icon('users', 26) }}</span>
+        <h2 id="cs-role-manager-title">{{ _("Project Manager") }}</h2>
+        <p class="cs-role-description">{{ _("You lead a community engagement effort on behalf of an organization. Create your own citizen science project, bring citizen scientists on board, and manage the data they collect.") }}</p>
+        <p class="cs-role-badge">{{ h.csunesco_icon('clock', 14) }} {{ _("Account and project proposal need admin approval") }}</p>
+        {% if logged_in and h.csunesco_can_propose_project() %}
+          <a class="cs-role-cta" href="{{ h.csunesco_editor_link('csunesco.project_new') }}">{{ _("Propose a project") }} {{ h.csunesco_icon('arrow-right', 16) }}</a>
+        {% elif logged_in %}
+          <a class="cs-role-cta" href="{{ h.url_for('csunesco.register_manager') }}">{{ _("Request Project Manager access") }} {{ h.csunesco_icon('arrow-right', 16) }}</a>
+        {% else %}
+          <a class="cs-role-cta" href="{{ h.url_for('csunesco.register_manager') }}">{{ _("Become a Project Manager") }} {{ h.csunesco_icon('arrow-right', 16) }}</a>
+        {% endif %}
+      </article>
+    </div>
+
+    {% if not logged_in %}
+      <p class="cs-roles-signin">
+        {{ _("Already have an account?") }}
+        <a href="{{ (h.csunesco_login_url() or h.url_for('user.login')) }}">{{ _("Sign in") }}</a>
+      </p>
+    {% endif %}
+  </section>
+{% endblock %}

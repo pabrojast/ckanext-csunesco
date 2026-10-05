@@ -4589,3 +4589,70 @@
 #cs-org-selection { font-weight: 600; overflow-wrap: anywhere; }
 .cs-org-results button { overflow-wrap: anywhere; }
 .cs-register-form input[readonly] { background: #f5f9fc; }
+
+/* "Get on board" role chooser (/citizen-science/get-on-board). The two accents
+   match the registration forms: Project Manager blue, Citizen Scientist teal. */
+.cs-roles { max-width: 920px; margin: 0 auto; padding-bottom: 2rem; }
+.cs-roles-head { max-width: 640px; margin: 0.5rem auto 0; text-align: center; }
+.cs-roles-head h1 { margin: 0; color: var(--unesco-blue-dark); font-size: 1.9rem; }
+.cs-roles-head p { margin: 0.6rem 0 0; color: #495057; font-size: 1.02rem; line-height: 1.55; }
+.cs-role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; margin-top: 1.8rem; }
+.cs-role-card {
+  --role-accent: #0069b4;
+  --role-tint: #e8f1fa;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 1.6rem;
+  border: 1.5px solid #e3e8ee;
+  border-top: 4px solid var(--role-accent);
+  border-radius: 10px;
+  background: #fff;
+}
+.cs-role-card-citizen { --role-accent: #1a9488; --role-tint: #e2f4f1; }
+.cs-role-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: var(--role-tint);
+  color: var(--role-accent);
+}
+.cs-role-card h2 { margin: 1rem 0 0; font-size: 1.2rem; color: #212529; }
+.cs-role-description { margin: 0.6rem 0 0; color: #343a40; line-height: 1.6; }
+.cs-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.9rem 0 0;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: #fff4e0;
+  color: #7a4f00;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.cs-role-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  align-self: stretch;
+  min-height: 46px;
+  margin-top: auto;
+  padding: 0.6rem 1rem;
+  border-radius: 7px;
+  background: var(--role-accent);
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+.cs-role-card > .cs-role-badge { margin-bottom: 1.4rem; }
+.cs-role-cta:hover,
+.cs-role-cta:focus { color: #fff; filter: brightness(1.1); text-decoration: none; }
+.cs-role-cta:focus-visible { outline: 3px solid #173b51; outline-offset: 2px; }
+.cs-roles-signin { margin: 1.4rem 0 0; color: #64758a; text-align: center; }
+.cs-roles-signin a { color: var(--unesco-blue-dark); font-weight: 700; }
+@media (max-width: 700px) { .cs-role-grid { grid-template-columns: 1fr; } }
