@@ -344,13 +344,13 @@ def test_approve_notifies_the_creator(actions, session, monkeypatch):
     calls = []
     monkeypatch.setattr(
         notify, 'notify_project_decision',
-        lambda user_id, title, approved, reason=None: calls.append(
-            (user_id, title, approved, reason)))
+        lambda user_id, title, approved, reason=None, project_slug=None: calls.append(
+            (user_id, title, approved, reason, project_slug)))
     created = actions.csunesco_project_request_create(
         _ctx('author-1'), {'title': 'Tell me when'})
     actions.csunesco_project_approve(_ctx('reviewer-1'),
                                      {'id': created['id']})
-    assert calls == [('author-1', 'Tell me when', True, None)]
+    assert calls == [('author-1', 'Tell me when', True, None, created['slug'])]
 
 
 def test_reject_notifies_with_the_reason(actions, session, monkeypatch):

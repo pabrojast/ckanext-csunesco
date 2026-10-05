@@ -776,7 +776,7 @@ def csunesco_project_approve(context, data_dict):
     # AFTER the commit: a mailer hiccup must never roll back an approval.
     from ckanext.csunesco.logic import notify
     notify.notify_project_decision(project.created_by, project.title,
-                                   approved=True)
+                                   approved=True, project_slug=project.slug)
     return db.project_dictize(project)
 
 

@@ -707,3 +707,15 @@ Los formularios de alta muestran códigos/mensajes permitidos y señalan el
 campo que debe corregirse. El reintento de un alta existente exige la misma
 identidad y contraseña. Se retiró el párrafo adicional de privacidad de
 reCAPTCHA; se conservan el control del servidor, el script y la insignia.
+
+### Formato de correos de Citizen Science
+
+La verificación de cuentas CS/PM (incluido su reenvío) y la aprobación de
+proyectos incluyen HTML con el mismo diseño UNESCO que Citizen Science
+Toolbox, además de texto plano. CKAN renderiza y envía estos correos sin
+depender de la disponibilidad de la app. El logo se sirve públicamente desde
+`/csunesco/images/unesco-logo-email.png`; el botón de aprobación abre la página
+pública del proyecto y el de verificación conserva el token y su vencimiento.
+El idioma sigue el contexto de traducción de CKAN, con soporte RTL. Si falla
+el renderizado, se conserva el envío de texto plano; un fallo del transporte
+no revierte el registro ni la aprobación.

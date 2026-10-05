@@ -550,13 +550,17 @@ def _send_verification_email(recipient_name, recipient_email, token):
         'The link expires in {hours} hours. If you did not create this '
         'account, you can safely ignore this message.'
     ).format(url=verify_url, hours=hours)
-    body_html = tk._(
-        '<p>Welcome to <strong>UNESCO Citizen Science</strong>!</p>'
-        '<p>Please confirm your email address to activate your account:</p>'
-        '<p><a href="{url}">Verify my account</a></p>'
-        '<p>The link expires in {hours} hours. If you did not create this '
-        'account, you can safely ignore this message.</p>'
-    ).format(url=verify_url, hours=hours)
+    try:
+        from ckanext.csunesco.logic.email_templates import render_notification
+        body_html = render_notification(
+            subject=subject, message=body,
+            cta_label=tk._('Verify my account'), cta_url=verify_url,
+            footer_note=tk._('This email was sent because your account was created.'),
+        )
+    except Exception as e:
+        log.warning('csunesco: verification email HTML unavailable: %s',
+                    type(e).__name__)
+        body_html = None
     try:
         mail_recipient(recipient_name or recipient_email, recipient_email,
                        subject, body, body_html=body_html)

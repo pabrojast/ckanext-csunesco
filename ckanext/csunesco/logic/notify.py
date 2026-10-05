@@ -15,7 +15,7 @@ import ckan.plugins.toolkit as tk
 log = logging.getLogger(__name__)
 
 
-def notify_user(user_id, subject, body):
+def notify_user(user_id, subject, body, body_html=None):
     """Email ``user_id`` (a CKAN user id or name). Returns True on success."""
     try:
         import ckan.model as model
@@ -27,7 +27,8 @@ def notify_user(user_id, subject, body):
         user = model.User.get(user_id)
         if user is None or not getattr(user, 'email', None):
             return False
-        mail_recipient(user.fullname or user.name, user.email, subject, body)
+        mail_recipient(user.fullname or user.name, user.email, subject, body,
+                       body_html=body_html)
         return True
     except Exception as e:
         # CKAN's mailer leaks raw smtplib errors; best-effort means catching
@@ -53,7 +54,9 @@ def notify_join_decision(user_id, project_title, approved):
     return notify_user(user_id, subject, body)
 
 
-def notify_project_decision(user_id, project_title, approved, reason=None):
+def notify_project_decision(user_id, project_title, approved, reason=None,
+                            project_slug=None):
+    body_html = None
     if approved:
         subject = tk._('Your project {project} was approved').format(
             project=project_title)
@@ -62,6 +65,21 @@ def notify_project_decision(user_id, project_title, approved, reason=None):
             'landing page on the Citizen Science Portal. You are its '
             'project manager.'
         ).format(project=project_title)
+        project_url = None
+        try:
+            if project_slug:
+                project_url = tk.url_for('csunesco.project_landing',
+                                         slug=project_slug, _external=True)
+                body += '\n\n' + project_url
+            from ckanext.csunesco.logic.email_templates import render_notification
+            body_html = render_notification(
+                subject=subject, message=body,
+                cta_label=tk._('View project'), cta_url=project_url,
+                footer_note=tk._('You receive this email because you proposed a project.'),
+            )
+        except Exception as e:
+            log.warning('csunesco: project email HTML unavailable: %s',
+                        type(e).__name__)
     else:
         subject = tk._('About your project {project}').format(
             project=project_title)
@@ -71,4 +89,4 @@ def notify_project_decision(user_id, project_title, approved, reason=None):
         if reason:
             body += '\n\n' + tk._('Reviewer note: {reason}').format(
                 reason=reason)
-    return notify_user(user_id, subject, body)
+    return notify_user(user_id, subject, body, body_html=body_html)
