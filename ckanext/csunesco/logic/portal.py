@@ -227,7 +227,13 @@ def validate_payload(raw):
         if key not in incoming:
             continue
         value = incoming[key]
-        if key in ('logo_url', 'heading_image_url', 'project_document_url') and value:
+        if key == 'external_initiative_name':
+            from ckanext.csunesco.logic.validators import csunesco_external_initiative_name
+            try:
+                value = csunesco_external_initiative_name(value)
+            except tk.Invalid as error:
+                raise tk.ValidationError({key: [str(error)]})
+        elif key in ('logo_url', 'heading_image_url', 'project_document_url') and value:
             from ckanext.csunesco.logic.action.page import _validated_project_image
             value = _validated_project_image(value)
         elif key in ('logo_focal_x', 'logo_focal_y', 'logo_zoom', 'heading_zoom', 'heading_focal_x', 'heading_focal_y'):
@@ -248,6 +254,8 @@ def validate_payload(raw):
         elif isinstance(value, str):
             value = value[:20000]
         project[key] = value
+    from ckanext.csunesco.logic.validators import validate_initiative_affiliation
+    validate_initiative_affiliation(project)
     candidate['project'] = project
     from ckanext.csunesco.logic.action.structure import _clean_structure, _clean_workplan
     candidate['structure'] = _clean_structure(candidate.get('structure'))

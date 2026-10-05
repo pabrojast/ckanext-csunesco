@@ -43,7 +43,7 @@ PROJECT_FORM_STEPS = [
     {'step': 2, 'key': 'classification', 'title': u'Classification',
      'hint': u'Keywords, the water bodies and data involved, and the '
              u'initiative if it belongs to one.',
-     'fields': ('keywords', 'initiative', 'water_type', 'water_data_type')},
+     'fields': ('keywords', 'initiative', 'external_initiative_name', 'water_type', 'water_data_type')},
     {'step': 3, 'key': 'location', 'title': u'Location',
      'hint': u'Where the project happens: extent, countries and the region '
              u'shown on the map.',

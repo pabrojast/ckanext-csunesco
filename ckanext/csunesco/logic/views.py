@@ -428,6 +428,9 @@ def _render_project_form(data, errors, success=False, mode='new',
     One template, one ``mode`` flag -- the shape ``views_content`` already uses
     for its content form.
     """
+    data = dict(data)
+    if data.get('external_initiative_name') and not data.get('initiative'):
+        data['initiative'] = '__external__'
     choices, states_available = _member_state_choices()
     steps = [dict(step) for step in constants.PROJECT_FORM_STEPS]
     open_step = next((step['step'] for step in steps if set(errors).intersection(step['fields'])), 1)
@@ -442,6 +445,7 @@ def _render_project_form(data, errors, success=False, mode='new',
         'member_states_available': states_available,
         'steps': steps,
         'request_nonce': _request_nonce(),
+        'current_account': model.User.get(tk.g.user) if tk.g.user else None,
         'open_step': open_step,
         'return_to': return_to if return_to == 'review' else None,
         # Spec phase-1 option lists (all from constants; single source).
@@ -484,6 +488,8 @@ def _read_project_form():
         'title': (form.get('title') or '').strip(),
         'slug': (form.get('slug') or '').strip(),
         'initiative': (form.get('initiative') or '').strip(),
+        'external_initiative_name': ((form.get('external_initiative_name') or '').strip()
+                                     if form.get('initiative') == '__external__' else ''),
         'biosphere_reserve': (form.get('biosphere_reserve') or '').strip(),
         'region_geojson': (form.get('region_geojson') or '').strip(),
         'short_description': (form.get('short_description') or '').strip(),
@@ -607,7 +613,8 @@ def _project_to_form(project):
     return {
         'title': project.get('title') or '',
         'slug': project.get('slug') or '',
-        'initiative': project.get('initiative_group') or '',
+        'initiative': '__external__' if project.get('external_initiative_name') else project.get('initiative_group') or '',
+        'external_initiative_name': project.get('external_initiative_name') or '',
         'countries': project.get('countries') or [],
         'biosphere_reserve': project.get('biosphere_reserve') or '',
         'region_geojson': project.get('region_geojson') or '',
@@ -666,6 +673,33 @@ def _request_nonce():
     return session['cs_project_request_nonce']
 
 
+def project_validate():
+    from flask import jsonify
+    from ckanext.csunesco.logic import project_form
+    context, project = project_form.authorized_context(request.form.get('project_id'))
+    step = request.form.get('step', 'all')
+    if step != 'all' and step not in {str(item['step']) for item in constants.PROJECT_FORM_STEPS}:
+        tk.abort(400)
+    strict = not project or project.get('status') == 'draft'
+    _data, errors = project_form.validate(_read_project_form(), context, strict=strict, project=project)
+    if step != 'all':
+        fields = next(item['fields'] for item in constants.PROJECT_FORM_STEPS if str(item['step']) == step)
+        errors = {key: messages for key, messages in errors.items() if key in fields}
+    return jsonify(valid=not errors, errors=errors, step=step)
+
+
+def project_editor_options():
+    from flask import jsonify
+    from ckanext.csunesco.logic import project_form
+    project_form.authorized_context(request.args.get('project_id'))
+    query = str(request.args.get('q') or '').strip()[:100]
+    if len(query) < 2:
+        return jsonify(results=[])
+    rows = model.User.search(query).filter(model.User.state == 'active').order_by(model.User.name).limit(20).all()
+    return jsonify(results=[{'name': user.name, 'fullname': user.fullname or user.name}
+                            for user in rows])
+
+
 def project_new():
     """GET the project-request form; POST creates a PENDING project request."""
     # Login is required at ENTRY, not discovered on submit. An anonymous
@@ -696,6 +730,12 @@ def project_new():
         return tk.redirect_to('csunesco.project_new', submitted=1)
     data_dict = _read_project_form()
     save_draft = bool(request.form.get('save_draft'))
+    from ckanext.csunesco.logic import project_form
+    validated, form_errors = project_form.validate(data_dict, context, strict=not save_draft)
+    if form_errors:
+        return _render_project_form(data_dict, form_errors)
+    data_dict.update(initiative=validated.get('initiative'),
+                     external_initiative_name=validated.get('external_initiative_name'))
     batch, problems = _resolve_cover(request.form, request.files)
     if problems:
         return _render_project_form(data_dict, {'image_url': [UPLOAD_ERROR]})
@@ -708,17 +748,6 @@ def project_new():
         # "Save for later": only the lenient rules apply (a draft needs no
         # more than a title), and the row lands as status='draft'.
         context['csunesco_draft'] = True
-    else:
-        # The per-caller strictness split: the SPEC's required fields are
-        # enforced HERE, in the web view, before the (deliberately lenient)
-        # action ever runs -- the CS Toolbox outbox posts to the same action
-        # and must keep working with its fixed payload.
-        _validated, form_errors = tk.navl_validate(
-            dict(data_dict), cs_schema.project_request_form_schema(),
-            _context())
-        if form_errors:
-            batch.rollback()
-            return _render_project_form(data_dict, form_errors)
 
     try:
         created = tk.get_action('csunesco_project_request_create')(
@@ -822,6 +851,12 @@ def project_edit(slug):
     # backfill six new fields would repeat the member-state-outage bug.
     submit_review = (project.get('status') == 'draft'
                      and bool(request.form.get('submit_review')))
+    from ckanext.csunesco.logic import project_form
+    validated, form_errors = project_form.validate(data_dict, context, strict=submit_review, project=project)
+    if form_errors:
+        return _render_project_form(data_dict, form_errors, mode='edit', project=project, return_to=return_to)
+    data_dict.update(initiative=validated.get('initiative'),
+                     external_initiative_name=validated.get('external_initiative_name'))
     batch, problems = _resolve_cover(request.form, request.files)
     if problems:
         return _render_project_form(data_dict, {'image_url': [UPLOAD_ERROR]},
@@ -829,20 +864,6 @@ def project_edit(slug):
                                     return_to=return_to)
     _apply_image_urls(data_dict, batch)
     data_dict['id'] = project['id']
-
-    if submit_review:
-        strict_context = _context()
-        strict_context['csunesco_existing_countries'] = (
-            project.get('countries') or [])
-        _validated, form_errors = tk.navl_validate(
-            dict(data_dict), cs_schema.project_request_form_schema(),
-            strict_context)
-        form_errors.pop('slug', None)  # the URL is fixed after creation
-        if form_errors:
-            batch.rollback()
-            return _render_project_form(data_dict, form_errors,
-                                        mode='edit', project=project,
-                                        return_to=return_to)
 
     try:
         tk.get_action('csunesco_project_update')(context, data_dict)

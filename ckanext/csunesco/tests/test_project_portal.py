@@ -63,6 +63,22 @@ def test_transport_never_autoapproves(store):
     assert 'private field' not in json.dumps(db.page_dictize(page))
 
 
+def test_external_initiative_survives_review_and_export_without_group_permissions(store):
+    project, _ = store
+    data = envelope(project)
+    data['payload']['project'].update(initiative='', external_initiative_name='Community Rivers')
+    data['checksum'] = portal.checksum(data['payload'])
+    result = portal.apply(ctx(), data)
+    page_actions.csunesco_project_page_approve(ctx('reviewer'), {
+        'project_id': project.id, 'draft_hash': result['draft_hash']})
+    saved = db.project_dictize(project)
+    assert saved['external_initiative_name'] == 'Community Rivers'
+    assert not saved['initiative_group']
+    data['payload']['project']['external_initiative_name'] = 'x' * 201
+    with pytest.raises(tk.ValidationError):
+        portal.validate_payload(data['payload'])
+
+
 def test_guided_data_configuration_survives_review_without_monitoring_names(store):
     project, _ = store
     data = envelope(project)

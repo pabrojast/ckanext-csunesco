@@ -203,7 +203,7 @@ def test_resubmit_moves_a_draft_to_pending(actions, session, monkeypatch):
 
 def _fake_users(monkeypatch, known):
     monkeypatch.setattr(model.User, 'get', staticmethod(
-        lambda name: (type('U', (), {'id': 'uid-' + name})()
+        lambda name: (type('U', (), {'id': 'uid-' + name, 'name': name, 'state': 'active'})()
                       if name in known else None)))
 
 

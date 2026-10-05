@@ -38,14 +38,33 @@ def project_list():
 
 def project_new():
     """Project-request form (GET) / create request (POST)."""
+    _protect_project_form()
     from ckanext.csunesco.logic import views
     return views.project_new()
 
 
 def project_edit(slug):
     """Staged project-details editor (GET) / save the changes (POST)."""
+    _protect_project_form()
     from ckanext.csunesco.logic import views
     return views.project_edit(slug)
+
+
+def _protect_project_form():
+    from flask import current_app, request
+    if request.method == 'POST':
+        current_app.extensions['csrf'].protect()
+
+
+def project_validate():
+    _protect_project_form()
+    from ckanext.csunesco.logic import views
+    return views.project_validate()
+
+
+def project_editor_options():
+    from ckanext.csunesco.logic import views
+    return views.project_editor_options()
 
 
 def project_resubmit(slug):
@@ -418,6 +437,8 @@ csunesco_bp.add_url_rule('/projects', 'project_list', project_list,
                          methods=['GET'])
 csunesco_bp.add_url_rule('/project/new', 'project_new', project_new,
                          methods=['GET', 'POST'])
+csunesco_bp.add_url_rule('/project/validate', 'project_validate', project_validate, methods=['POST'])
+csunesco_bp.add_url_rule('/project/editor-options', 'project_editor_options', project_editor_options, methods=['GET'])
 csunesco_bp.add_url_rule('/project/<slug>/edit', 'project_edit', project_edit,
                          methods=['GET', 'POST'])
 csunesco_bp.add_url_rule('/project/<slug>/resubmit', 'project_resubmit',
@@ -671,7 +692,9 @@ def guard_migrated_local_assets():
 def prevent_migrated_asset_caching(response):
     from ckanext.csunesco.logic import snapshots
     from flask import request
-    if request.endpoint == 'csunesco.register_manager':
+    if request.endpoint in ('csunesco.register_manager', 'csunesco.project_new',
+                            'csunesco.project_edit', 'csunesco.project_validate',
+                            'csunesco.project_editor_options'):
         response.headers['Cache-Control'] = 'private, no-store'
     return snapshots.no_cache_legacy_upload(response)
 

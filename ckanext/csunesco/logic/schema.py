@@ -17,6 +17,7 @@ from ckanext.csunesco.logic import validators as v
 # action has one authoritative list to iterate rather than a second hand-written
 # copy that drifts. ``project_dictize`` merges extras back in on read.
 PROJECT_EXTRA_FIELDS = (
+    'external_initiative_name',
     'data_access',
     'data_access_justification',
     'how_to_participate',
@@ -90,6 +91,8 @@ def project_request_schema():
         # The web form exposes the empty value as "Not part of an initiative".
         'initiative': [ignore_missing, unicode_safe,
                        v.csunesco_valid_initiative],
+        'external_initiative_name': [ignore_missing, unicode_safe,
+                                     v.csunesco_external_initiative_name],
         'countries': [ignore_missing, v.csunesco_valid_country_list],
         'slug': [ignore_missing, unicode_safe, v.csunesco_valid_slug],
         'biosphere_reserve': [ignore_missing, unicode_safe],

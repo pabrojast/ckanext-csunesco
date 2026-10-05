@@ -143,6 +143,19 @@ def _resolve_organization(data):
     return group
 
 
+def resolve_editors(editors, owner_id=None):
+    """Resolve active CKAN identities before making any membership changes."""
+    resolved = {}
+    for username in editors:
+        user = model.User.get(username)
+        if user is None or user.state != 'active':
+            raise tk.ValidationError({'editors': [tk._(
+                'Choose an active CKAN user from the suggestions: %s') % username]})
+        if user.id != owner_id:
+            resolved[user.id] = user.name
+    return resolved
+
+
 def _sync_editor_members(project_id, editors, now):
     """Reconcile the ``editor``-role member rows with a username list.
 
@@ -151,13 +164,8 @@ def _sync_editor_members(project_id, editors, now):
     admin/scientist rows are never touched; an editor removed from the list
     loses only the editor row. Runs in the caller's session (no commit).
     """
-    resolved = {}
-    for username in editors:
-        user = model.User.get(username)
-        if user is None:
-            raise tk.ValidationError({'editors': [tk._(
-                'Unknown user: %s') % username]})
-        resolved[user.id] = username
+    project = db.get_project(project_id)
+    resolved = resolve_editors(editors, project.created_by if project else None)
     existing = (
         model.Session.query(db.CsProjectMember)
         .filter(db.CsProjectMember.project_id == project_id)
@@ -360,6 +368,8 @@ def csunesco_project_request_create(context, data_dict):
     data, errors = tk.navl_validate(incoming, schema, context)
     if errors:
         raise tk.ValidationError(errors)
+    from ckanext.csunesco.logic.validators import validate_initiative_affiliation
+    validate_initiative_affiliation(data)
     from ckanext.csunesco.logic.data_access import validate_project_access
     validate_project_access(data)
     _sync_participation(data)
@@ -397,6 +407,8 @@ def csunesco_project_request_create(context, data_dict):
     # The staged form's extra detail fields. No migration: they ride in the
     # existing JSON column and project_dictize merges them back on read.
     creator_id, unresolved_requester = _resolve_creator(context, data_dict)
+    if data.get('editors'):
+        data['editors'] = list(resolve_editors(data['editors'], creator_id).values())
     extras = _project_extras(data)
     if unresolved_requester:
         extras['requested_by_username'] = unresolved_requester
@@ -502,6 +514,10 @@ def csunesco_project_update(context, data_dict):
         incoming, cs_schema.project_update_schema(incoming.keys()), context)
     if errors:
         raise tk.ValidationError(errors)
+    from ckanext.csunesco.logic.validators import validate_initiative_affiliation
+    validate_initiative_affiliation(data, db.project_dictize(project))
+    if 'editors' in data:
+        data['editors'] = list(resolve_editors(data.get('editors') or [], project.created_by).values())
     from ckanext.csunesco.logic.data_access import validate_project_access
     validate_project_access(data, db._load_json(project.extras, {}))
     _sync_participation(data)

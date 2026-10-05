@@ -31,7 +31,7 @@
 {% set has_any = countries or has_dates or project.biosphere_reserve
                  or project.target_group or project.how_to_participate
                  or project.contact_person or project.contact_email
-                 or project.project_document_url
+                 or project.project_document_url or project.external_initiative_name
                  or project.open_participation %}
 
 {% if has_any %}
@@ -46,6 +46,7 @@
     {% endif %}
 
     <dl class="cs-facts">
+      {% if project.external_initiative_name %}<dt>{{ _('External initiative') }}</dt><dd>{{ project.external_initiative_name }}</dd>{% endif %}
       {% if countries %}
         <dt>{{ _("Countries") }}</dt>
         <dd>

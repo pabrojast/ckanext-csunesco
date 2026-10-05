@@ -49,6 +49,13 @@
     return (field.id || field.name) + "-error-js";
   }
 
+  function visibleField(field) {
+    if (!field.hidden) { return field; }
+    var host = field.closest('.cs-field');
+    return document.getElementById(field.id + '-input')
+      || (host && host.querySelector('.cs-rt-area')) || field;
+  }
+
   function setFieldError(field, message) {
     var id = clientErrorId(field);
     var existing = document.getElementById(id);
@@ -58,6 +65,7 @@
     if (!message) {
       if (existing) { existing.parentNode.removeChild(existing); }
       field.removeAttribute("aria-invalid");
+      visibleField(field).removeAttribute('aria-invalid');
       if (described.length) {
         field.setAttribute("aria-describedby", described.join(" "));
       } else {
@@ -78,6 +86,8 @@
     field.setAttribute("aria-invalid", "true");
     described.push(id);
     field.setAttribute("aria-describedby", described.join(" "));
+    visibleField(field).setAttribute('aria-invalid', 'true');
+    visibleField(field).setAttribute('aria-describedby', described.join(' '));
   }
 
   // -------------------------------------------------------------------------
@@ -116,6 +126,10 @@
     // a no-op, which left the user on a freshly revealed stage with focus
     // stranded on the disabled submit button.
     var lastBadField = null;
+    var checked = {};
+    var pending = null;
+    var approvedSubmission = false;
+    var status = document.getElementById('cs-validation-status');
     steps.forEach(function (el) {
       if (el.classList.contains("is-active")) { current = stepNumber(el); }
     });
@@ -145,7 +159,7 @@
         } else {
           item.removeAttribute("aria-current");
         }
-        item.setAttribute("data-state", no < current ? "done" : "todo");
+        item.setAttribute("data-state", checked[no] ? "done" : "todo");
       });
 
       if (opts.focus !== false) {
@@ -194,7 +208,6 @@
           if (field.disabled || field.type === "hidden") { return; }
           // The native country <select> is hidden by the picker but still
           // submits, and it carries no constraints -- skip rather than report.
-          if (field.hidden) { return; }
           var ok = typeof field.checkValidity !== "function"
             || field.checkValidity();
           setFieldError(field, ok ? null : field.validationMessage);
@@ -206,7 +219,7 @@
       // disabled submit button, announcing nothing.
       if (firstBad) {
         lastBadField = firstBad;
-        if (stepEl.classList.contains("is-active")) { firstBad.focus(); }
+        if (stepEl.classList.contains("is-active")) { visibleField(firstBad).focus(); }
       }
       return !firstBad;
     }
@@ -219,15 +232,116 @@
       return 0;
     }
 
+    function busy(value) {
+      slice(form.querySelectorAll('.cs-wizard-next, #cs-req-submit')).forEach(function (button) {
+        button.disabled = value;
+      });
+      form.setAttribute('aria-busy', String(value));
+    }
+
+    function cancelCheck() {
+      if (pending) { pending.abort(); pending = null; }
+      busy(false);
+      if (status) { status.textContent = ''; }
+    }
+
+    async function checkServer(step) {
+      if (pending) { return false; }
+      var controller = new AbortController();
+      pending = controller;
+      var body = new FormData();
+      new FormData(form).forEach(function (value, key) {
+        if (typeof value === 'string') { body.append(key, value); }
+      });
+      body.set('step', String(step));
+      busy(true);
+      if (status) { status.textContent = form.dataset.validating; }
+      var timeout = setTimeout(function () { controller.abort(); }, 20000);
+      try {
+        var response = await fetch(form.dataset.validateUrl, {
+          method: 'POST', body: body, credentials: 'same-origin',
+          headers: { Accept: 'application/json' }, signal: controller.signal
+        });
+        // A login in another tab rotates the CSRF token. Refresh only that
+        // token, preserving every field and selected file in this form.
+        if (response.status === 400) {
+          var fresh = await fetch(form.action, { credentials: 'same-origin', signal: controller.signal });
+          var documentCopy = new DOMParser().parseFromString(await fresh.text(), 'text/html');
+          var token = documentCopy.querySelector('#cs-project-form input[name="_csrf_token"]');
+          var currentToken = form.querySelector('input[name="_csrf_token"]');
+          if (fresh.ok && token && currentToken) {
+            currentToken.value = token.value;
+            body.set(currentToken.name, token.value);
+            response = await fetch(form.dataset.validateUrl, {
+              method: 'POST', body: body, credentials: 'same-origin',
+              headers: { Accept: 'application/json' }, signal: controller.signal
+            });
+          }
+        }
+        if (!response.ok) {
+          throw new Error(response.status === 401 || response.status === 403 || response.status === 400
+            ? form.dataset.sessionError : form.dataset.validationError);
+        }
+        var result = await response.json();
+        if (pending !== controller) { return false; }
+        if (typeof result.valid !== 'boolean' || !result.errors) { throw new Error(); }
+        var scope = step === 'all' ? form : activeStep();
+        slice(scope.querySelectorAll('.cs-field-error')).forEach(function (el) { el.remove(); });
+        slice(scope.querySelectorAll('input, select, textarea')).forEach(function (field) { setFieldError(field, null); });
+        var first = null;
+        Object.keys(result.errors).forEach(function (name) {
+          var field = slice(form.elements).find(function (el) { return el.name === name; });
+          if (!field) { return; }
+          var messages = result.errors[name];
+          setFieldError(field, Array.isArray(messages) ? messages.join(' ') : String(messages));
+          if (!first) { first = field; }
+          var section = field.closest('.cs-step');
+          if (section) { delete checked[stepNumber(section)]; }
+        });
+        if (status) { status.textContent = ''; }
+        if (first) {
+          showStep(stepNumber(first.closest('.cs-step')), { focus: false });
+          visibleField(first).focus();
+        } else if (!result.valid) { throw new Error(); }
+        return result.valid;
+      } catch (error) {
+        if (pending === controller && status) {
+          status.textContent = error.message && error.name !== 'AbortError'
+            && error.message === form.dataset.sessionError ? error.message : form.dataset.validationError;
+          status.focus();
+        }
+        return false;
+      } finally {
+        clearTimeout(timeout);
+        if (pending === controller) { pending = null; busy(false); }
+      }
+    }
+
+    async function nextStep() {
+      if (!validateStep(activeStep())) { return; }
+      var before = current;
+      if (await checkServer(current)) {
+        checked[before] = true;
+        showStep(before + 1);
+      }
+    }
+
+    form.addEventListener('input', function (event) {
+      var section = event.target.closest('.cs-step');
+      if (section) { delete checked[stepNumber(section)]; }
+      cancelCheck();
+    });
+    form.addEventListener('change', cancelCheck);
+
     form.addEventListener("click", function (event) {
       var next = event.target.closest(".cs-wizard-next");
       if (next) {
-        if (validateStep(activeStep())) { showStep(current + 1); }
+        nextStep();
         return;
       }
       // Back never validates: being unable to leave a stage you already left
       // would be a trap.
-      if (event.target.closest(".cs-wizard-prev")) { showStep(current - 1); }
+      if (event.target.closest(".cs-wizard-prev")) { cancelCheck(); showStep(current - 1); }
     });
 
     /* Every nav button is type="button", so Enter in a text field would fall
@@ -238,28 +352,41 @@
       if (event.key !== "Enter" || event.defaultPrevented) { return; }
       var target = event.target;
       var tag = (target.tagName || "").toLowerCase();
-      if (tag === "textarea" || tag === "button"
+      if (target.isContentEditable || tag === "textarea" || tag === "button"
           || target.type === "submit") { return; }
       if (current < steps.length) {
         event.preventDefault();
-        if (validateStep(activeStep())) { showStep(current + 1); }
+        nextStep();
       }
     });
 
-    form.addEventListener("submit", function (event) {
+    form.addEventListener("submit", async function (event) {
       /* "Save for later" carries formnovalidate: a draft must be savable
        * half-filled, so client validation is skipped and the server applies
        * only its lenient rules. */
       var submitter = event.submitter;
-      if (submitter && submitter.hasAttribute("formnovalidate")) { return; }
+      if (submitter && submitter.hasAttribute("formnovalidate")) { cancelCheck(); return; }
+      if (!approvedSubmission) {
+        event.preventDefault();
       var badStep = validateAll();
       if (badStep) {
         event.preventDefault();
         showStep(badStep, { focus: false });
-        if (lastBadField) { lastBadField.focus(); }
+        if (lastBadField) { visibleField(lastBadField).focus(); }
+        return;
+      }
+        if (await checkServer('all')) {
+          approvedSubmission = true;
+          form.requestSubmit(submitter || undefined);
+        }
         return;
       }
       if (submit) {
+        if (submitter && submitter.name) {
+          var action = document.createElement('input');
+          action.type = 'hidden'; action.name = submitter.name; action.value = submitter.value;
+          form.appendChild(action);
+        }
         submit.disabled = true;
         submit.classList.add("is-loading");
         var label = submit.querySelector(".cs-btn-label");
@@ -425,6 +552,7 @@
       row.option.selected = selected;
       row.el.setAttribute("aria-selected", selected ? "true" : "false");
       var count = renderChips();
+      select.dispatchEvent(new Event('change', { bubbles: true }));
       announce((selected ? LABEL_ADDED : LABEL_REMOVED)
         .replace("{name}", row.option.text)
         .replace("{count}", String(count)));
@@ -581,7 +709,7 @@
         showStep(parseInt(link.getAttribute("data-step"), 10),
                  { focus: false });
       }
-      if (target) { target.focus(); }
+      if (target) { visibleField(target).focus(); }
     });
   }
 
@@ -609,10 +737,133 @@
     sync();
   }
 
+  function initInitiative(form) {
+    var select = form.elements.initiative;
+    var input = form.elements.external_initiative_name;
+    var host = document.getElementById('cs-external-initiative-field');
+    function sync() {
+      var external = select.value === '__external__';
+      host.hidden = !external;
+      input.disabled = !external;
+      input.required = external;
+      if (!external) { input.value = ''; setFieldError(input, null); }
+    }
+    select.addEventListener('change', sync);
+    sync();
+    var slug = form.elements.slug;
+    if (slug) {
+      function check() {
+        slug.setCustomValidity('');
+        if (slug.validity.patternMismatch) { slug.setCustomValidity(slug.dataset.formatError); }
+      }
+      slug.addEventListener('input', check);
+      check();
+    }
+  }
+
+  function initEditors(form) {
+    var picker = document.getElementById('cs-editor-picker');
+    var input = document.getElementById('cs-editor-search');
+    var raw = form.elements.editors;
+    var results = document.getElementById('cs-editor-results');
+    var selected = document.getElementById('cs-editor-selected');
+    var status = document.getElementById('cs-editor-status');
+    var labels = {};
+    var timer, controller;
+    picker.hidden = false;
+    function names() { return raw.value.split(/[,\s]+/).filter(Boolean); }
+    function render() {
+      selected.textContent = '';
+      names().forEach(function (name) {
+        var li = document.createElement('li');
+        li.className = 'cs-chip';
+        li.appendChild(document.createTextNode(labels[name] || name));
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'cs-chip-remove';
+        button.textContent = '×';
+        button.setAttribute('aria-label', picker.dataset.remove + ' ' + name);
+        button.addEventListener('click', function () {
+          raw.value = names().filter(function (value) { return value !== name; }).join(', ');
+          raw.dispatchEvent(new Event('input', { bubbles: true }));
+          input.focus();
+        });
+        li.appendChild(button);
+        selected.appendChild(li);
+      });
+    }
+    raw.addEventListener('input', render);
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); }
+      if (event.key === 'ArrowDown') {
+        var first = results.querySelector('button:not(:disabled)');
+        if (first) { event.preventDefault(); first.focus(); }
+      }
+      if (event.key === 'Escape') { results.textContent = ''; }
+    });
+    results.addEventListener('keydown', function (event) {
+      var buttons = slice(results.querySelectorAll('button:not(:disabled)'));
+      var index = buttons.indexOf(event.target);
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        var next = index + (event.key === 'ArrowDown' ? 1 : -1);
+        if (buttons[next]) { buttons[next].focus(); } else { input.focus(); }
+      }
+      if (event.key === 'Escape') { results.textContent = ''; input.focus(); }
+    });
+    input.addEventListener('input', function () {
+      clearTimeout(timer);
+      if (controller) { controller.abort(); }
+      results.textContent = '';
+      status.textContent = '';
+      var query = input.value.trim();
+      if (query.length < 2) { return; }
+      timer = setTimeout(async function () {
+        var request = new AbortController();
+        controller = request;
+        status.textContent = picker.dataset.loading;
+        var timeout = setTimeout(function () { request.abort(); }, 15000);
+        try {
+          var url = new URL(form.dataset.editorsUrl, window.location.href);
+          url.searchParams.set('q', query);
+          if (form.elements.project_id) { url.searchParams.set('project_id', form.elements.project_id.value); }
+          var response = await fetch(url, { credentials: 'same-origin', signal: request.signal });
+          if (!response.ok) { throw new Error(); }
+          var data = await response.json();
+          if (controller !== request || input.value.trim() !== query) { return; }
+          status.textContent = data.results.length ? '' : picker.dataset.empty;
+          data.results.forEach(function (user) {
+            var label = user.fullname ? user.fullname + ' (' + user.name + ')' : user.name;
+            labels[user.name] = label;
+            var li = document.createElement('li');
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = label;
+            button.disabled = names().indexOf(user.name) !== -1 || user.name === form.dataset.owner;
+            if (user.name === form.dataset.owner) { button.textContent += ' — ' + picker.dataset.ownerLabel; }
+            button.addEventListener('click', function () {
+              if (names().indexOf(user.name) === -1) {
+                raw.value = names().concat([user.name]).join(', ');
+                raw.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+              results.textContent = ''; input.value = ''; input.focus();
+            });
+            li.appendChild(button); results.appendChild(li);
+          });
+        } catch (error) {
+          if (controller === request && input.value.trim() === query) { status.textContent = picker.dataset.error; }
+        } finally { clearTimeout(timeout); }
+      }, 300);
+    });
+    render();
+  }
+
   function init() {
     var form = document.getElementById("cs-project-form");
     if (!form) { return; }
     try { initDataAccess(form); } catch (error) { /* server validation remains authoritative */ }
+    try { initInitiative(form); } catch (error) { /* server validation remains authoritative */ }
+    try { initEditors(form); } catch (error) { /* exact username input remains available */ }
     var showStep = null;
     try { showStep = initWizard(form); } catch (error) { /* long form */ }
     try { initCountryPicker(form); } catch (error) { /* native select */ }

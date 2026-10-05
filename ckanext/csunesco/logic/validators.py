@@ -77,8 +77,28 @@ def csunesco_valid_slug(value):
         return value
     if not _SLUG_RE.match(value):
         raise tk.Invalid(tk._(
-            'Invalid slug: use lowercase letters, numbers and single hyphens'))
+            'Enter only the project address ending, for example river-monitoring. '
+            'Use lowercase letters, numbers and single hyphens, without https:// or a domain.'))
     return value
+
+
+def csunesco_external_initiative_name(value):
+    if value in (None, ''):
+        return value
+    value = re.sub(r'<[^>]*>', '', str(value)).strip()
+    if len(value) > 200:
+        raise tk.Invalid(tk._('Initiative name must be 200 characters or fewer.'))
+    return value
+
+
+def validate_initiative_affiliation(data, current=None):
+    """External names describe affiliation; they never create moderation scopes."""
+    current = current or {}
+    initiative = data.get('initiative', current.get('initiative_group') or current.get('initiative'))
+    external = data.get('external_initiative_name', current.get('external_initiative_name'))
+    if initiative and external:
+        raise tk.ValidationError({'external_initiative_name': [tk._(
+            'Choose a UNESCO initiative or an external initiative, not both.')]})
 
 
 def csunesco_valid_geojson(value):

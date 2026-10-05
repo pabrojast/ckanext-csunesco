@@ -132,8 +132,16 @@
       <form method="post"
             action="{{ h.csunesco_editor_link('csunesco.project_new') if is_new else h.csunesco_editor_link('csunesco.project_edit', slug=project.slug) }}"
             enctype="multipart/form-data"
-            class="cs-form cs-wizard" id="cs-project-form" novalidate>
+            class="cs-form cs-wizard" id="cs-project-form" novalidate
+            data-validate-url="{{ h.url_for('csunesco.project_validate') }}"
+            data-editors-url="{{ h.url_for('csunesco.project_editor_options') }}"
+            data-owner="{{ current_account.name if is_new and current_account else '' }}"
+            data-validation-error="{{ _('Could not check this section. Your entries are kept. Please try again using Next or Submit.') }}"
+            data-session-error="{{ _('Your session has expired. Sign in in another tab, then retry here. Your entries are kept.') }}"
+            data-validating="{{ _('Checking this section…') }}">
         {{ h.csrf_input() }}
+        {% if not is_new %}<input type="hidden" name="project_id" value="{{ project.id }}">{% endif %}
+        <p id="cs-validation-status" class="cs-hint" role="status" tabindex="-1"></p>
         {% if is_new %}<input type="hidden" name="request_nonce" value="{{ request_nonce }}">{% endif %}
         {% if return_to == 'review' %}<input type="hidden" name="return_to" value="review">{% endif %}
 
@@ -179,13 +187,15 @@
           </div>
 
           <div class="cs-field">
-            <label for="cs-f-slug">{{ _("Project URL") }}</label>
+            <label for="cs-f-slug">{{ _("Project address on this portal") }}</label>
             {% if is_new %}
               <input type="text" id="cs-f-slug" name="slug" value="{{ data.slug or '' }}"
-                     maxlength="100" autocapitalize="none" spellcheck="false"
+                     maxlength="100" autocapitalize="none" spellcheck="false" pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                     placeholder="river-monitoring"
+                     data-format-error="{{ _('Enter only the address ending, for example river-monitoring, without https:// or a domain.') }}"
                      {% if errors.slug %}aria-invalid="true"{% endif %}
                      {{- described_by('slug', true) }}>
-              <p id="cs-f-slug-hint" class="cs-hint">{{ _("Optional. Lowercase letters, numbers and hyphens. Leave blank to generate it from the title.") }}</p>
+              <p id="cs-f-slug-hint" class="cs-hint">{{ _("Optional. This is the last part of your address on this portal, not an external website. Use lowercase letters, numbers and single hyphens. Leave blank to generate it from the title.") }}<br>{{ _('Example:') }} <code>{{ h.url_for('csunesco.project_landing', slug='river-monitoring', _external=True) }}</code></p>
             {% else %}
               <input type="text" id="cs-f-slug" name="slug" value="{{ data.slug or '' }}"
                      readonly aria-readonly="true"
@@ -233,8 +243,9 @@
             <label for="cs-f-initiative">{{ _("Initiative") }}</label>
             <select id="cs-f-initiative" name="initiative"
                     {% if errors.initiative %}aria-invalid="true"{% endif %}
-                    {{- described_by('initiative', false) }}>
-              <option value="">{{ _("Not part of an initiative") }}</option>
+                    {{- described_by('initiative', true) }}>
+              <option value="">{{ _("Independent project / no initiative") }}</option>
+              <option value="__external__" {% if data.initiative == '__external__' %}selected{% endif %}>{{ _('Other initiative / outside UNESCO') }}</option>
               {% for initiative in initiatives %}
                 <option value="{{ initiative.name }}"
                         {% if initiative.name == data.initiative %}selected{% endif %}>
@@ -242,7 +253,14 @@
                 </option>
               {% endfor %}
             </select>
+            <p id="cs-f-initiative-hint" class="cs-hint">{{ _('Projects from other organizations are welcome. Choose an external initiative or an independent project if none of the UNESCO initiatives applies.') }}</p>
             {{ field_error('initiative') }}
+          </div>
+          <div class="cs-field" id="cs-external-initiative-field">
+            <label for="cs-f-external_initiative_name">{{ _('External initiative name') }}</label>
+            <input id="cs-f-external_initiative_name" name="external_initiative_name" type="text" maxlength="200" value="{{ data.external_initiative_name or '' }}" {{ described_by('external_initiative_name', true) }}>
+            <p id="cs-f-external_initiative_name-hint" class="cs-hint">{{ _('Required only when you choose Other initiative / outside UNESCO.') }}</p>
+            {{ field_error('external_initiative_name') }}
           </div>
 
           <div class="cs-field">
@@ -347,11 +365,12 @@
           </div>
 
           <div class="cs-field">
-            <label for="cs-f-region_geojson">{{ _("Region (GeoJSON)") }}</label>
+            <label for="cs-f-region_geojson">{{ _("Project area (optional GeoJSON)") }}</label>
             <textarea id="cs-f-region_geojson" name="region_geojson" rows="5"
                       {% if errors.region_geojson %}aria-invalid="true"{% endif %}
                       {{- described_by('region_geojson', true) }}>{{ data.region_geojson or '' }}</textarea>
-            <p id="cs-f-region_geojson-hint" class="cs-hint">{{ _("Optional. Paste a GeoJSON Feature, FeatureCollection, Polygon or MultiPolygon — or use the point and radius below instead.") }}</p>
+            <p id="cs-f-region_geojson-hint" class="cs-hint">{{ _("This defines the geographic area where your project works and displays it on the project map. It is not your home address or a country name. You can leave it empty, use a point and radius below, or paste a GeoJSON Feature, FeatureCollection, Polygon or MultiPolygon if you have one. When both are provided, GeoJSON defines the map area.") }}</p>
+            <p class="cs-hint">{{ _('For example, latitude -33.45, longitude -70.66 and radius 5 km describe an area around a monitoring site. Enter all three values when using this option.') }}</p>
             {{ field_error('region_geojson') }}
           </div>
 
@@ -566,11 +585,22 @@
 
           <div class="cs-field">
             <label for="cs-f-editors">{{ _("Editors") }}</label>
+            {% if is_new and current_account %}<p class="cs-hint">{{ _('You are already included as the project proposer and can edit your proposal:') }} <strong>{{ current_account.fullname or current_account.name }} (@{{ current_account.name }})</strong>. {{ _('You do not need to add yourself below.') }}</p>{% endif %}
             <input type="text" id="cs-f-editors" name="editors"
                    value="{{ data.editors or '' }}" maxlength="400"
                    {% if errors.editors %}aria-invalid="true"{% endif %}
                    {{- described_by('editors', true) }}>
             <p id="cs-f-editors-hint" class="cs-hint">{{ _("Optional. Usernames of additional people who can co-edit the project, separated by commas.") }}</p>
+            <div id="cs-editor-picker" hidden
+                 data-loading="{{ _('Searching…') }}" data-empty="{{ _('No active CKAN accounts match. Try their username. A Toolbox-only account must first be linked to CKAN.') }}"
+                 data-error="{{ _('Search is unavailable. Retry or enter exact usernames above.') }}"
+                 data-owner-label="{{ _('Already included as proposer') }}" data-remove="{{ _('Remove') }}">
+              <label for="cs-editor-search">{{ _('Find collaborators by name or username') }}</label>
+              <input id="cs-editor-search" type="search" autocomplete="off" aria-controls="cs-editor-results" aria-describedby="cs-editor-status">
+              <p id="cs-editor-status" class="cs-hint" role="status"></p>
+              <ul id="cs-editor-results" class="cs-org-results"></ul>
+              <ul id="cs-editor-selected" class="cs-chips"></ul>
+            </div>
             {{ field_error('editors') }}
           </div>
 
