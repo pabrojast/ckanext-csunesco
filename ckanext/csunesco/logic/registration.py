@@ -680,6 +680,56 @@ def _render_manager(extra_vars):
     return tk.render('csunesco/register_manager.html', extra_vars=extra_vars)
 
 
+def _lock_manager_account(user_id):
+    # Serialize even the first application, when no profile row exists yet.
+    return (model.Session.query(model.User).filter(model.User.id == user_id)
+            .populate_existing().with_for_update().one())
+
+
+def _request_manager_access(user_id, data, manager):
+    """Attach one PM application to an active identity; never create a user."""
+    from ckanext.csunesco import db
+    user = _lock_manager_account(user_id)
+    if user.state != 'active':
+        raise NotAuthorized('An active account is required')
+    db.ensure_mappers()
+    profile = (model.Session.query(db.CsCitizenScientist)
+               .filter(db.CsCitizenScientist.user_id == user.id)
+               .populate_existing().first())
+    if profile and profile.profile_type == 'manager':
+        return False
+    if profile is None:
+        profile = db.get_or_create_citizen_scientist(user.id, defer_commit=True)
+    for field in ('date_of_birth', 'nationality', 'gender', 'motivation',
+                  'language', 'language_other'):
+        setattr(profile, field, data.get(field) or None)
+    for field, value in manager.items():
+        setattr(profile, field, value)
+    if not user.fullname:
+        user.fullname = data['fullname']
+    profile.profile_type = 'manager'
+    profile.manager_application_origin = 'existing_account'
+    # Existing active CKAN identities are trusted, just like the established
+    # server-to-server registration path. No new verification is required.
+    profile.email_verified = True
+    profile.verification_token = None
+    profile.token_created = None
+    profile.terms_accepted_at = profile.terms_accepted_at or datetime.datetime.utcnow()
+    profile.responsibilities_accepted_at = datetime.datetime.utcnow()
+    model.Session.commit()
+    return True
+
+
+def _manager_account_data(user, profile):
+    data = {key: getattr(profile, key, None) or '' for key in (
+        'date_of_birth', 'nationality', 'gender', 'motivation', 'language',
+        'language_other', 'org_type', 'org_title', 'org_role', 'org_description')}
+    if data['date_of_birth']:
+        data['date_of_birth'] = data['date_of_birth'].isoformat()
+    data.update(username=user.name, email=user.email or '', fullname=user.fullname or '')
+    return data
+
+
 def register_manager():
     """GET/POST: Project Manager self-registration (spec section 3).
 
@@ -690,8 +740,30 @@ def register_manager():
     the declared organization is created/joined -- never at sign-up, so an
     unvetted visitor cannot spam the org registry.
     """
+    from ckanext.csunesco import db
+    from ckanext.csunesco.logic import auth
+    context = {'model': model, 'session': model.Session, 'user': tk.g.user}
+    user = auth._user_obj(context) if tk.g.user else None
+    if user and user.state != 'active':
+        return tk.abort(403, tk._('An active account is required.'))
+    if not user and request.method == 'POST' and request.form.get('existing_account'):
+        return tk.redirect_to('user.login', came_from=tk.url_for('csunesco.register_manager'))
+    profile = db.get_citizen_scientist(user.id) if user else None
+
+    def render(values):
+        if user:
+            values.update(existing_account=True, account=user, recaptcha_publickey='')
+        return _render_manager(values)
+
+    if user:
+        if auth.can_propose_project(context):
+            return tk.redirect_to('csunesco.project_new')
+        if profile and profile.profile_type == 'manager':
+            return render({'data': {}, 'errors': {},
+                           'application_status': profile.manager_decision or 'pending',
+                           'review_reason': profile.manager_review_reason})
     if request.method == 'GET':
-        return _render_manager({'data': {}, 'errors': {}})
+        return render({'data': _manager_account_data(user, profile) if user else {}, 'errors': {}})
 
     # --- POST ---------------------------------------------------------------
     retry_after = _registration_retry_after()
@@ -699,6 +771,9 @@ def register_manager():
     email = request.form.get('email', '').strip()
     username = request.form.get('username', '').lower().strip()
     fullname = request.form.get('fullname', '').strip()
+    if user:
+        username, email = user.name, user.email or ''
+        fullname = user.fullname or fullname
     password = request.form.get('password', '')
     confirm_password = request.form.get('confirm_password', '')
     date_of_birth = request.form.get('date_of_birth', '').strip()
@@ -732,7 +807,7 @@ def register_manager():
                 org_role=org_role, org_description=org_description)
 
     def _fail(status=200, headers=None, errors=None):
-        rendered = _render_manager({
+        rendered = render({
             'data': data,
             'errors': errors or problem('required'),
         })
@@ -742,6 +817,8 @@ def register_manager():
 
     if retry_after is not None:
         return _fail(429, {'Retry-After': str(retry_after)}, problem('too_many_attempts'))
+    if user and not EMAIL_RE.match(email):
+        return _fail(errors=problem('email_invalid', 'email'))
 
     # The responsibilities acknowledgement is this form's terms checkbox.
     if not responsibilities:
@@ -778,9 +855,9 @@ def register_manager():
             return _fail(errors=problem('organization_invalid', 'org_name', 'org_title', 'org_type', 'new_org_name'))
         org_id = org_name
 
-    if not password or len(password) < MIN_PASSWORD_LENGTH:
+    if not user and (not password or len(password) < MIN_PASSWORD_LENGTH):
         return _fail(errors=problem('password_short', 'password'))
-    if password != confirm_password:
+    if not user and password != confirm_password:
         return _fail(errors=problem('password_mismatch', 'confirm_password'))
 
     try:
@@ -792,7 +869,7 @@ def register_manager():
     except ValidationError as exc:
         return _fail(errors=from_validation(exc))
 
-    if _recaptcha_configured():
+    if not user and _recaptcha_configured():
         if not _verify_recaptcha(request.form.get('recaptcha_response')):
             return _fail(errors=problem('captcha_failed'))
 
@@ -811,10 +888,10 @@ def register_manager():
             org_image_url, logo_upload = store_org_logo(request.files.get('org_logo'))
         except ValidationError as exc:
             return _fail(errors=from_validation(exc))
-    verification_token = secrets.token_urlsafe(32)
+    verification_token = None if user else secrets.token_urlsafe(32)
 
     try:
-        create_citizen_scientist(context, {
+        payload = {
             'email': email,
             'username': username,
             'fullname': fullname,
@@ -835,21 +912,34 @@ def register_manager():
                 'org_description': org_description if creating_org else None,
                 'org_image_url': org_image_url,
             },
-        }, verification_token=verification_token)
+        }
+        if user:
+            created = _request_manager_access(user.id, payload, payload['manager'])
+            if not created and logo_upload:
+                logo_upload.rollback()
+        else:
+            create_citizen_scientist(context, payload, verification_token=verification_token)
     except NotAuthorized:
+        model.Session.rollback()
         if logo_upload:
             logo_upload.rollback()
+        if user:
+            return tk.abort(403, tk._('An active account is required.'))
         log.warning('csunesco: user_create not authorized for PM register')
         return _fail(errors=problem('registration_disabled'))
     except ValidationError as exc:
+        model.Session.rollback()
         if logo_upload:
             logo_upload.rollback()
         return _fail(errors=from_validation(exc))
     except Exception:
+        model.Session.rollback()
         if logo_upload:
             logo_upload.rollback()
         raise
 
+    if user:
+        return tk.redirect_to('csunesco.register_manager')
     _send_verification_email(fullname or username, email, verification_token)
 
     return _render_manager({

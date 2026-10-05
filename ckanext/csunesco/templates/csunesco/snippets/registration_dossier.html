@@ -12,6 +12,7 @@
 <div><dt>{{ _('Preferred language') }}</dt><dd>{{ profile.language or _('Not provided') }}</dd></div>
 <div><dt>{{ _('Other language') }}</dt><dd>{{ profile.language_other or _('Not provided') }}</dd></div>
 {% if profile.profile_type == 'manager' %}
+<div><dt>{{ _('Application type') }}</dt><dd>{{ _('PM access for an existing account') if profile.manager_application_origin == 'existing_account' else _('New account registration') }}</dd></div>
 <div><dt>{{ _('Organization') }}</dt><dd>{{ profile.organization_title or _('Not provided') }}</dd></div>
 {% endif %}
 {% if profile.profile_type == 'manager' %}

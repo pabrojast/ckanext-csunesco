@@ -11,15 +11,15 @@
   hints are progressive enhancement; every rule is repeated server-side.
 #}
 
-{% block subtitle %}{{ _("Register as a Project Manager") }}{% endblock %}
+{% block subtitle %}{{ _("Request Project Manager access") if existing_account else _("Register as a Project Manager") }}{% endblock %}
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
   <div class="cs-register-page cs-onboarding cs-onboarding-pm">
     <section class="cs-register-shell" aria-labelledby="cs-reg-title">
       <div class="cs-register-topbar">
-        <a class="cs-register-back" href="{{ (h.csunesco_login_url() or h.url_for('user.login')) }}">
-          <span aria-hidden="true">&larr;</span> {{ _("Back to sign in") }}
+        <a class="cs-register-back" href="{{ h.url_for('csunesco.index') if existing_account else (h.csunesco_login_url() or h.url_for('user.login')) }}">
+          <span aria-hidden="true">&larr;</span> {{ _("Back to Citizen Science") if existing_account else _("Back to sign in") }}
         </a>
       </div>
 
@@ -33,7 +33,21 @@
         </div>
       </div>
 
-      {% if pending_verification %}
+      {% if application_status %}
+        <div class="cs-register-success" role="status">
+          <h1 id="cs-reg-title">{{ _("Your Project Manager request") }}</h1>
+          {% if application_status == 'pending' %}
+            <p>{{ _("Your request is awaiting review by a platform administrator. You do not need to register again or verify your email.") }}</p>
+          {% elif application_status == 'rejected' %}
+            <p>{{ _("Your request was not approved. Contact a platform administrator to discuss the decision.") }}</p>
+            {% if review_reason %}<p>{{ review_reason }}</p>{% endif %}
+          {% else %}
+            <p>{{ _("Your PM request was approved, but you currently have no eligible organization. Contact a platform administrator to review your membership.") }}</p>
+          {% endif %}
+          <p>{{ _("Your existing account and access remain unchanged.") }}</p>
+          <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.index') }}">{{ _("Back to Citizen Science") }}</a>
+        </div>
+      {% elif pending_verification %}
         <div class="cs-register-success" role="status">
           <span class="cs-register-success-icon" aria-hidden="true">
             {{ h.csunesco_icon('check', 28) }}
@@ -51,9 +65,13 @@
           </a>
         </div>
       {% else %}
-        <h1 id="cs-reg-title" class="cs-register-title">{{ _("Register as a Project Manager") }}</h1>
+        <h1 id="cs-reg-title" class="cs-register-title">{{ _("Request Project Manager access") if existing_account else _("Register as a Project Manager") }}</h1>
         <p class="cs-register-intro">
-          {{ _("Project Managers propose and run citizen science projects on behalf of an organization. Your account will be reviewed by a platform administrator before it is activated.") }}
+          {% if existing_account %}
+            {{ _("Use your existing account to request Project Manager access. Complete your details and organization below. Your account stays active while an administrator reviews your request.") }}
+          {% else %}
+            {{ _("Project Managers propose and run citizen science projects on behalf of an organization. Your account will be reviewed by a platform administrator before it is activated.") }}
+          {% endif %}
         </p>
         <p class="cs-register-muted">
           {{ _("Once approved, you join your organization with the reviewed role and can propose citizen science projects. A new organization makes you its administrator.") }}
@@ -73,18 +91,27 @@
               class="cs-register-form" id="cs-register-form" enctype="multipart/form-data" novalidate
               data-recaptcha-key="{{ recaptcha_publickey or '' }}"
               data-sending-label="{{ _('Sending…') }}"
-              data-submit-label="{{ _('Create account') }}"
+              data-submit-label="{{ _('Submit PM request') if existing_account else _('Create account') }}"
               data-recaptcha-loading="{{ _('Security check is still loading. Please try again.') }}"
               data-recaptcha-error="{{ _('The security check could not be completed. Please try again.') }}">
           {{ h.csrf_input() }}
 
           <fieldset class="cs-register-fieldset">
-            <legend><span class="cs-step-number">1</span> {{ _("Create your account") }}</legend>
+            <legend><span class="cs-step-number">1</span> {{ _("Your existing account") if existing_account else _("Create your account") }}</legend>
+
+            {% if existing_account %}
+              <input type="hidden" name="existing_account" value="1">
+              <p><strong>{{ account.name }}</strong> · {{ account.email or _('No email address') }}</p>
+              <p class="cs-hint">{{ _("No new account, password or email verification is needed.") }}
+                <a href="{{ h.url_for('user.edit', id=account.name) }}">{{ _('Update your account details') }}</a>
+              </p>
+            {% endif %}
 
             <div class="cs-field">
               <label for="cs-fullname">{{ _("Full name") }}</label>
               <input type="text" id="cs-fullname" name="fullname"
                      value="{{ data.fullname or '' }}" autocomplete="name"
+                     {% if existing_account and account.fullname %}readonly{% endif %}
                      required aria-required="true"
                      aria-describedby="cs-fullname-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
               <p id="cs-fullname-hint" class="cs-hint"
@@ -94,6 +121,7 @@
               </p>
             </div>
 
+            {% if not existing_account %}
             <div class="cs-field">
               <label for="cs-email">{{ _("Email") }}</label>
               <input type="email" id="cs-email" name="email"
@@ -154,6 +182,7 @@
               <p id="cs-confirm-password-hint" class="cs-hint cs-field-message"
                  data-default="" data-error="{{ _('Passwords do not match.') }}"></p>
             </div>
+            {% endif %}
           </fieldset>
 
           <fieldset class="cs-register-fieldset">
@@ -238,10 +267,16 @@
             <div class="cs-field">
               <label for="cs-org-name">{{ _("Organization name") }}</label>
               <div id="cs-org-picker" hidden data-url="{{ h.url_for_static('/api/colab/organizations') }}">
-                <input id="cs-org-search" type="search" autocomplete="off" aria-label="{{ _('Search your organization') }}" aria-controls="cs-org-results" placeholder="{{ _('Search by full name or keyword') }}">
+                <p id="cs-org-search-hint" class="cs-hint">{{ _('The list below shows only some organizations. Search the full catalog by name or keyword, or select Show more.') }}</p>
+                <input id="cs-org-search" type="search" autocomplete="off" aria-label="{{ _('Search your organization') }}" aria-controls="cs-org-results" aria-describedby="cs-org-search-hint cs-org-status" placeholder="{{ _('Search all organizations') }}">
                 <p id="cs-org-status" class="cs-hint" role="status" data-loading="{{ _('Loading organizations…') }}" data-error="{{ _('Organizations could not be loaded. Try again.') }}" data-empty="{{ _('No organizations match your search.') }}"></p>
+                <p id="cs-org-count" class="cs-hint" role="status" data-count="{{ _('Showing {shown} of {total} organizations') }}" data-matches="{{ _('Showing {shown} of {total} matches in {catalog} organizations') }}"></p>
+                <p id="cs-org-selection" class="cs-hint" role="status" data-selected="{{ _('Selected organization: {name}') }}"></p>
+                <button type="button" id="cs-org-change" class="cs-btn cs-btn-secondary" hidden>{{ _('Change organization') }}</button>
                 <ul id="cs-org-results" class="cs-org-results"></ul>
-                <button type="button" id="cs-org-new" class="cs-btn cs-btn-secondary">{{ _('My organization is not listed — create a new one') }}</button>
+                <button type="button" id="cs-org-more" class="cs-btn cs-btn-secondary" hidden>{{ _('Show more') }}</button>
+                <button type="button" id="cs-org-new" class="cs-btn cs-btn-secondary">{{ _('Request a new organization') }}</button>
+                <p class="cs-hint">{{ _('New organizations are created only after an administrator approves your PM request.') }}</p>
               </div>
               <select id="cs-org-name" name="org_name" required aria-required="true"
                       aria-describedby="cs-org-name-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
@@ -306,10 +341,11 @@
           {% endif %}
 
           <button type="submit" id="cs-submit" class="cs-btn cs-btn-primary cs-register-submit">
-            {{ _("Create account") }}
+            {{ _("Submit PM request") if existing_account else _("Create account") }}
           </button>
         </form>
 
+        {% if not existing_account %}
         <p class="cs-register-footer">
           {{ _("Joining as a volunteer instead?") }}
           <a href="{{ h.url_for('csunesco.register_citizen') }}">{{ _("Register as a Citizen Scientist") }}</a>
@@ -318,6 +354,7 @@
           {{ _("Already have an account?") }}
           <a href="{{ (h.csunesco_login_url() or h.url_for('user.login')) }}">{{ _("Sign in") }}</a>
         </p>
+        {% endif %}
       {% endif %}
     </section>
   </div>

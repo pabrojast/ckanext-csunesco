@@ -11,7 +11,7 @@ PROFILE_FIELDS = ('profile_type', 'date_of_birth', 'nationality', 'gender',
                   'language', 'language_other', 'motivation', 'terms_accepted_at',
                   'responsibilities_accepted_at', 'org_id', 'org_name_requested',
                   'org_type', 'org_title', 'org_role', 'org_description',
-                  'org_image_url', 'manager_decision', 'manager_reviewed_at',
+                  'org_image_url', 'manager_decision', 'manager_application_origin', 'manager_reviewed_at',
                   'manager_reviewed_by', 'manager_review_reason', 'created')
 
 

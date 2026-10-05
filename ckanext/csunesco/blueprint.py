@@ -662,6 +662,9 @@ def guard_migrated_local_assets():
 @csunesco_bp.after_app_request
 def prevent_migrated_asset_caching(response):
     from ckanext.csunesco.logic import snapshots
+    from flask import request
+    if request.endpoint == 'csunesco.register_manager':
+        response.headers['Cache-Control'] = 'private, no-store'
     return snapshots.no_cache_legacy_upload(response)
 
 

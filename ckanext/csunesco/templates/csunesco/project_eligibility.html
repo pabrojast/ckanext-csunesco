@@ -9,20 +9,20 @@
   </nav>
   <section class="cs-card cs-form-card" aria-labelledby="cs-eligibility-title">
     <h1 id="cs-eligibility-title">{{ _("Who can propose a project?") }}</h1>
-    <p>{{ _("Projects are proposed and run by Project Managers: people leading a citizen science effort on behalf of an organization (an NGO, a school or university, a public agency, a community group…). Proposals can be submitted once your Project Manager account is approved and you are an administrator or editor of that organization on this portal.") }}</p>
+    <p>{{ _("Projects are proposed and run on behalf of an organization. Organization administrators and editors, and approved Project Managers who are members of their reviewed organization, can submit projects for review.") }}</p>
     <h2 class="cs-form-subtitle">{{ _("Becoming a Project Manager") }}</h2>
     <ol class="cs-eligibility-steps">
-      <li>{{ _("Register as a Project Manager, naming the organization you work with — an existing one on this portal, or a new one you ask us to create.") }}</li>
-      <li>{{ _("Confirm your email address.") }}</li>
+      <li>{{ _("Request Project Manager access with your existing account, or register if you are new. Select your organization or request a new one.") }}</li>
+      <li>{{ _("New accounts must confirm their email. Existing active accounts do not need to register or verify their email again.") }}</li>
       <li>{{ _("A platform administrator reviews your request. You are notified of the decision by email.") }}</li>
-      <li>{{ _("On approval you become an editor of the existing organization (or the administrator of the newly created one), and “Propose a project” unlocks for your account.") }}</li>
+      <li>{{ _("On approval you join the organization with the reviewed role, or become the administrator of the new organization. You can then propose a project, which is reviewed separately.") }}</li>
     </ol>
     <p>{{ _("Citizen Scientists who just want to join an existing project don't need any of this — they can register from a project's page or through the mobile app.") }}</p>
     <div class="cs-form-actions">
       {% if not logged_in %}
         <a class="cs-btn cs-btn-primary" href="{{ h.url_for('user.login', came_from=h.csunesco_editor_link('csunesco.project_new')) }}">{{ _("Log in") }}</a>
       {% endif %}
-      <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.register_manager') }}">{{ _("Register as a Project Manager") }}</a>
+      <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.register_manager') }}">{{ _("Request Project Manager access") if logged_in else _("Register as a Project Manager") }}</a>
     </div>
   </section>
 {% endblock %}

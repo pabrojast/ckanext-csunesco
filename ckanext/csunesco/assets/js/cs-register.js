@@ -87,6 +87,7 @@
   }
 
   function renderStrength() {
+    if (!password) { return; }
     var score = passwordStrength(password.value || "");
     Array.prototype.forEach.call(meter, function (segment, index) {
       segment.classList.toggle("is-on", index < score);
@@ -116,7 +117,7 @@
     });
   }
 
-  password.addEventListener("input", renderStrength);
+  if (password) password.addEventListener("input", renderStrength);
   if (username) {
     username.addEventListener("blur", function () {
       username.value = (username.value || "").trim().toLowerCase();
@@ -236,30 +237,118 @@
     var search = document.getElementById("cs-org-search");
     var results = document.getElementById("cs-org-results");
     var status = document.getElementById("cs-org-status");
-    var orgs = [];
-    function fold(text) { return String(text || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
-    function matches(text) { var words=fold(text).split(/\s+/).filter(Boolean); return orgs.filter(function(o) { var hay=fold(o.title+" "+o.name);return words.every(function(w){return hay.indexOf(w)!==-1;}); }).sort(function(a,b){var q=fold(text); var score=function(o){var t=fold(o.title);return t===q?3:t.indexOf(q)===0?2:1;};return score(b)-score(a)||a.title.localeCompare(b.title);}); }
-    function render() {
-      results.textContent = "";
-      var found=matches(search.value); status.textContent=found.length ? "" : status.dataset.empty;
-      found.slice(0,10).forEach(function(org) {
-        var li=document.createElement("li"), button=document.createElement("button");
-        button.type="button"; button.textContent=org.title || org.name;
-        button.addEventListener("click", function(){orgName.value=org.name;orgName.dispatchEvent(new Event("change"));search.value=org.title || org.name;results.textContent="";status.textContent=search.value;});
-        li.appendChild(button);results.appendChild(li);
+    var count = document.getElementById("cs-org-count");
+    var more = document.getElementById("cs-org-more");
+    var selection = document.getElementById("cs-org-selection");
+    var change = document.getElementById("cs-org-change");
+    var visible = 10;
+    var orgs = Array.from(orgName.options).filter(function(opt) {
+      return opt.value && opt.value !== "__new__";
+    }).map(function(opt) { return {name: opt.value, title: opt.text}; });
+
+    function fold(text) {
+      return String(text || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    }
+    function matches(text) {
+      var words = fold(text).split(/\s+/).filter(Boolean);
+      return orgs.filter(function(org) {
+        var hay = fold(org.title + " " + org.name);
+        return words.every(function(word) { return hay.indexOf(word) !== -1; });
+      }).sort(function(a, b) {
+        var query = fold(text);
+        function score(org) {
+          var title = fold(org.title);
+          return title === query ? 3 : title.indexOf(query) === 0 ? 2 : 1;
+        }
+        return score(b) - score(a) || a.title.localeCompare(b.title);
       });
     }
-    status.textContent=status.dataset.loading;
-    fetch(picker.dataset.url, {credentials:"same-origin"}).then(function(res){if(!res.ok)throw new Error();return res.json();}).then(function(data){
-      if(!Array.isArray(data.results))throw new Error();orgs=data.results;
-      Array.from(orgName.options).forEach(function(opt){if(opt.value && opt.value!=="__new__" && !orgs.some(function(o){return o.name===opt.value;}))orgs.push({name:opt.value,title:opt.text});});
-      orgs.forEach(function(o){if(!Array.from(orgName.options).some(function(opt){return opt.value===o.name;})){var opt=new Option(o.title || o.name,o.name);orgName.add(opt);}});
-      orgName.hidden=true; if (orgName.value && orgName.value !== "__new__") search.value=orgName.options[orgName.selectedIndex].text; render();
-    }).catch(function(){status.textContent=status.dataset.error;orgName.hidden=false;});
-    search.addEventListener("input", function(){orgName.value="";orgName.dispatchEvent(new Event("change"));render();});
-    document.getElementById("cs-org-new").addEventListener("click",function(){orgName.value="__new__";orgName.dispatchEvent(new Event("change"));document.getElementById("cs-new-org-name").focus();});
-    document.getElementById("cs-org-back").addEventListener("click",function(){orgName.value="";orgName.dispatchEvent(new Event("change"));search.focus();render();});
-    document.getElementById("cs-new-org-name").addEventListener("input",function(e){var box=document.getElementById("cs-org-similar");var list=e.target.value.trim().length>=2?matches(e.target.value).slice(0,5):[];box.textContent=list.length?box.dataset.similar+" "+list.map(function(o){return o.title;}).join(", "):"";});
+    function render() {
+      results.textContent = "";
+      var selected = orgs.find(function(org) { return org.name === orgName.value; });
+      var creating = orgName.value === "__new__";
+      selection.textContent = selected ? selection.dataset.selected.replace("{name}", selected.title || selected.name) : "";
+      change.hidden = !selected;
+      count.hidden = Boolean(selected || creating);
+      results.hidden = Boolean(selected || creating);
+      more.hidden = true;
+      if (selected || creating) { status.textContent = ""; return; }
+      var found = matches(search.value);
+      status.textContent = found.length ? "" : status.dataset.empty;
+      count.textContent = (search.value.trim() ? count.dataset.matches : count.dataset.count)
+        .replace("{shown}", Math.min(visible, found.length))
+        .replace("{total}", found.length).replace("{catalog}", orgs.length);
+      more.hidden = found.length <= visible;
+      found.slice(0, visible).forEach(function(org) {
+        var li = document.createElement("li"), button = document.createElement("button");
+        button.type = "button";
+        button.textContent = org.title || org.name;
+        button.addEventListener("click", function() {
+          orgName.value = org.name;
+          orgName.dispatchEvent(new Event("change"));
+          search.value = org.title || org.name;
+          render();
+          change.focus();
+        });
+        li.appendChild(button);
+        results.appendChild(li);
+      });
+    }
+    function resetSearch() {
+      orgName.value = "";
+      orgName.dispatchEvent(new Event("change"));
+      search.value = "";
+      visible = 10;
+      render();
+      search.focus();
+    }
+    more.addEventListener("click", function() {
+      var previous = visible;
+      visible += 10;
+      render();
+      var next = results.querySelectorAll("button")[previous];
+      if (next) next.focus();
+    });
+    change.addEventListener("click", resetSearch);
+    render();
+    status.textContent = status.dataset.loading;
+    fetch(picker.dataset.url, {credentials: "same-origin"}).then(function(res) {
+      if (!res.ok) throw new Error();
+      return res.json();
+    }).then(function(data) {
+      if (!Array.isArray(data.results)) throw new Error();
+      data.results.forEach(function(org) {
+        if (!orgs.some(function(current) { return current.name === org.name; })) orgs.push(org);
+      });
+      orgs.forEach(function(org) {
+        if (!Array.from(orgName.options).some(function(opt) { return opt.value === org.name; })) {
+          orgName.add(new Option(org.title || org.name, org.name));
+        }
+      });
+      orgName.hidden = true;
+      render();
+    }).catch(function() {
+      render();
+      status.textContent = status.dataset.error;
+      orgName.hidden = false;
+    });
+    orgName.addEventListener("change", render);
+    search.addEventListener("input", function() {
+      orgName.value = "";
+      visible = 10;
+      orgName.dispatchEvent(new Event("change"));
+    });
+    document.getElementById("cs-org-new").addEventListener("click", function() {
+      orgName.value = "__new__";
+      orgName.dispatchEvent(new Event("change"));
+      document.getElementById("cs-new-org-name").focus();
+    });
+    document.getElementById("cs-org-back").addEventListener("click", resetSearch);
+    document.getElementById("cs-new-org-name").addEventListener("input", function(event) {
+      var box = document.getElementById("cs-org-similar");
+      var list = event.target.value.trim().length >= 2 ? matches(event.target.value).slice(0, 5) : [];
+      box.textContent = list.length ? box.dataset.similar + " " + list.map(function(org) { return org.title; }).join(", ") : "";
+    });
   }
   renderStrength();
 })();

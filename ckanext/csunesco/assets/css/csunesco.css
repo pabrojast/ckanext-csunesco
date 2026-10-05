@@ -4581,3 +4581,11 @@
 .cs-review-inbox label::after{content:none}.cs-review-inbox .cs-results-count{align-self:center;display:inline-grid;place-items:center;min-width:30px;min-height:30px;border-radius:50%;background:#edf5fa;color:#245b7c}.cs-review-inbox .cs-status-badge{padding:6px 10px;border-radius:20px;background:#edf5fa;white-space:nowrap;font-size:12px}.cs-review-account-head p{overflow-wrap:anywhere}
 .cs-review-decision{border-top:1px solid #e5edf2;padding-top:20px}.cs-review-decision textarea{margin:8px 0 16px}.cs-review-decision .cs-affiliation{margin-bottom:20px}.cs-review-decision .cs-affiliation label{display:block;margin-top:12px}.cs-review-decision .cs-affiliation select{display:block;width:100%;max-width:480px;height:44px;border:1px solid #cddce5;border-radius:8px;padding:8px 12px;background:#fff}.cs-review-decision-buttons{display:flex;justify-content:flex-end;gap:12px}
 @media(max-width:480px){.cs-dossier-fields{grid-template-columns:1fr}.cs-review-decision-buttons{flex-direction:column-reverse}.cs-review-decision-buttons button{width:100%}}
+
+/* Organization discovery and selected affiliation in PM applications. */
+.cs-register-form [hidden] { display: none !important; }
+#cs-org-search { box-sizing: border-box; width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #9aaebd; border-radius: 6px; font: inherit; }
+#cs-org-picker .cs-btn { margin: 0 8px 12px 0; max-width: 100%; white-space: normal; }
+#cs-org-selection { font-weight: 600; overflow-wrap: anywhere; }
+.cs-org-results button { overflow-wrap: anywhere; }
+.cs-register-form input[readonly] { background: #f5f9fc; }

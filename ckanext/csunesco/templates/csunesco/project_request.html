@@ -535,7 +535,7 @@
                         {% if (org.id or org.name) == data.organization_id %}selected{% endif %}>{{ org.title }}</option>
               {% endfor %}
             </select>
-            <p id="cs-f-organization_id-hint" class="cs-hint">{{ _("You must be an administrator or editor of this organization.") }}</p>
+            <p id="cs-f-organization_id-hint" class="cs-hint">{{ _("Choose an organization where you are an administrator, editor or approved Project Manager member.") }}</p>
             {{ field_error('organization_id') }}
           </div>
 

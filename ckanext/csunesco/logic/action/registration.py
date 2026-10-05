@@ -179,6 +179,10 @@ def csunesco_manager_approve(context, data_dict):
 
     if profile.manager_decision == 'approved':
         return dict(_profile_dictize(user, profile), existed=True)
+    existing_account = profile.manager_application_origin == 'existing_account'
+    if existing_account and user.state != 'active':
+        raise tk.ValidationError({'account': [tk._(
+            'This account is no longer active. Manage the account before reviewing its PM request.')]})
     if not profile.email_verified:
         raise tk.ValidationError({'email_verified': [tk._(
             'The manager has not verified their email address yet')]})
@@ -224,7 +228,8 @@ def csunesco_manager_approve(context, data_dict):
             'role': capacity,
         })
 
-    user.activate()
+    if not existing_account:
+        user.activate()
     profile.org_id = org_id
     profile.org_role = capacity
     profile.manager_decision = 'approved'
@@ -245,8 +250,8 @@ def csunesco_manager_approve(context, data_dict):
 def csunesco_manager_reject(context, data_dict):
     """Decline a pending Project Manager account (sysadmin-only).
 
-    The account stays CKAN-pending (it simply never gains login), the decision
-    and reviewer are recorded, and the person is told by email. Nothing is
+    New registrations stay CKAN-pending; existing accounts retain their state.
+    The decision and reviewer are recorded, and the person is told by email. Nothing is
     deleted -- a wrong call can be reversed by approving afterwards.
     """
     from ckanext.csunesco.logic.onboarding import review_context

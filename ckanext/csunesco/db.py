@@ -285,6 +285,8 @@ cs_citizen_scientist_table = Table(
     Column('org_role', types.UnicodeText),
     Column('responsibilities_accepted_at', types.DateTime),
     Column('manager_decision', types.UnicodeText),
+    # NULL is the legacy new-account registration flow.
+    Column('manager_application_origin', types.UnicodeText),
     Column('manager_reviewed_by', types.UnicodeText),
     Column('manager_reviewed_at', types.DateTime),
     Column('created', types.DateTime, default=_utcnow),
@@ -453,6 +455,7 @@ _AUTO_HEAL_COLUMNS = [
     ('cs_citizen_scientist', 'org_role', 'TEXT'),
     ('cs_citizen_scientist', 'responsibilities_accepted_at', 'TIMESTAMP'),
     ('cs_citizen_scientist', 'manager_decision', 'TEXT'),
+    ('cs_citizen_scientist', 'manager_application_origin', 'TEXT'),
     ('cs_citizen_scientist', 'manager_reviewed_by', 'TEXT'),
     ('cs_citizen_scientist', 'manager_reviewed_at', 'TIMESTAMP'),
 ]
@@ -628,6 +631,7 @@ def get_or_create_citizen_scientist(user_id, country=None,
         # The CKAN org itself is NOT touched here -- it is created/joined only
         # when a sysadmin approves the account (csunesco_manager_approve).
         profile.profile_type = 'manager'
+        profile.manager_application_origin = 'new_account'
         profile.org_id = manager.get('org_id') or None
         profile.org_name_requested = manager.get('org_name_requested') or None
         profile.org_type = manager.get('org_type') or None

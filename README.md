@@ -236,6 +236,27 @@ Server-side checks (the browser form is progressive-enhancement only — it carr
   email format + uniqueness, password policy). Any failure — including duplicates
   — collapses to one generic error.
 
+**PM access for existing CKAN accounts.** An active signed-in user opens
+`/citizen-science/register/project-manager` to request the PM role using the
+same identity. The form preloads available profile data and does not ask for
+another password or email verification. The account remains active while the
+PM request is reviewed, including after rejection. Pending and rejected requests
+show their current status instead of creating a second application; already
+eligible users continue directly to the project form. PM approval and project
+approval remain separate. A disabled existing account cannot be reactivated by
+approving its PM request.
+
+The additive nullable `cs_citizen_scientist.manager_application_origin` column
+records `existing_account` or `new_account`; NULL retains legacy new-account
+behavior. This field also appears in private review projections. No new public
+endpoint or Colab API contract is introduced.
+
+The organization picker searches the full catalog, including partial words,
+without case/accent sensitivity. It shows visible/total counts and adds ten
+results with **Show more**. A selected organization can be changed explicitly;
+the native select remains available when the catalog request fails or JavaScript
+is unavailable. New organization requests still require PM approval.
+
 **Email verification (web flow).** A web self-registration lands the CKAN account
 in `pending` state — login is blocked (both core `default_authenticate` and the
 custom authenticator gate on `user.is_active`) until the user opens the emailed
