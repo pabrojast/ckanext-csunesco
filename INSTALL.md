@@ -188,8 +188,9 @@ bash .mix/verify.sh
 - On first deploy run `ckan db upgrade -p csunesco` and
   `ckan csunesco seed-initiatives` once. The table self-heal on `configure` makes
   redeploys safe even if that step is skipped.
-- Serve behind HTTPS and set `ckan.site_url` accordingly so the join **link/QR**
-  codes on project landing pages resolve to the public URL.
+- Serve behind HTTPS and set `ckan.site_url` accordingly: verification emails
+  link to the public URL, and the registration form's QR scanner needs a secure
+  context to use the camera.
 - Persist `ckan.storage_path` across deploys if page image uploads are enabled;
   an ephemeral container filesystem will lose uploaded images on restart.
 - To connect the **CS Toolbox (ofform)** PWA to this plugin, see

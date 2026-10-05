@@ -153,19 +153,25 @@ def test_form_stages_match_the_step_map():
                     step['step'], field)
 
 
-def test_qrcode_is_a_declared_dependency():
-    """The join block's QR must not silently vanish again.
+def test_join_block_has_no_qr_or_share_link_and_pillow_stays_declared():
+    """The project page offers one way to join per audience: log in/register,
+    or the request form. Its QR code and share link were removed (Oct 2026).
 
-    csunesco_qr_data_uri returns None when `qrcode` is missing and the
-    template then renders no <img> at all -- a soft failure by design. Because
-    the package was never declared, that soft failure was the ONLY behaviour
-    any deployment ever had, portal included: the QR existed in the template
-    and nowhere on screen.
+    Pillow used to be installed only as an extra of the QR library, while
+    logic/uploads.py imports PIL at module load -- so it is declared on its
+    own now, or every upload would break on a clean install.
     """
-    setup_py = os.path.join(REPO_ROOT, 'setup.py')
-    with open(setup_py, 'r') as fh:
-        source = fh.read()
-    assert 'qrcode' in source, 'qrcode missing from install_requires'
+    join_template = os.path.join(
+        PKG_DIR, 'templates', 'csunesco', 'blocks', 'builtin_join.html')
+    with open(join_template, 'r') as handle:
+        source = handle.read()
+    for gone in ('csunesco_qr_data_uri', 'cs-join-qr', 'Share this project'):
+        assert gone not in source, gone
+    assert 'name="note"' in source
+    with open(os.path.join(REPO_ROOT, 'setup.py'), 'r') as handle:
+        setup_source = handle.read()
+    assert "'Pillow'" in setup_source
+    assert 'qrcode' not in setup_source
 
 
 # --------------------------------------------------------------------------- #

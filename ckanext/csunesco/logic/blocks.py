@@ -823,7 +823,7 @@ _TYPES = [
               u'The six most recent items published for this project.',
               builtin=True, addable=False),
     BlockType('builtin_join', u'Join this project', u'users', _n_builtin,
-              u'The join button, QR code and share link.',
+              u'Log in or register, or the request-to-join form.',
               builtin=True, addable=False),
 
     # --- built-in wrappers for the site (hub) page --------------------------

@@ -109,7 +109,6 @@ class CsunescoPlugin(p.SingletonPlugin):
             'csunesco_recent_news': helpers.csunesco_recent_news,
             'csunesco_project_url': helpers.csunesco_project_url,
             'csunesco_join_url': helpers.csunesco_join_url,
-            'csunesco_qr_data_uri': helpers.csunesco_qr_data_uri,
             'csunesco_link_label': helpers.csunesco_link_label,
             'csunesco_member_state_title': helpers.csunesco_member_state_title,
             'csunesco_member_state_titles':

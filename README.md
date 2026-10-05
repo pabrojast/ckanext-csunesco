@@ -44,7 +44,7 @@ workflow — see [`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
 - **Landing pages** — a hub at `/citizen-science`, per-initiative listings, and
   per-project landing pages with a **region map** (Leaflet + GeoJSON),
   **at-a-glance counters** (citizen scientists, observations, sites, member
-  states) and a **join link / QR** code.
+  states) and a **join** call to action (log in / register, or a request form).
 - **Admin approval panel** — `/citizen-science/admin` aggregates pending
   project-requests and join-requests for sysadmins and project admins
   (`csunesco_admin_pending_list`).

@@ -4,15 +4,11 @@
 Increment 4: thin helpers consumed by the ``csunesco/*`` templates. They read
 plain data from ``constants``, build URLs via the toolkit, and -- crucially --
 delegate any aggregation to the action layer so a helper NEVER touches the DB
-directly. Optional dependencies degrade gracefully (the QR helper returns
-``None`` when ``qrcode`` / Pillow are not installed).
+directly.
 
 Registered with CKAN through the plugin's ``ITemplateHelpers`` (``get_helpers``)
 and imported lazily there so there is no import-time dependency on CKAN.
 """
-import base64
-import functools
-import io
 import logging
 
 import ckan.plugins.toolkit as tk
@@ -79,33 +75,6 @@ def csunesco_project_url(slug):
 def csunesco_join_url(slug):
     """Path of a project's join endpoint (POST target for the join form)."""
     return tk.url_for('csunesco.join_project', slug=slug)
-
-
-@functools.lru_cache(maxsize=256)
-def csunesco_qr_data_uri(text):
-    """Return a PNG ``data:`` URI QR code for ``text`` (cached per URL).
-
-    Degrades gracefully: returns ``None`` when the optional ``qrcode`` package
-    (or its Pillow image backend) is not installed, or if generation fails for
-    any reason -- templates then show only the short link. The ``lru_cache``
-    keys on the exact ``text`` so a given URL's PNG is encoded once per process.
-    """
-    if not text:
-        return None
-    try:
-        import qrcode
-        import qrcode.image.pil  # noqa: F401 -- ensure a PIL backend exists
-    except ImportError:
-        return None
-    try:
-        image = qrcode.make(text)
-        buffer = io.BytesIO()
-        image.save(buffer, format='PNG')
-        encoded = base64.b64encode(buffer.getvalue()).decode('ascii')
-    except Exception:
-        log.warning('csunesco: QR code could not be generated')
-        return None
-    return 'data:image/png;base64,{0}'.format(encoded)
 
 
 def csunesco_pending_count():

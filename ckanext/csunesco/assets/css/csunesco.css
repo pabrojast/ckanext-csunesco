@@ -1029,33 +1029,9 @@
   margin: 0 0.5rem 0.5rem 0;
 }
 
-.cs-join-share {
-  text-align: center;
-}
-
-.cs-join-qr {
-  display: block;
-  margin: 0 auto 0.75rem auto;
-  border: 1px solid #e2e8f0;
-  border-radius: var(--radius);
-  background: #fff;
-}
-
-.cs-join-qr-label {
-  margin: 0 0 0.75rem;
-  font-size: 0.85rem;
-  color: #5a6b7d;
-}
-
-.cs-join-link {
-  margin: 0;
-  word-break: break-all;
-}
-
-.cs-join-link-label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 0.25rem;
+.cs-join-actions {
+  /* The form is the whole block now; keep the textarea at a readable width. */
+  max-width: 640px;
 }
 
 /* ---- Filter bar --------------------------------------------------------- */
@@ -1214,10 +1190,6 @@
 
   .cs-filter-bar {
     grid-template-columns: 1fr 2fr auto;
-  }
-
-  .cs-join-inner {
-    grid-template-columns: 2fr 1fr;
   }
 
   .section-title-content h1 {
