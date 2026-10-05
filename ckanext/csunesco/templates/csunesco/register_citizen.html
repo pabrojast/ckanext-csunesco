@@ -77,7 +77,7 @@
           {{ h.csrf_input() }}
 
           <fieldset class="cs-register-fieldset">
-            <legend><span class="cs-step-number">1</span> {{ _("Create your account") }}</legend><div class="cs-field"><label for="cs-language">{{ _("Preferred language") }}</label><select id="cs-language" name="language">{% for code, title in [('en','English'),('fr','Français'),('es','Español'),('ar','العربية'),('pt','Português'),('uk','Українська')] %}<option value="{{ code }}" {% if (data.language or h.lang()) == code %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></div>
+            <legend><span class="cs-step-number">1</span> {{ _("Create your account") }}</legend><div class="cs-field"><label for="cs-language">{{ _("Preferred language") }}</label><select id="cs-language" name="language">{% for code, title in [('en','English'),('fr','Français'),('es','Español'),('ar','العربية'),('pt','Português'),('uk','Українська'),('quh','Qhichwa (Bolivia)')] %}<option value="{{ code }}" {% if (data.language or h.lang()) == code %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></div>
             <div class="cs-field"><label for="cs-language-other">{{ _('Other language (optional)') }}</label><input type="text" id="cs-language-other" name="language_other" maxlength="64" value="{{ data.language_other or '' }}"></div>
 
             <div class="cs-field">
