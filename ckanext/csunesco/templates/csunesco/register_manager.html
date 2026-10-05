@@ -266,17 +266,25 @@
 
             <div class="cs-field">
               <label for="cs-org-name">{{ _("Organization name") }}</label>
-              <div id="cs-org-picker" hidden data-url="{{ h.url_for_static('/api/colab/organizations') }}">
-                <p id="cs-org-search-hint" class="cs-hint">{{ _('The list below shows only some organizations. Search the full catalog by name or keyword, or select Show more.') }}</p>
-                <input id="cs-org-search" type="search" autocomplete="off" aria-label="{{ _('Search your organization') }}" aria-controls="cs-org-results" aria-describedby="cs-org-search-hint cs-org-status" placeholder="{{ _('Search all organizations') }}">
-                <p id="cs-org-status" class="cs-hint" role="status" data-loading="{{ _('Loading organizations…') }}" data-error="{{ _('Organizations could not be loaded. Try again.') }}" data-empty="{{ _('No organizations match your search.') }}"></p>
-                <p id="cs-org-count" class="cs-hint" role="status" data-count="{{ _('Showing {shown} of {total} organizations') }}" data-matches="{{ _('Showing {shown} of {total} matches in {catalog} organizations') }}"></p>
+              {# Search-only picker. Nothing is listed until the visitor types: a
+                 short pre-rendered list read as the complete catalogue. The
+                 <select> below stays as the submitted value and the no-JS
+                 fallback. #}
+              <div id="cs-org-picker" hidden>
+                <div id="cs-org-existing">
+                  <input id="cs-org-search" type="search" autocomplete="off" aria-controls="cs-org-results" aria-describedby="cs-org-search-hint cs-org-status" placeholder="{{ _('Search your organization…') }}">
+                  <p id="cs-org-search-hint" class="cs-hint">{{ _('Search by full name or keyword.') }}</p>
+                  <p id="cs-org-status" class="cs-hint" role="status"
+                     data-short="{{ _('Type at least 2 characters to search.') }}"
+                     data-found="{{ _('Matches found: {total}') }}"
+                     data-truncated="{{ _('Showing the first {shown} of {total} matches. Keep typing to narrow the search.') }}"
+                     data-empty="{{ _('No organizations match your search. Check the spelling, or create a new one below.') }}"></p>
+                  <ul id="cs-org-results" class="cs-org-results" aria-label="{{ _('Matching organizations') }}"></ul>
+                  <button type="button" id="cs-org-new" class="cs-org-new-btn">+ {{ _('My organization is not listed – create a new one') }}</button>
+                  <p class="cs-hint">{{ _('New organizations are created only after an administrator approves your PM request.') }}</p>
+                </div>
                 <p id="cs-org-selection" class="cs-hint" role="status" data-selected="{{ _('Selected organization: {name}') }}"></p>
                 <button type="button" id="cs-org-change" class="cs-btn cs-btn-secondary" hidden>{{ _('Change organization') }}</button>
-                <ul id="cs-org-results" class="cs-org-results"></ul>
-                <button type="button" id="cs-org-more" class="cs-btn cs-btn-secondary" hidden>{{ _('Show more') }}</button>
-                <button type="button" id="cs-org-new" class="cs-btn cs-btn-secondary">{{ _('Request a new organization') }}</button>
-                <p class="cs-hint">{{ _('New organizations are created only after an administrator approves your PM request.') }}</p>
               </div>
               <select id="cs-org-name" name="org_name" required aria-required="true"
                       aria-describedby="cs-org-name-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
@@ -295,6 +303,10 @@
                  data-default="" data-error="{{ _('Select your organization.') }}"></p>
             </div>
 
+            <div id="cs-new-org-head" class="cs-org-new-head" hidden>
+              <span>{{ _('New organization') }}</span>
+              <button id="cs-org-back" type="button" class="cs-org-back">{{ _('Search again') }}</button>
+            </div>
             <div class="cs-field" id="cs-new-org-field" hidden>
               <label for="cs-new-org-name">{{ _("New organization name") }}</label>
               <input type="text" id="cs-new-org-name" name="new_org_name"
@@ -305,7 +317,6 @@
               <div class="cs-field"><label for="cs-org-description">{{ _('Organization description (optional)') }}</label><textarea id="cs-org-description" name="org_description" rows="4" maxlength="5000">{{ data.org_description or '' }}</textarea></div>
               <div class="cs-field"><label for="cs-org-logo">{{ _('Organization logo (optional)') }}</label><input id="cs-org-logo" type="file" name="org_logo" accept="image/png,image/jpeg,image/webp"><p class="cs-hint">{{ _('PNG, JPG or WebP, up to 2 MB. Select the file again if the form reports an error.') }}</p></div>
               <p id="cs-org-similar" class="cs-hint" role="status" data-similar="{{ _('Similar organizations already exist:') }}"></p>
-              <button id="cs-org-back" type="button" class="cs-btn cs-btn-secondary">{{ _('Search again') }}</button>
             </div>
             <div class="cs-field">
               <label for="cs-org-title">{{ _("Title within represented organization") }}</label>

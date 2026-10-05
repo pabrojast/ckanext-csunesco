@@ -280,3 +280,22 @@ def test_get_on_board_routes_to_both_registration_forms():
     assert "url_for('csunesco.get_on_board')" in manager
     assert "url_for('csunesco.register_manager')" not in citizen
     assert "url_for('csunesco.register_citizen')" not in manager
+
+
+def test_manager_org_picker_lists_nothing_before_a_search():
+    """A short pre-rendered list read as the complete catalogue ("it stops at
+    B"). The picker only shows matches for what the visitor typed."""
+    manager = _template_source('register_manager.html')
+    for gone in ('cs-org-more', 'cs-org-count', 'Show more',
+                 'shows only some organizations', '/api/colab/organizations'):
+        assert gone not in manager, gone
+    assert 'Search your organization…' in manager
+    assert 'Search by full name or keyword.' in manager
+    # The <select> stays: it is the submitted value and the no-JS fallback.
+    assert '<select id="cs-org-name" name="org_name"' in manager
+    assert '{% for org in organizations %}' in manager
+    with open(os.path.join(PKG_DIR, 'assets', 'js', 'cs-register.js'),
+              'r') as handle:
+        script = handle.read()
+    assert 'if (query.length < MIN_ORG_QUERY)' in script
+    assert 'fetch(' not in script

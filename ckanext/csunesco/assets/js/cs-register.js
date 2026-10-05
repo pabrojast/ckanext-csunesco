@@ -137,6 +137,8 @@
       newOrgField.hidden = !creating;
       var extra = document.getElementById("cs-org-extra");
       if (extra) extra.hidden = !creating;
+      var newOrgHead = document.getElementById("cs-new-org-head");
+      if (newOrgHead) newOrgHead.hidden = !creating;
       var role = document.getElementById("cs-org-role");
       if (role) { role.querySelector('[value="member"]').disabled = creating; if (creating) role.value = "admin"; else if (wasCreating) role.value = "member"; }
       wasCreating = creating;
@@ -231,20 +233,29 @@
       if (!manualUsername) username.value = fullname.value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
     });
   }
+  /* Manager form only: search-only organization picker. Nothing is listed
+   * until the visitor types -- a short pre-rendered list read as the complete
+   * catalogue. It searches the options the server already rendered into the
+   * <select>, which stays as the submitted value and the no-JS fallback. */
   var picker = document.getElementById("cs-org-picker");
   if (picker && orgName) {
-    picker.hidden = false;
+    var MIN_ORG_QUERY = 2;
+    var MAX_ORG_RESULTS = 10;
+    var existing = document.getElementById("cs-org-existing");
     var search = document.getElementById("cs-org-search");
     var results = document.getElementById("cs-org-results");
     var status = document.getElementById("cs-org-status");
-    var count = document.getElementById("cs-org-count");
-    var more = document.getElementById("cs-org-more");
     var selection = document.getElementById("cs-org-selection");
     var change = document.getElementById("cs-org-change");
-    var visible = 10;
+    var newOrgName = document.getElementById("cs-new-org-name");
+    var orgLabel = form.querySelector('label[for="cs-org-name"]');
     var orgs = Array.from(orgName.options).filter(function(opt) {
       return opt.value && opt.value !== "__new__";
-    }).map(function(opt) { return {name: opt.value, title: opt.text}; });
+    }).map(function(opt) { return {name: opt.value, title: opt.text.trim()}; });
+
+    picker.hidden = false;
+    orgName.hidden = true;
+    if (orgLabel) orgLabel.htmlFor = "cs-org-search";
 
     function fold(text) {
       return String(text || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -255,7 +266,7 @@
         var hay = fold(org.title + " " + org.name);
         return words.every(function(word) { return hay.indexOf(word) !== -1; });
       }).sort(function(a, b) {
-        var query = fold(text);
+        var query = fold(text).trim();
         function score(org) {
           var title = fold(org.title);
           return title === query ? 3 : title.indexOf(query) === 0 ? 2 : 1;
@@ -263,31 +274,32 @@
         return score(b) - score(a) || a.title.localeCompare(b.title);
       });
     }
+    function resultButtons() {
+      return Array.from(results.querySelectorAll("button"));
+    }
     function render() {
-      results.textContent = "";
       var selected = orgs.find(function(org) { return org.name === orgName.value; });
       var creating = orgName.value === "__new__";
+      existing.hidden = Boolean(selected || creating);
       selection.textContent = selected ? selection.dataset.selected.replace("{name}", selected.title || selected.name) : "";
       change.hidden = !selected;
-      count.hidden = Boolean(selected || creating);
-      results.hidden = Boolean(selected || creating);
-      more.hidden = true;
-      if (selected || creating) { status.textContent = ""; return; }
+      results.textContent = "";
+      status.textContent = "";
+      if (selected || creating) return;
+      var query = fold(search.value).trim();
+      if (!query) return;
+      if (query.length < MIN_ORG_QUERY) { status.textContent = status.dataset.short; return; }
       var found = matches(search.value);
-      status.textContent = found.length ? "" : status.dataset.empty;
-      count.textContent = (search.value.trim() ? count.dataset.matches : count.dataset.count)
-        .replace("{shown}", Math.min(visible, found.length))
-        .replace("{total}", found.length).replace("{catalog}", orgs.length);
-      more.hidden = found.length <= visible;
-      found.slice(0, visible).forEach(function(org) {
+      if (!found.length) { status.textContent = status.dataset.empty; return; }
+      status.textContent = (found.length > MAX_ORG_RESULTS ? status.dataset.truncated : status.dataset.found)
+        .replace("{shown}", MAX_ORG_RESULTS).replace("{total}", found.length);
+      found.slice(0, MAX_ORG_RESULTS).forEach(function(org) {
         var li = document.createElement("li"), button = document.createElement("button");
         button.type = "button";
         button.textContent = org.title || org.name;
         button.addEventListener("click", function() {
           orgName.value = org.name;
           orgName.dispatchEvent(new Event("change"));
-          search.value = org.title || org.name;
-          render();
           change.focus();
         });
         li.appendChild(button);
@@ -298,57 +310,59 @@
       orgName.value = "";
       orgName.dispatchEvent(new Event("change"));
       search.value = "";
-      visible = 10;
       render();
       search.focus();
     }
-    more.addEventListener("click", function() {
-      var previous = visible;
-      visible += 10;
-      render();
-      var next = results.querySelectorAll("button")[previous];
-      if (next) next.focus();
+    orgName.addEventListener("change", render);
+    search.addEventListener("input", render);
+    search.addEventListener("keydown", function(event) {
+      var buttons = resultButtons();
+      if (event.key === "Enter") {
+        // Never submit the whole registration from the search box.
+        event.preventDefault();
+        if (buttons.length === 1) buttons[0].click();
+        else if (buttons.length) buttons[0].focus();
+      } else if (event.key === "ArrowDown" && buttons.length) {
+        event.preventDefault();
+        buttons[0].focus();
+      } else if (event.key === "Escape" && search.value) {
+        event.preventDefault();
+        search.value = "";
+        render();
+      }
+    });
+    results.addEventListener("keydown", function(event) {
+      var buttons = resultButtons();
+      var index = buttons.indexOf(document.activeElement);
+      if (index === -1) return;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        (buttons[index + 1] || buttons[index]).focus();
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        (buttons[index - 1] || search).focus();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        search.focus();
+      }
     });
     change.addEventListener("click", resetSearch);
-    render();
-    status.textContent = status.dataset.loading;
-    fetch(picker.dataset.url, {credentials: "same-origin"}).then(function(res) {
-      if (!res.ok) throw new Error();
-      return res.json();
-    }).then(function(data) {
-      if (!Array.isArray(data.results)) throw new Error();
-      data.results.forEach(function(org) {
-        if (!orgs.some(function(current) { return current.name === org.name; })) orgs.push(org);
-      });
-      orgs.forEach(function(org) {
-        if (!Array.from(orgName.options).some(function(opt) { return opt.value === org.name; })) {
-          orgName.add(new Option(org.title || org.name, org.name));
-        }
-      });
-      orgName.hidden = true;
-      render();
-    }).catch(function() {
-      render();
-      status.textContent = status.dataset.error;
-      orgName.hidden = false;
-    });
-    orgName.addEventListener("change", render);
-    search.addEventListener("input", function() {
-      orgName.value = "";
-      visible = 10;
-      orgName.dispatchEvent(new Event("change"));
-    });
+    document.getElementById("cs-org-back").addEventListener("click", resetSearch);
     document.getElementById("cs-org-new").addEventListener("click", function() {
+      if (!newOrgName.value.trim()) {
+        newOrgName.value = search.value.trim();
+        newOrgName.dispatchEvent(new Event("input"));
+      }
       orgName.value = "__new__";
       orgName.dispatchEvent(new Event("change"));
-      document.getElementById("cs-new-org-name").focus();
+      newOrgName.focus();
     });
-    document.getElementById("cs-org-back").addEventListener("click", resetSearch);
-    document.getElementById("cs-new-org-name").addEventListener("input", function(event) {
+    newOrgName.addEventListener("input", function(event) {
       var box = document.getElementById("cs-org-similar");
       var list = event.target.value.trim().length >= 2 ? matches(event.target.value).slice(0, 5) : [];
       box.textContent = list.length ? box.dataset.similar + " " + list.map(function(org) { return org.title; }).join(", ") : "";
     });
+    render();
   }
   renderStrength();
 })();
