@@ -37,21 +37,25 @@ def _read(path):
         return handle.read()
 
 
-def test_project_cta_is_public_and_keeps_configured_destination():
+def test_site_cta_defaults_to_the_role_chooser_and_keeps_overrides():
     from types import SimpleNamespace
     from jinja2 import Environment, FileSystemLoader
     env = Environment(autoescape=True, loader=FileSystemLoader(os.path.dirname(TPL_DIR)))
     # No permission helper: rendering must not depend on a CKAN session/role.
     env.globals.update(_=lambda value: value, h=SimpleNamespace(
-        csunesco_editor_link=lambda endpoint: '/citizen-science/project/new'))
+        url_for=lambda endpoint, **kw: {
+            'csunesco.get_on_board': '/citizen-science/get-on-board'}[endpoint]))
     template = env.get_template('csunesco/blocks/site_cta.html')
     for user in (None, 'citizen', 'manager'):
-        html = template.render(block={'id': 'create-project'}, g=SimpleNamespace(user=user))
-        assert 'Propose a project' in html
-        assert 'href="/citizen-science/project/new"' in html
+        html = template.render(block={'id': 'get-on-board'}, g=SimpleNamespace(user=user))
+        assert 'Get on board as a Citizen Scientist or a Project Manager.' in html
+        assert 'href="/citizen-science/get-on-board"' in html
+        assert 'Propose a project' not in html
+    # A saved override still wins over every default.
     html = template.render(block={'id': 'custom', 'cta_label': 'Start <now>',
-        'cta_url': '/citizen-science/project/new'})
+        'text': 'Saved text', 'cta_url': '/citizen-science/project/new'})
     assert 'Start &lt;now&gt;' in html
+    assert 'Saved text' in html
     assert 'href="/citizen-science/project/new"' in html
 
 

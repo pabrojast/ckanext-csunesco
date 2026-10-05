@@ -1,19 +1,19 @@
 {#
-  Site builtin: the "Propose a project" call-to-action band.
+  Site builtin: the "Get on board" call-to-action band.
 
   Empty overrides render the original `_()`-translated copy.
 
-  Public entry point, independent of the CKAN session. The destination app
-  asks visitors to sign in or create an account and retains its own permission
-  checks. Legacy installations keep their project-eligibility entry page.
+  Public entry point, independent of the CKAN session: it speaks to both
+  audiences and opens the role chooser, where a visitor picks Citizen Scientist
+  or Project Manager. Each registration path keeps its own permission checks.
 
   Vars: block, ctx.
 #}
   <section class="cs-section cs-cta-band" id="block-{{ block.id }}"
-           aria-label="{{ block.title or _('Propose a project') }}">
-    <p>{{ block.text or _("Leading a community water-monitoring effort?") }}</p>
+           aria-label="{{ block.title or _('Get on board') }}">
+    <p>{{ block.text or _("Want to take part in a citizen science project near you, or lead your own community project with the UNESCO Citizen Science Toolbox? Get on board as a Citizen Scientist or a Project Manager.") }}</p>
     <a class="cs-btn cs-btn-primary"
-       href="{{ block.cta_url or h.csunesco_editor_link('csunesco.project_new') }}">
-      {{ block.cta_label or _("Propose a project") }}
+       href="{{ block.cta_url or h.url_for('csunesco.get_on_board') }}">
+      {{ block.cta_label or _("Get on board") }}
     </a>
   </section>

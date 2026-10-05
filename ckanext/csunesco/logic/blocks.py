@@ -857,9 +857,9 @@ _TYPES = [
     BlockType('site_glance', u'At a Glance', u'gauge', _n_builtin,
               u'The four portal-wide counters, computed for you.',
               builtin=True, addable=False, scopes=('site',)),
-    BlockType('site_cta', u'Propose a project', u'bulb', _n_site_cta,
-              u'The call-to-action band at the bottom. Leave the fields '
-              u'empty to keep the standard translated text.',
+    BlockType('site_cta', u'Get on board', u'bulb', _n_site_cta,
+              u'The call-to-action band that opens the role chooser. Leave '
+              u'the fields empty to keep the standard translated text.',
               builtin=True, addable=False, scopes=('site',),
               has_editor=True),
 
