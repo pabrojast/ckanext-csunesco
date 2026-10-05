@@ -9,7 +9,7 @@
 <div><dt>{{ _('Date of birth') }}</dt><dd>{{ profile.date_of_birth or _('Not provided') }}</dd></div>
 <div><dt>{{ _('Nationality') }}</dt><dd>{{ profile.nationality or _('Not provided') }}</dd></div>
 <div><dt>{{ _('Gender') }}</dt><dd>{{ (profile.gender|replace('_', ' ')|replace('-', ' ')|capitalize) if profile.gender else _('Not provided') }}</dd></div>
-<div><dt>{{ _('Preferred language') }}</dt><dd>{{ profile.language or _('Not provided') }}</dd></div>
+<div><dt>{{ _('Preferred language') }}</dt><dd>{{ 'Qhichwa (Bolivia)' if profile.language == 'quh' else (profile.language or _('Not provided')) }}</dd></div>
 <div><dt>{{ _('Other language') }}</dt><dd>{{ profile.language_other or _('Not provided') }}</dd></div>
 {% if profile.profile_type == 'manager' %}
 <div><dt>{{ _('Organization') }}</dt><dd>{{ profile.organization_title or _('Not provided') }}</dd></div>

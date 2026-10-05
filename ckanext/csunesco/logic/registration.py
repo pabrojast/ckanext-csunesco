@@ -355,7 +355,7 @@ def create_citizen_scientist(context, data, verification_token=None):
     language_other = str(data.get('language_other') or '').strip()
     if motivation and not 20 <= len(motivation) <= 500:
         raise ValidationError(problem('motivation_invalid', 'motivation'))
-    if language and language not in ('en', 'es', 'fr', 'ar', 'pt', 'uk') or len(language_other) > 64:
+    if language and language not in ('en', 'es', 'fr', 'ar', 'pt', 'uk', 'quh') or len(language_other) > 64:
         raise ValidationError(problem('language_invalid', 'language', 'language_other'))
     project_slug = data.get('registration_project_slug')
     if project_slug:

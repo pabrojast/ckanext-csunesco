@@ -586,8 +586,9 @@ def test_registration_accepts_the_minimal_payload(service, session,
     assert profile.profile_type in (None, 'citizen')
 
 
+@pytest.mark.parametrize('language', ['en', 'quh'])
 def test_registration_stores_the_reporting_fields(service, session,
-                                                  monkeypatch):
+                                                  monkeypatch, language):
     """The app's CURRENT payload, verbatim, incl. the 2026 reporting fields.
 
     ofform/backend/app/services/cs_registration.py:195-211 -- the app REQUIRES
@@ -621,6 +622,7 @@ def test_registration_stores_the_reporting_fields(service, session,
         'gender': 'non_binary',
         'nationality': 'CL',
         'terms_accepted': True,
+        'language': language,
     })
 
     assert out['status'] == 'success'
@@ -634,6 +636,7 @@ def test_registration_stores_the_reporting_fields(service, session,
     # nationality wins over the app-sent ``country`` label, resolved to the
     # canonical English name portal-side.
     assert profile.country == 'Chile'
+    assert profile.language == language
 
 
 # --------------------------------------------------------------------------- #
