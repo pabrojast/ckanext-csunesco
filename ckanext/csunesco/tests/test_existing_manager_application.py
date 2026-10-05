@@ -127,6 +127,10 @@ def test_eligible_user_goes_directly_to_project_form(app, existing, monkeypatch)
 
 def test_expired_session_never_falls_through_to_new_registration(app, existing):
     assert post(app, None)[:2] == ('redirect', 'user.login')
+    from ckanext.csunesco import blueprint
+    with app.test_request_context('/register-pm', method='POST', data={'existing_account': '1'}):
+        g.user = ''
+        assert blueprint.register_manager()[:2] == ('redirect', 'user.login')
 
 
 def test_invalid_organization_keeps_existing_identity_and_selection(app, existing):
@@ -189,11 +193,14 @@ def test_manager_route_enforces_csrf_even_when_extensions_are_exempt(monkeypatch
     csrf.exempt(blueprint.register_manager)
     web.add_url_rule('/manager', view_func=blueprint.register_manager, methods=['GET', 'POST'])
     web.add_url_rule('/token', view_func=lambda: generate_csrf())
+    @web.before_request
+    def signed_in():
+        g.user = 'existing-user'
     monkeypatch.setattr(registration, 'register_manager', lambda: 'accepted')
     client = web.test_client()
     token = client.get('/token', base_url='https://example.test').get_data(as_text=True)
     assert client.get('/manager').status_code == 200
-    for data in ({}, {'_csrf_token': 'invalid'}):
+    for data in ({}, {'_csrf_token': 'invalid'}, {'existing_account': '1'}):
         assert client.post('/manager', data=data).status_code == 400
     # A token belongs to its browser session and requires a same-origin referrer.
     assert web.test_client().post('/manager', data={'_csrf_token': token}).status_code == 400

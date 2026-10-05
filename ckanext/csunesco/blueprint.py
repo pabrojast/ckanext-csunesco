@@ -98,10 +98,13 @@ def register_citizen():
 
 def register_manager():
     """PM registration/application with explicit browser CSRF protection."""
-    from flask import current_app, request
+    from flask import current_app, g, request
     # CKAN 2.10 exempts extension blueprints by default. This form now changes
     # an authenticated account, so enforce its existing CSRF token explicitly.
-    if request.method == 'POST':
+    expired_application = (not getattr(g, 'user', None)
+                           and request.form.get('existing_account'))
+    # The expired-session branch only redirects to login and performs no writes.
+    if request.method == 'POST' and not expired_application:
         current_app.extensions['csrf'].protect()
     from ckanext.csunesco.logic import registration
     return registration.register_manager()
