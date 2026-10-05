@@ -146,8 +146,8 @@ INTL_FRAMEWORKS = (
     'Global Goals for Adaptation', 'Other',
 )
 
-# Participation modes (spec D: open to any participant, with a QR on the
-# landing page, or limited to a selected group).
+# Participation modes (spec D: open to any participant, with the Join section
+# on the project page, or limited to a selected group).
 PARTICIPATION_MODES = ('open', 'limited')
 
 # Static field -> audience map for project fields (spec section 5). Fields
