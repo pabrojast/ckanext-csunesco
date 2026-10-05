@@ -177,3 +177,28 @@ def test_existing_account_template_has_no_credentials_or_signup_call_to_action()
     assert 'awaiting review' in pending and '<form' not in pending
     rejected = env.get_template('form.html').render(**dict(values, application_status='rejected', review_reason='<script>bad</script>'))
     assert '&lt;script&gt;' in rejected and '<script>bad' not in rejected
+
+
+def test_manager_route_enforces_csrf_even_when_extensions_are_exempt(monkeypatch):
+    from flask import Flask
+    from flask_wtf.csrf import CSRFProtect, generate_csrf
+    from ckanext.csunesco import blueprint
+    web = Flask(__name__)
+    web.config.update(SECRET_KEY='test-only', WTF_CSRF_FIELD_NAME='_csrf_token')
+    csrf = CSRFProtect(web)
+    csrf.exempt(blueprint.register_manager)
+    web.add_url_rule('/manager', view_func=blueprint.register_manager, methods=['GET', 'POST'])
+    web.add_url_rule('/token', view_func=lambda: generate_csrf())
+    monkeypatch.setattr(registration, 'register_manager', lambda: 'accepted')
+    client = web.test_client()
+    token = client.get('/token', base_url='https://example.test').get_data(as_text=True)
+    assert client.get('/manager').status_code == 200
+    for data in ({}, {'_csrf_token': 'invalid'}):
+        assert client.post('/manager', data=data).status_code == 400
+    # A token belongs to its browser session and requires a same-origin referrer.
+    assert web.test_client().post('/manager', data={'_csrf_token': token}).status_code == 400
+    assert client.post('/manager', base_url='https://example.test',
+        data={'_csrf_token': token}, headers={'Referer': 'https://other.test/'}).status_code == 400
+    accepted = client.post('/manager', base_url='https://example.test',
+        data={'_csrf_token': token}, headers={'Referer': 'https://example.test/manager'})
+    assert accepted.status_code == 200 and accepted.get_data(as_text=True) == 'accepted'

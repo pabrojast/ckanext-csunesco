@@ -97,7 +97,12 @@ def register_citizen():
 
 
 def register_manager():
-    """Project Manager self-registration (GET form / POST create account)."""
+    """PM registration/application with explicit browser CSRF protection."""
+    from flask import current_app, request
+    # CKAN 2.10 exempts extension blueprints by default. This form now changes
+    # an authenticated account, so enforce its existing CSRF token explicitly.
+    if request.method == 'POST':
+        current_app.extensions['csrf'].protect()
     from ckanext.csunesco.logic import registration
     return registration.register_manager()
 
