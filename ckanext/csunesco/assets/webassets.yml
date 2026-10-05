@@ -20,6 +20,15 @@ cs-register-js:
   contents:
     - js/cs-register.js
 
+# Optional "Scan QR code" for step 3 of the Citizen Scientist form only. jsQR
+# (the fallback decoder) is NOT bundled here: it is a static vendor file this
+# script downloads only when the browser has no native QR detection.
+cs-register-qr-js:
+  filters: rjsmin
+  output: js/cs-register-qr.js
+  contents:
+    - js/cs-register-qr.js
+
 # Shared borderless style setup. MapLibre and its Leaflet adapter are local
 # scripts loaded by snippets/map_assets.html, alongside Leaflet.
 cs-basemap-js:

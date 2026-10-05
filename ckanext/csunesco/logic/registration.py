@@ -226,8 +226,35 @@ def _country_options():
     return sorted(rows, key=lambda row: row['label'].casefold())
 
 
+def _editor_app_ids():
+    """Toolbox ids of public projects linked through the shared editor.
+
+    ``project_dictize`` only exposes the id of a portal-managed project; a
+    project linked just for editing keeps it in a private extra. Fail-soft:
+    without it a Toolbox QR code simply does not resolve for that project.
+    """
+    try:
+        from ckanext.csunesco import db
+        db.ensure_mappers()
+        rows = (model.Session.query(db.CsProject.id, db.CsProject.extras)
+                .filter(db.public_project_clause()).all())
+        linked = {}
+        for project_id, extras in rows:
+            extras = db._load_json(extras, {})
+            if isinstance(extras, dict) and extras.get('_editor_app_project_id'):
+                linked[project_id] = extras['_editor_app_project_id']
+        return linked
+    except Exception:
+        log.warning('csunesco: project app links unavailable')
+        return {}
+
+
 def _registration_projects():
-    """All approved projects for sign-up, fail-soft and capped at 500."""
+    """All approved projects for sign-up, fail-soft and capped at 500.
+
+    Each row gains ``app_id``: the Toolbox project id, which is what the QR
+    code a Project Manager shares from the app carries.
+    """
     projects = []
     try:
         offset = 0
@@ -245,19 +272,50 @@ def _registration_projects():
     except Exception:
         log.warning('csunesco: registration project list unavailable')
         return []
-    return sorted(projects[:MAX_REGISTRATION_PROJECTS],
-                  key=lambda row: (row.get('title') or '').casefold())
+    projects = sorted(projects[:MAX_REGISTRATION_PROJECTS],
+                      key=lambda row: (row.get('title') or '').casefold())
+    editor_ids = _editor_app_ids()
+    for row in projects:
+        app_id = row.get('app_project_id') or editor_ids.get(row.get('id'))
+        row['app_id'] = str(app_id) if app_id else None
+    return projects
+
+
+def _joinable(project):
+    """Only a stored ``False`` closes a project (same rule as the join action)."""
+    return project.get('open_participation') is not False
 
 
 def _selected_project(projects, value):
+    """The joinable project a ``project`` value names, or None.
+
+    A value is a portal slug or id (what this portal's own links carry). An
+    all-digit value matching neither is read as the Toolbox project id of the
+    QR codes Project Managers share. A project that closed participation is
+    never selectable.
+    """
     wanted = (value or '').strip()
     if not wanted:
         return None
-    for project in projects:
+    joinable = [project for project in projects if _joinable(project)]
+    for project in joinable:
         if wanted in (str(project.get('id') or ''),
                       str(project.get('slug') or '')):
             return project
+    if wanted.isascii() and wanted.isdigit():
+        for project in joinable:
+            if str(project.get('app_id') or '') == wanted:
+                return project
     return None
+
+
+def _project_refs(projects):
+    """What the QR scanner needs to name a scanned project, and nothing else."""
+    return [{'slug': project.get('slug'),
+             'title': project.get('title') or project.get('slug'),
+             'app_id': project.get('app_id')}
+            for project in projects
+            if project.get('slug') and _joinable(project)]
 
 
 def _ofform_register_url():
@@ -313,10 +371,11 @@ def _render(extra_vars):
     extra_vars.setdefault('projects', _registration_projects())
     extra_vars.setdefault('ofform_register_url', _ofform_register_url())
     extra_vars.setdefault('today', datetime.date.today().isoformat())
+    projects = extra_vars.get('projects') or []
+    extra_vars.setdefault('project_refs', _project_refs(projects))
     selected_value = (extra_vars.get('data') or {}).get('project')
     extra_vars.setdefault(
-        'selected_project',
-        _selected_project(extra_vars.get('projects') or [], selected_value))
+        'selected_project', _selected_project(projects, selected_value))
     return tk.render('csunesco/register_citizen.html', extra_vars=extra_vars)
 
 
@@ -593,6 +652,11 @@ def register_citizen():
         'user': tk.g.user,
     }
 
+    # Resolve the project once. The stored slug must be canonical (it builds the
+    # post-verification login link) and the join below reuses the same row; an
+    # unknown or closed project is dropped rather than stored as typed.
+    selected_project = _selected_project(_registration_projects(), project_value)
+
     # Single-use, unguessable token that gates activation. The account is created
     # in ``pending`` state (cannot log in) until the emailed link is opened.
     verification_token = secrets.token_urlsafe(32)
@@ -607,7 +671,8 @@ def register_citizen():
             'nationality': parsed_nationality,
             'gender': parsed_gender,
             'motivation': motivation, 'language': language, 'language_other': language_other,
-            'registration_project_slug': project_value,
+            'registration_project_slug': (
+                selected_project['slug'] if selected_project else ''),
             'terms_accepted': True,
         }, verification_token=verification_token)
     except NotAuthorized:
@@ -621,8 +686,6 @@ def register_citizen():
     # Join is deliberately immediate, even though the account remains pending.
     # The reviewer queue already exposes the verification flag. As in ofform,
     # a bad/unknown project or a join failure never rolls back account creation.
-    projects = _registration_projects()
-    selected_project = _selected_project(projects, project_value)
     join_requested = False
     if selected_project is not None:
         try:

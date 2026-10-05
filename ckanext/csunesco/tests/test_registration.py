@@ -60,6 +60,27 @@ def test_project_deep_link_accepts_slug_or_id_only():
     assert registration._selected_project(rows, 'unknown') is None
 
 
+def test_project_value_resolves_toolbox_ids_and_skips_closed_projects():
+    """The QR a Project Manager shares from the app carries the Toolbox id."""
+    rows = [
+        {'id': 'uuid-1', 'slug': 'river-x', 'title': 'River X', 'app_id': '12'},
+        {'id': 'uuid-2', 'slug': '12', 'title': 'Twelve', 'app_id': '40'},
+        {'id': 'uuid-3', 'slug': 'closed', 'title': 'Closed', 'app_id': '7',
+         'open_participation': False},
+    ]
+    assert registration._selected_project(rows, '40') == rows[1]
+    assert registration._selected_project(rows[:1], '12') == rows[0]
+    # This portal's own links carry slugs, so a slug wins over a Toolbox id.
+    assert registration._selected_project(rows, '12') == rows[1]
+    # Closed participation is never selectable, by slug or by Toolbox id.
+    assert registration._selected_project(rows, 'closed') is None
+    assert registration._selected_project(rows, '7') is None
+    # The scanner is only told about joinable projects.
+    assert registration._project_refs(rows) == [
+        {'slug': 'river-x', 'title': 'River X', 'app_id': '12'},
+        {'slug': '12', 'title': 'Twelve', 'app_id': '40'}]
+
+
 def test_limiter_counts_successful_consumptions_and_releases(monkeypatch):
     limiter = registration._RegistrationLimiter()
     clock = {'now': 10.0}
@@ -74,9 +95,9 @@ def test_limiter_counts_successful_consumptions_and_releases(monkeypatch):
     assert limiter.consume('ip', 2, 60) is None
 
 
-def test_web_registration_creates_immediate_join_and_keeps_verification(
-        app, monkeypatch):
-    projects = [{'id': 'p1', 'slug': 'river-x', 'title': 'River X'}]
+def _post_web_registration(app, monkeypatch, project):
+    projects = [{'id': 'p1', 'slug': 'river-x', 'title': 'River X',
+                 'app_id': '12'}]
     captured = {'join': None, 'created': None, 'mail': None}
 
     monkeypatch.setattr(registration, '_registration_retry_after', lambda: None)
@@ -114,20 +135,44 @@ def test_web_registration_creates_immediate_join_and_keeps_verification(
         'date_of_birth': '1990-05-17',
         'nationality': 'cl',
         'gender': 'female',
-        'project': 'river-x',
+        'project': project,
     }):
         g.user = ''
         out = registration.register_citizen()
+    return captured, out
+
+
+def test_web_registration_creates_immediate_join_and_keeps_verification(
+        app, monkeypatch):
+    captured, out = _post_web_registration(app, monkeypatch, 'river-x')
 
     data, token = captured['created']
     assert token == 'token'
     assert data['date_of_birth'] == datetime.date(1990, 5, 17)
     assert data['nationality'] == 'CL'
     assert data['terms_accepted'] is True
+    assert data['registration_project_slug'] == 'river-x'
     assert captured['join'] == {'project_id': 'p1'}
     assert captured['mail'] == ('Maria Example', 'maria@example.org', 'token')
     assert out['pending_verification'] is True
     assert out['join_project']['slug'] == 'river-x'
+
+
+def test_web_registration_stores_the_canonical_slug_for_a_toolbox_id(
+        app, monkeypatch):
+    captured, out = _post_web_registration(app, monkeypatch, '12')
+    assert captured['created'][0]['registration_project_slug'] == 'river-x'
+    assert captured['join'] == {'project_id': 'p1'}
+    assert out['join_project']['slug'] == 'river-x'
+
+
+def test_web_registration_drops_an_unknown_project_value(app, monkeypatch):
+    captured, out = _post_web_registration(app, monkeypatch, 'no-such-project')
+    # The account is still created; nothing forged is stored or joined.
+    assert captured['created'][0]['registration_project_slug'] == ''
+    assert captured['join'] is None
+    assert out['pending_verification'] is True
+    assert out['join_project'] is None
 
 
 def test_rate_limited_post_is_actionable_429(app, monkeypatch):

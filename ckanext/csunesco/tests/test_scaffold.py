@@ -299,3 +299,25 @@ def test_manager_org_picker_lists_nothing_before_a_search():
         script = handle.read()
     assert 'if (query.length < MIN_ORG_QUERY)' in script
     assert 'fetch(' not in script
+
+
+def test_citizen_join_step_is_qr_only_and_optional():
+    """Joining at sign-up happens by QR code only; there is no project list."""
+    source = _register_form_source()
+    assert '<select id="cs-project"' not in source
+    assert 'type="hidden" id="cs-project" name="project"' in source
+    assert 'cs-optional-pill' in source
+    assert 'id="cs-qr"' in source and 'id="cs-join-projects"' in source
+    assert "{% asset 'csunesco/cs-register-qr-js' %}" in source
+    with open(os.path.join(PKG_DIR, 'assets', 'webassets.yml'), 'r') as handle:
+        assert 'cs-register-qr-js:' in handle.read()
+    with open(os.path.join(PKG_DIR, 'assets', 'js', 'cs-register-qr.js'),
+              'r') as handle:
+        scanner = handle.read()
+    # Native detection first, the camera is released when the page goes away.
+    for needle in ('BarcodeDetector', 'getUserMedia', 'pagehide'):
+        assert needle in scanner, needle
+    # The fallback decoder is vendored (no CDN) together with its license.
+    vendor = os.path.join(PKG_DIR, 'public', 'csunesco', 'vendor')
+    assert os.path.isfile(os.path.join(vendor, 'jsQR.js'))
+    assert os.path.isfile(os.path.join(vendor, 'JSQR-LICENSE.txt'))

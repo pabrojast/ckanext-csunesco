@@ -1,4 +1,4 @@
-"""Copy pinned Leaflet, MapLibre and adapter runtimes from npm packages.
+"""Copy pinned Leaflet, MapLibre, adapter and jsQR runtimes from npm packages.
 
 Usage: python3 scripts/vendor-map.py /path/to/node_modules
 """
@@ -36,6 +36,12 @@ def main():
             'leaflet-maplibre-gl.js': 'leaflet-maplibre-gl.js',
             'LICENSE': 'MAPLIBRE-LEAFLET-LICENSE.txt',
         }),
+        # QR decoder fallback for the registration scanner (browsers without a
+        # native BarcodeDetector); loaded on demand, never bundled.
+        'jsqr': ('1.4.0', {
+            'dist/jsQR.js': 'jsQR.js',
+            'LICENSE': 'JSQR-LICENSE.txt',
+        }),
     }
     for package, (version, files) in packages.items():
         source = args.node_modules / package
@@ -50,7 +56,7 @@ def main():
         for source, destination in files.items():
             (target / destination).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(args.node_modules / package / source, target / destination)
-    print('Vendored Leaflet 1.9.4, MapLibre 4.7.1 and adapter 0.1.4 (including licenses).')
+    print('Vendored Leaflet 1.9.4, MapLibre 4.7.1, adapter 0.1.4 and jsQR 1.4.0 (including licenses).')
 
 
 if __name__ == '__main__':

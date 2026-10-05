@@ -9,7 +9,7 @@ uses a locally served worker instead of creating a blob worker.
 
 Reproduce from the repository root:
 
-  npm install --prefix /tmp/csunesco-map-vendor --ignore-scripts --no-audit --no-fund leaflet@1.9.4 maplibre-gl@4.7.1 @maplibre/maplibre-gl-leaflet@0.1.4
+  npm install --prefix /tmp/csunesco-map-vendor --ignore-scripts --no-audit --no-fund leaflet@1.9.4 maplibre-gl@4.7.1 @maplibre/maplibre-gl-leaflet@0.1.4 jsqr@1.4.0
   python3 scripts/vendor-map.py /tmp/csunesco-map-vendor/node_modules
 
 The map style in ../maps/positron-borderless.json comes from Ofform's Positron
@@ -20,3 +20,11 @@ the basemap; the visible layers are unchanged from Ofform.
 Leaflet is loaded locally by the map-assets template so production's self-only
 style policy and script policy do not depend on an external CDN. Only the basemap
 changes: project GeoJSON and observation circle markers are still Leaflet layers.
+
+QR decoder
+==========
+
+jsQR 1.4.0 (Apache-2.0, license text included), the version the Ofform frontend
+pins. It is the fallback decoder of the "Scan QR code" step on the Citizen
+Scientist registration form: assets/js/cs-register-qr.js downloads it only when
+the browser has no native BarcodeDetector for QR codes.

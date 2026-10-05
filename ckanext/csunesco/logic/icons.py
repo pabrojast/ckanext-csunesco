@@ -89,6 +89,10 @@ ICONS = {
                    '<path d="M21.5 14.5 19 5.5A2 2 0 0 0 17 4h-1.5A1.5 1.5 0 0 '
                    '0 14 5.5V12"/>'),
     'clock': '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>',
+    'qr': ('<rect x="3" y="3" width="7" height="7" rx="1"/>'
+           '<rect x="14" y="3" width="7" height="7" rx="1"/>'
+           '<rect x="3" y="14" width="7" height="7" rx="1"/>'
+           '<path d="M14 14h3v3M21 14v.01M14 21h3M21 18v3M17 21h.01"/>'),
 }
 
 # Unknown slug: a visible neutral dot, never an empty box. The verify guard

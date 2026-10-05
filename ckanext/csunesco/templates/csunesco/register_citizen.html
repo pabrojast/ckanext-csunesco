@@ -216,31 +216,34 @@
             {% snippet "csunesco/snippets/why_demographics.html" %}
           </fieldset>
 
-          <fieldset class="cs-register-fieldset"><legend><span class="cs-step-number">3</span> {{ _('Join a project') }}</legend>
-            {% if projects %}
-              <div class="cs-register-join-box">
-                <label for="cs-project">{{ _("Join a project") }}</label>
-                <p class="cs-hint">
-                  {{ _("Pick a project from the list. Project invitation links select it automatically.") }}
-                </p>
-                {% if selected_project %}
-                  <span class="cs-register-join-badge">
-                    {{ _("Joining: %(project)s", project=selected_project.title) }}
-                  </span>
-                {% endif %}
-                <select id="cs-project" name="project">
-                  <option value="">{{ _("Choose a project…") }}</option>
-                  {% for project in projects %}
-                    {% set project_id = project.id|string %}
-                    <option value="{{ project.slug }}"
-                      {% if data.project == project.slug or data.project == project_id %}selected{% endif %}>
-                      {{ project.title }}
-                    </option>
-                  {% endfor %}
-                </select>
+          {# Optional step, QR only. There is deliberately no list of projects
+             to pick from: a visitor joins by scanning the QR code a Project
+             Manager shared, or arrives with ?project=<slug> from a project
+             page. The hidden field is what the form posts; the scanner is
+             progressive enhancement. #}
+          <fieldset class="cs-register-fieldset">
+            <legend><span class="cs-step-number">3</span> {{ _('Join a project') }} <span class="cs-optional-pill">{{ _('Optional') }}</span></legend>
+            <p class="cs-hint">
+              {{ _("Scan the QR code provided by your Project Manager. You can also join a project later, from its page.") }}
+            </p>
+            <input type="hidden" id="cs-project" name="project" value="{{ selected_project.slug if selected_project else '' }}">
+            <p id="cs-join-badge" class="cs-register-join-badge" data-template="{{ _('Joining: {project}') }}"{% if not selected_project %} hidden{% endif %}>
+              <span id="cs-join-badge-text">{% if selected_project %}{{ _("Joining: %(project)s", project=selected_project.title) }}{% endif %}</span>
+              <a id="cs-join-remove" class="cs-join-remove" href="{{ h.url_for('csunesco.register_citizen') }}">{{ _("Remove") }}</a>
+            </p>
+            <div id="cs-qr" hidden
+                 data-jsqr-url="{{ h.url_for_static('/csunesco/vendor/jsQR.js') }}"
+                 data-starting="{{ _('Starting the camera…') }}"
+                 data-not-found="{{ _('That QR code does not match any project open to participation.') }}"
+                 data-unavailable="{{ _('The camera is not available or permission was denied. You can join the project from its page after signing in.') }}">
+              <button type="button" id="cs-qr-scan" class="cs-qr-btn">{{ h.csunesco_icon('qr', 22) }} {{ _("Scan QR code") }}</button>
+              <div id="cs-qr-panel" class="cs-qr-panel" hidden>
+                <video id="cs-qr-video" class="cs-qr-video" muted playsinline aria-label="{{ _('Camera preview to scan a project QR code') }}"></video>
+                <button type="button" id="cs-qr-cancel" class="cs-btn cs-btn-secondary">{{ _("Cancel") }}</button>
               </div>
-            {% else %}<p class="cs-hint">{{ _('Joining a project is optional. You can choose one after creating your account.') }}</p>{% endif %}
-
+              <p id="cs-qr-status" class="cs-hint" role="status"></p>
+            </div>
+            <script type="application/json" id="cs-join-projects">{{ project_refs|tojson }}</script>
           </fieldset>
           {% set manager_form = false %}{% include 'csunesco/snippets/motivation.html' %}
             <div class="cs-register-terms">
@@ -289,4 +292,5 @@
 {% block scripts %}
   {{ super() }}
   {% asset 'csunesco/cs-register-js' %}
+  {% asset 'csunesco/cs-register-qr-js' %}
 {% endblock %}
