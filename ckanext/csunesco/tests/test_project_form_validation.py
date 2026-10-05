@@ -89,3 +89,40 @@ def test_validation_endpoint_requires_csrf(monkeypatch):
     csrf.exempt(blueprint.project_validate)  # CKAN exempts plugin blueprints globally.
     monkeypatch.setattr(views, 'project_validate', lambda: 'must not be called')
     assert app.test_client().post('/project/validate').status_code == 400
+
+
+def test_editor_search_uses_fullname_excludes_inactive_and_bounds_results(session, monkeypatch):
+    from ckan.model.user import user_table
+    import sqlalchemy as sa
+    monkeypatch.setattr(user_table.c.plugin_extras, 'type', sa.JSON())
+    user_table.create(session.get_bind())
+    for i in range(25):
+        session.add(model.User(name='collaborator-%02d' % i, fullname='River Collaborator %s' % i,
+                               email='hidden-%s@example.test' % i, state='active'))
+    session.add(model.User(name='removed', fullname='River Collaborator Removed', state='deleted'))
+    session.commit()
+    monkeypatch.setattr(project_form, 'authorized_context', lambda project_id: (_ctx(), None))
+    app = Flask(__name__)
+    with app.test_request_context('/project/editor-options?q=River'):
+        found = views.project_editor_options().get_json()['results']
+    assert len(found) == 20
+    assert all(set(row) == {'name', 'fullname'} and row['name'] != 'removed' for row in found)
+    with app.test_request_context('/project/editor-options?q=hidden-0@example.test'):
+        assert not views.project_editor_options().get_json()['results']
+
+
+@pytest.mark.parametrize('user,expected', [(None, 401), (SimpleNamespace(state='active'), 403)])
+def test_readonly_helpers_require_proposal_authority(monkeypatch, user, expected):
+    from flask import g
+    from flask_babel import Babel
+    from werkzeug.exceptions import HTTPException
+    app = Flask(__name__)
+    app.secret_key = 'only-for-tests'
+    Babel(app)
+    monkeypatch.setattr(project_form.auth, '_user_obj', lambda context: user)
+    monkeypatch.setattr(project_form.auth, 'can_propose_project', lambda context: False)
+    with app.test_request_context('/project/validate'):
+        g.user = '' if user is None else 'outsider'
+        with pytest.raises(HTTPException) as error:
+            project_form.authorized_context()
+        assert error.value.code == expected
