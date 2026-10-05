@@ -68,8 +68,10 @@
       visibleField(field).removeAttribute('aria-invalid');
       if (described.length) {
         field.setAttribute("aria-describedby", described.join(" "));
+        visibleField(field).setAttribute('aria-describedby', described.join(' '));
       } else {
         field.removeAttribute("aria-describedby");
+        visibleField(field).removeAttribute('aria-describedby');
       }
       return;
     }

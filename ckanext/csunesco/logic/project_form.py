@@ -14,7 +14,7 @@ from ckanext.csunesco.logic.data_access import validate_project_access
 EXTERNAL_INITIATIVE = '__external__'
 
 
-def validate(data, context, strict=True, project=None):
+def validate(data, context, strict=True, project=None, draft=False):
     """Return normalized data and field errors, without writes or uploads."""
     incoming = dict(data)
     external_selected = incoming.get('initiative') == EXTERNAL_INITIATIVE
@@ -38,7 +38,7 @@ def validate(data, context, strict=True, project=None):
             for key, messages in (exc.error_dict or {}).items():
                 errors.setdefault(key, []).extend(messages)
 
-    if external_selected and not normalized.get('external_initiative_name'):
+    if not draft and external_selected and not normalized.get('external_initiative_name'):
         error('external_initiative_name', 'Enter the name of the external initiative, or choose an independent project.')
     check(lambda: validators.validate_initiative_affiliation(normalized, project))
     check(lambda: validate_project_access(normalized, project))
@@ -53,7 +53,7 @@ def validate(data, context, strict=True, project=None):
         if len(value) > limit:
             errors.setdefault(name, []).append(tk._('Maximum %s characters.') % limit)
     point_keys = ('point_lat', 'point_lng', 'point_radius_km')
-    if not normalized.get('region_geojson') and any(incoming.get(key) not in (None, '') for key in point_keys):
+    if not draft and not normalized.get('region_geojson') and any(incoming.get(key) not in (None, '') for key in point_keys):
         for key in point_keys:
             if incoming.get(key) in (None, ''):
                 error(key, 'Enter latitude, longitude and radius together, or leave all three empty.')

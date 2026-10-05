@@ -452,6 +452,10 @@ def csunesco_project_request_create(context, data_dict):
     if _is_sysadmin(context):
         return {'success': True}
     organization_id = (data_dict or {}).get('organization_id')
+    # This flag is set by the web view, never read from user-supplied data.
+    # A proposer may save a private draft before reaching organization setup.
+    if context.get('csunesco_draft') and not organization_id:
+        return {'success': can_propose_project(context)}
     if (context.get('user') and organization_id
             and can_propose_for_org(context, organization_id)):
         return {'success': True}

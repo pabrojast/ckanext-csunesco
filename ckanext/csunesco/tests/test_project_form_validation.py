@@ -42,6 +42,22 @@ def test_slug_explains_address_ending(form_context):
     assert 'https://' in errors['slug'][0]
 
 
+def test_draft_can_keep_partial_location_and_affiliation(form_context):
+    _, errors = project_form.validate({'title': 'Unfinished project', 'initiative': '__external__',
+                                      'point_lat': '0'}, form_context, strict=False, draft=True)
+    assert not errors
+
+
+@pytest.mark.parametrize('eligible', [True, False])
+def test_only_authorized_proposers_can_save_an_unscoped_draft(monkeypatch, eligible):
+    auth = project_form.auth
+    monkeypatch.setattr(auth, '_is_sysadmin', lambda context: False)
+    monkeypatch.setattr(auth, 'can_propose_project', lambda context: eligible)
+    assert auth.csunesco_project_request_create(_ctx(csunesco_draft=True), {})['success'] is eligible
+    # Final submissions and a forged data flag still require an organization.
+    assert not auth.csunesco_project_request_create(_ctx(), {'csunesco_draft': True})['success']
+
+
 def test_external_name_roundtrips_without_adding_a_group(actions, session):
     created = actions.csunesco_project_request_create(_ctx(), {
         'title': 'Community project', 'external_initiative_name': 'Community Rivers'})

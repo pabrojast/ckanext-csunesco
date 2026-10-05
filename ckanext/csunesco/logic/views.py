@@ -731,7 +731,7 @@ def project_new():
     data_dict = _read_project_form()
     save_draft = bool(request.form.get('save_draft'))
     from ckanext.csunesco.logic import project_form
-    validated, form_errors = project_form.validate(data_dict, context, strict=not save_draft)
+    validated, form_errors = project_form.validate(data_dict, context, strict=not save_draft, draft=save_draft)
     if form_errors:
         return _render_project_form(data_dict, form_errors)
     data_dict.update(initiative=validated.get('initiative'),
@@ -852,7 +852,8 @@ def project_edit(slug):
     submit_review = (project.get('status') == 'draft'
                      and bool(request.form.get('submit_review')))
     from ckanext.csunesco.logic import project_form
-    validated, form_errors = project_form.validate(data_dict, context, strict=submit_review, project=project)
+    validated, form_errors = project_form.validate(data_dict, context, strict=submit_review, project=project,
+                                                  draft=project.get('status') == 'draft' and not submit_review)
     if form_errors:
         return _render_project_form(data_dict, form_errors, mode='edit', project=project, return_to=return_to)
     data_dict.update(initiative=validated.get('initiative'),
