@@ -314,6 +314,7 @@ config reload). Features gated on an option **fail closed** when it is unset.
 | --- | --- | --- |
 | `ckanext.csunesco.terria_base_url` | *(unset — maps disabled)* | Space-separated allowlist of Terria base URLs a `cs-map` may embed (e.g. `https://ihp-wins.unesco.org/terria`). Unset ⇒ the `cs-map` validator rejects every URL and stored maps render as plain links. List every host if Terria lives on several. |
 | `ckanext.csunesco.ofform_base_url` | *(unset — data pipeline disabled)* | The **only** origin the data proxy will fetch (the CS Toolbox API base, e.g. `https://ofform-api.aquedra.com`). Anti-SSRF: form ids are int-coerced into a fixed path under this base. |
+| `ckanext.csunesco.support_email` | `ihp-wins@unesco.org` | UNESCO mailbox printed in every email footer. It is also the `Reply-To` of the plugin's emails unless `smtp.reply_to` is set; the From stays `smtp.mail_from`. |
 | `ckanext.csunesco.ofform_cache_ttl` | `60` | Seconds a proxied response (CSV / dashboard JSON) is cached per form. |
 | `ckanext.csunesco.ofform_app_url` | *(unset — links hidden)* | The CS Toolbox **frontend** base (e.g. `https://ofform.aquedra.com`). Renders review-panel links and the alternative registration card. |
 | `ckanext.csunesco.registration_rate_limit_enabled` | `true` | Enables the best-effort, per-worker registration throttle. Keep a shared proxy/WAF limit for multi-worker deployments. |

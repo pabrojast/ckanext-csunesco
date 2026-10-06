@@ -51,7 +51,9 @@ def test_verification_has_html_and_preserves_token_and_expiry(mail):
     assert '%s hours' % constants.VERIFICATION_TOKEN_TTL_HOURS in document
     assert 'Verify my account' in document
     assert 'https://portal.test/catalog' + email_templates.LOGO_PATH in document
-    assert 'mailto:support-citizenscience@unesco.org' in document
+    assert 'mailto:ihp-wins@unesco.org' in document
+    # Replies go to the UNESCO mailbox even though the From is the SMTP sender.
+    assert kwargs['headers'] == {'Reply-To': 'ihp-wins@unesco.org'}
 
 
 def test_project_approval_has_html_escaped_title_and_public_link(mail):
@@ -81,6 +83,22 @@ def test_renderer_escapes_every_field_and_sets_card_direction(mail, monkeypatch,
     assert '&lt;script&gt;' in document and '&lt;Open&gt;' in document
     assert 'href="https://portal.test/?a=1&amp;b=&#34;two&#34;"' in document
     assert 'dir="%s" class="container"' % direction in document
+
+
+def test_decision_emails_carry_the_reply_to(mail):
+    assert notify.notify_project_decision('u1', 'River', True, project_slug='river')
+    assert mail[0][1]['headers'] == {'Reply-To': 'ihp-wins@unesco.org'}
+
+
+def test_configured_reply_to_and_support_mailbox_win(mail, monkeypatch):
+    monkeypatch.setitem(tk.config, 'smtp.reply_to', 'replies@example.org')
+    monkeypatch.setitem(tk.config, email_templates.SUPPORT_EMAIL_OPTION,
+                        'help@example.org')
+    assert registration._send_verification_email('Pablo', 'pablo@example.org', 'token-123')
+    args, kwargs = mail[0]
+    assert kwargs['headers'] == {'Reply-To': 'replies@example.org'}
+    assert 'mailto:help@example.org' in kwargs['body_html']
+    assert 'ihp-wins@unesco.org' not in kwargs['body_html']
 
 
 def test_legacy_approval_without_slug_has_no_broken_button(mail):

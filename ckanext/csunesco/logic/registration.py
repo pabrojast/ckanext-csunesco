@@ -550,6 +550,7 @@ def _send_verification_email(recipient_name, recipient_email, token):
         'The link expires in {hours} hours. If you did not create this '
         'account, you can safely ignore this message.'
     ).format(url=verify_url, hours=hours)
+    from ckanext.csunesco.logic.email_templates import mail_headers
     try:
         from ckanext.csunesco.logic.email_templates import render_notification
         body_html = render_notification(
@@ -563,7 +564,8 @@ def _send_verification_email(recipient_name, recipient_email, token):
         body_html = None
     try:
         mail_recipient(recipient_name or recipient_email, recipient_email,
-                       subject, body, body_html=body_html)
+                       subject, body, body_html=body_html,
+                       headers=mail_headers())
         return True
     except MailerException:
         log.warning('csunesco: verification email could not be sent')
