@@ -14,6 +14,57 @@ from ckanext.csunesco.logic import email_templates, notify, registration
 _REAL_MAIL_RECIPIENT = mailer.mail_recipient
 
 
+@pytest.mark.parametrize('language', ['en', 'fr', 'es', 'pt', 'uk', 'ar', 'quh'])
+def test_verification_language_overrides_request_for_all_parts(mail, language):
+    from ckanext.csunesco.logic.verification_copy import COPY
+    assert registration._send_verification_email('Person', 'person@example.org', 'localized', language=language)
+    args, kwargs = mail[0]
+    copy = COPY[language]
+    assert args[2] == copy['subject']
+    assert copy['body'].split('\n\n')[0] in args[3]
+    document = kwargs['body_html']
+    assert '<html lang="%s"' % language in document
+    assert copy['cta'] in document
+    assert copy['footer'] in document
+    assert copy['support'] in document
+    assert 'dir="rtl"' in document if language == 'ar' else 'dir="ltr"' in document
+    assert 'localized' in args[3] and 'localized' in document
+
+
+@pytest.mark.parametrize('language,expected', [(None, 'en'), ('other', 'en'), ('fr-FR', 'fr'), ('FR_fr', 'fr')])
+def test_verification_normalizes_recipient_language(mail, language, expected):
+    from ckanext.csunesco.logic.verification_copy import COPY
+    assert registration._send_verification_email('Person', 'person@example.org', 'token', language=language)
+    assert mail[0][0][2] == COPY[expected]['subject']
+
+
+def test_trusted_resend_uses_stored_language(mail, monkeypatch):
+    from ckanext.csunesco.logic import onboarding
+    monkeypatch.setattr(onboarding.auth, '_is_sysadmin', lambda context: True)
+    user = SimpleNamespace(id='u-fr', fullname='Person', name='person', email='person@example.org')
+    monkeypatch.setattr(model.User, 'get', staticmethod(lambda key: user))
+    monkeypatch.setattr(db, 'get_citizen_scientist', lambda user_id: SimpleNamespace(
+        email_verified=False, token_created=None, language='fr'))
+    monkeypatch.setattr(db, 'set_verification_token', lambda *args: None)
+    assert onboarding.csunesco_registration_resend({}, {'username': 'person'}) == {'sent': True}
+    assert mail[0][0][2] == 'Vérifiez votre compte de science citoyenne de l’UNESCO'
+
+
+def test_toolbox_registration_uses_stored_language(mail, monkeypatch):
+    from ckanext.csunesco.logic.action import registration as action
+    monkeypatch.setattr(tk, 'check_access', lambda *args: None)
+    monkeypatch.setattr(model.User, 'get', staticmethod(lambda key: None))
+    monkeypatch.setattr(action, 'create_citizen_scientist', lambda *args, **kwargs: {'id': 'u-fr', 'name': 'person'})
+    monkeypatch.setattr(db, 'get_citizen_scientist', lambda user_id: SimpleNamespace(language='fr'))
+    result = action.csunesco_register_citizen_scientist({}, {
+        'username': 'person', 'email': 'person@example.org', 'fullname': 'Person',
+        'password': 'test-password', 'terms_accepted': True, 'language': 'fr',
+        'require_email_verification': True, 'motivation': 'Help monitor water with my community.',
+    })
+    assert result['verification_pending'] is True
+    assert mail[0][0][2] == 'Vérifiez votre compte de science citoyenne de l’UNESCO'
+
+
 @pytest.fixture
 def mail(monkeypatch):
     calls = []
@@ -169,7 +220,7 @@ def test_resend_uses_branded_verification_and_fresh_token(mail, monkeypatch, pro
     query = SimpleNamespace(filter=lambda *args: SimpleNamespace(all=lambda: [user]))
     monkeypatch.setattr(model.Session, 'query', lambda *args: query)
     monkeypatch.setattr(db, 'get_citizen_scientist', lambda user_id:
-                        SimpleNamespace(email_verified=False, profile_type=profile_type))
+                        SimpleNamespace(email_verified=False, profile_type=profile_type, language='fr'))
     tokens = []
     monkeypatch.setattr(db, 'set_verification_token', lambda *args: tokens.append(args))
     monkeypatch.setattr(registration.secrets, 'token_urlsafe', lambda size: 'fresh-token')
@@ -180,4 +231,6 @@ def test_resend_uses_branded_verification_and_fresh_token(mail, monkeypatch, pro
                                   data={'email': 'pablo@example.org'}):
         assert registration.resend_verification() == {'sent': True}
     assert tokens == [('u1', 'fresh-token')]
+    assert mail[0][0][2] == 'Vérifiez votre compte de science citoyenne de l’UNESCO'
+    assert '<html lang="fr"' in mail[0][1]['body_html']
     assert 'href="https://portal.test/catalog/citizen-science/verify/fresh-token"' in mail[0][1]['body_html']

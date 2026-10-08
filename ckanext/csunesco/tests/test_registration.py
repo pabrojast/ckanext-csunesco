@@ -179,7 +179,7 @@ def _post_web_registration(app, monkeypatch, project):
     monkeypatch.setattr(tk, 'get_action', get_action)
     monkeypatch.setattr(
         registration, '_send_verification_email',
-        lambda name, email, token: captured.update(mail=(name, email, token)))
+        lambda name, email, token, language=None: captured.update(mail=(name, email, token), mail_language=language))
 
     with app.test_request_context('/register', method='POST', data={
         'email': 'maria@example.org',
@@ -189,6 +189,7 @@ def _post_web_registration(app, monkeypatch, project):
         'terms': 'yes',
         'motivation': 'I want to monitor our river with local schools.',
         'fullname': 'Maria Example',
+        'language': 'fr',
         'date_of_birth': '1990-05-17',
         'nationality': 'cl',
         'gender': 'female',
@@ -211,6 +212,7 @@ def test_web_registration_creates_immediate_join_and_keeps_verification(
     assert data['registration_project_slug'] == 'river-x'
     assert captured['join'] == {'project_id': 'p1'}
     assert captured['mail'] == ('Maria Example', 'maria@example.org', 'token')
+    assert captured['mail_language'] == 'fr'
     assert out['pending_verification'] is True
     assert out['join_project']['slug'] == 'river-x'
 
@@ -394,7 +396,7 @@ def _manager_post(app, monkeypatch, overrides=None):
                         lambda size: 'token')
     monkeypatch.setattr(
         registration, '_send_verification_email',
-        lambda name, email, token: captured.update(mail=(email, token)))
+        lambda name, email, token, language=None: captured.update(mail=(email, token), mail_language=language))
 
     def create(context, data, verification_token=None):
         captured.update(created=data, token=verification_token)
@@ -410,7 +412,7 @@ def _manager_post(app, monkeypatch, overrides=None):
 
 
 def test_manager_registration_new_org_derives_admin(app, monkeypatch):
-    out, captured = _manager_post(app, monkeypatch)
+    out, captured = _manager_post(app, monkeypatch, {'language': 'fr'})
     manager = captured['created']['manager']
     assert manager['org_name_requested'] == 'Hydrology Lab'
     assert manager['org_id'] is None
@@ -418,6 +420,7 @@ def test_manager_registration_new_org_derives_admin(app, monkeypatch):
     assert manager['org_type'] == 'university'
     assert captured['token'] == 'token'
     assert captured['mail'] == ('pm@example.org', 'token')
+    assert captured['mail_language'] == 'fr'
     assert out['pending_verification'] is True
 
 

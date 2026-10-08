@@ -80,14 +80,17 @@
           </ol>
           <a class="cs-btn cs-btn-primary cs-confirm-back" href="{{ h.url_for('csunesco.index') }}">{{ _("Back to Citizen Science") }}</a>
           <p class="cs-register-muted">
-            {{ _("Didn't receive it? Check your spam folder or") }}
+            {{ _("Didn't receive it? Check your spam or junk folder or") }}
             <a href="{{ h.url_for('csunesco.resend_verification') }}">{{ _("resend the email") }}</a>.
           </p>
         </div>
       {% else %}
         <h1 id="cs-reg-title" class="cs-register-title">{{ _("Become a Citizen Scientist") }}</h1>
         <p class="cs-register-intro">
-          {{ _("Sign up below as an individual Citizen Scientist. To join a project as a group, such as a school class, ask the project's focal point to add you; contact details are on the Citizen Science Portal.") }}
+          {{ _("Sign up below as an individual Citizen Scientist.") }}
+          {{ _("If you are participating as part of a group, such as a school class or community group, please follow the instructions provided by your project coordinator.") }}
+          {{ _("Contact details are available on the") }}
+          <a href="{{ h.url_for('csunesco.index') }}">{{ _("Citizen Science Portal") }}</a>.
         </p>
 
         <p id="cs-reg-announcement" class="cs-visually-hidden" aria-live="polite"></p>
@@ -281,7 +284,7 @@
             <div class="cs-register-terms">
               <input type="checkbox" id="cs-terms" name="terms" value="yes"
                      aria-describedby="cs-terms-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-              <label for="cs-terms">{{ _("I accept the terms of participation.") }}</label>
+              <label for="cs-terms">{{ _("I accept the") }} <a href="https://www.unesco.org/en/terms-use" target="_blank" rel="noopener noreferrer">{{ _("UNESCO Terms of Use") }}</a>.</label>
             </div>
             <p id="cs-terms-hint" class="cs-hint cs-field-message"
                data-default="" data-error="{{ _('Please accept the terms to continue.') }}"></p>
@@ -295,23 +298,6 @@
           </button>
         </form>
 
-        {% if ofform_register_url %}
-          <div class="cs-register-divider" aria-hidden="true">{{ _("or") }}</div>
-          <div class="cs-register-ofform-card">
-            <span class="cs-register-ofform-icon" aria-hidden="true">
-              {{ h.csunesco_icon('globe', 18) }}
-            </span>
-            <p>{{ _("Register in the Citizen Science Toolbox") }}</p>
-            <a href="{{ ofform_register_url }}" target="_blank" rel="noopener noreferrer">
-              {{ _("Open") }} <span aria-hidden="true">&#8599;</span>
-            </a>
-          </div>
-        {% endif %}
-
-        <p class="cs-register-footer">
-          {{ _("Already have an account?") }}
-          <a href="{{ (h.csunesco_login_url() or h.url_for('user.login')) }}">{{ _("Sign in") }}</a>
-        </p>
       {% endif %}
     </section>
   </div>

@@ -40,17 +40,18 @@ def _template():
     return environment.get_template('csunesco/emails/notification.html')
 
 
-def render_notification(*, subject, message, cta_label, cta_url, footer_note):
+def render_notification(*, subject, message, cta_label, cta_url, footer_note,
+                        language=None, brand_name=None, support_label=None):
     """Render a branded HTML alternative using CKAN's current language."""
-    lang = (tk.h.lang() or 'en').replace('_', '-').lower()
+    lang = (language or tk.h.lang() or 'en').replace('_', '-').lower()
     direction = 'rtl' if lang.split('-')[0] == 'ar' else 'ltr'
     return _template().render(
         lang=lang, direction=direction,
         align='right' if direction == 'rtl' else 'left',
         subject=subject, paragraphs=message.split('\n\n'),
         cta_label=cta_label, cta_url=cta_url, footer_note=footer_note,
-        brand_name=tk._('Citizen Science'),
-        support_label=tk._('Questions? Reach us at'),
+        brand_name=brand_name or tk._('Citizen Science'),
+        support_label=support_label or tk._('Questions? Reach us at'),
         support_email=support_email(),
         logo_url=tk.h.url_for_static(LOGO_PATH, qualified=True),
     )

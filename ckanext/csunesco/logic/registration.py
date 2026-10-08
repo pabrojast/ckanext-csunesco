@@ -521,7 +521,7 @@ def create_citizen_scientist(context, data, verification_token=None):
     return new_user
 
 
-def _send_verification_email(recipient_name, recipient_email, token):
+def _send_verification_email(recipient_name, recipient_email, token, language=None):
     """Email a single-use verification link. Returns True on a successful send.
 
     Best-effort: a mailer failure is logged (never raised) so registration still
@@ -542,21 +542,19 @@ def _send_verification_email(recipient_name, recipient_email, token):
         log.warning('csunesco: could not build verification URL; email skipped')
         return False
     hours = constants.VERIFICATION_TOKEN_TTL_HOURS
-    subject = tk._('Verify your UNESCO Citizen Science account')
-    body = tk._(
-        'Welcome to UNESCO Citizen Science!\n\n'
-        'Please confirm your email address to activate your account by '
-        'opening this link:\n\n{url}\n\n'
-        'The link expires in {hours} hours. If you did not create this '
-        'account, you can safely ignore this message.'
-    ).format(url=verify_url, hours=hours)
+    from ckanext.csunesco.logic.verification_copy import COPY, language_code
+    language = language_code(language)
+    copy = COPY[language]
+    subject = copy['subject']
+    body = copy['body'].format(url=verify_url, hours=hours)
     from ckanext.csunesco.logic.email_templates import mail_headers
     try:
         from ckanext.csunesco.logic.email_templates import render_notification
         body_html = render_notification(
             subject=subject, message=body,
-            cta_label=tk._('Verify my account'), cta_url=verify_url,
-            footer_note=tk._('This email was sent because your account was created.'),
+            cta_label=copy['cta'], cta_url=verify_url,
+            footer_note=copy['footer'], language=language,
+            brand_name=copy['brand'], support_label=copy['support'],
         )
     except Exception as e:
         log.warning('csunesco: verification email HTML unavailable: %s',
@@ -725,7 +723,7 @@ def register_citizen():
             log.warning('csunesco: registration join request failed')
 
     # Best-effort activation email (the resend form is the fallback).
-    _send_verification_email(fullname or username, email, verification_token)
+    _send_verification_email(fullname or username, email, verification_token, language=language)
 
     # Confirmation state: the account is PENDING -> invite the user to check
     # their inbox rather than to log in. A ``pending_verification`` flag keeps the
@@ -1033,7 +1031,7 @@ def register_manager():
 
     if user:
         return tk.redirect_to('csunesco.register_manager')
-    _send_verification_email(fullname or username, email, verification_token)
+    _send_verification_email(fullname or username, email, verification_token, language=language)
 
     return _render_manager({
         'data': {},
@@ -1125,7 +1123,8 @@ def resend_verification():
                     token = secrets.token_urlsafe(32)
                     db.set_verification_token(user_obj.id, token)
                     _send_verification_email(
-                        user_obj.fullname or user_obj.name, email, token)
+                        user_obj.fullname or user_obj.name, email, token,
+                        language=getattr(profile, 'language', None))
                     break
         except Exception:
             log.warning('csunesco: resend verification could not be processed')

@@ -109,7 +109,9 @@ def csunesco_register_citizen_scientist(context, data_dict):
 
     if verification_token:
         from ckanext.csunesco.logic.registration import _send_verification_email
-        _send_verification_email(fullname or username, email, verification_token)
+        profile = db.get_citizen_scientist(new_user['id'])
+        _send_verification_email(fullname or username, email, verification_token,
+                                 language=getattr(profile, 'language', None))
     return {
         'verification_pending': bool(verification_token),
         'status': 'success',

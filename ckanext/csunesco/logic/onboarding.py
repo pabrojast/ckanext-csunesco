@@ -120,7 +120,8 @@ def csunesco_registration_resend(context, data_dict):
         if not stamp or datetime.datetime.utcnow() - stamp >= datetime.timedelta(minutes=2):
             token = secrets.token_urlsafe(32)
             db.set_verification_token(user.id, token)
-            registration._send_verification_email(user.fullname or user.name, user.email, token)
+            registration._send_verification_email(user.fullname or user.name, user.email, token,
+                                                 language=getattr(profile, 'language', None))
     return {'sent': True}
 
 
