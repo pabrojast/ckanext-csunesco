@@ -119,6 +119,8 @@ def test_disabled_after_application_cannot_be_reactivated_by_pm_approval(app, ex
 
 
 def test_eligible_user_goes_directly_to_project_form(app, existing, monkeypatch):
+    from ckanext.csunesco.logic import registration_profile
+    monkeypatch.setattr(registration_profile, 'completeness', lambda *args: {'profile_complete': True})
     user, _ = existing
     monkeypatch.setattr(auth, 'can_propose_project', lambda ctx: True)
     assert post(app, user)[:2] == ('redirect', 'csunesco.project_new')

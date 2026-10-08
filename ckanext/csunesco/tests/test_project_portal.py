@@ -25,6 +25,15 @@ def store(monkeypatch, tmp_path):
     monkeypatch.setattr(portal, 'callback', lambda *a: None)
     users = {name: SimpleNamespace(id=name, name=name, state='active', sysadmin=name in ('transport', 'reviewer'), is_anonymous=False) for name in ('transport', 'author', 'reviewer', 'outsider')}
     monkeypatch.setattr(portal.model.User, 'get', lambda key: users.get(key))
+    import datetime
+    for user in users.values():
+        user.fullname = user.name
+        profile = db.get_or_create_citizen_scientist(user.id)
+        profile.date_of_birth = datetime.date(1990, 1, 1)
+        profile.nationality = 'CL'; profile.gender = 'prefer_not_to_say'
+        profile.language = 'en'; profile.motivation = 'Help monitor local rivers.'
+        profile.terms_accepted_at = datetime.datetime.utcnow()
+    db.Session.commit()
     monkeypatch.setattr(auth, 'can_manage_project', lambda ctx, pid: ctx['user'] in ('author', 'reviewer', 'transport'))
     project = db.CsProject()
     project.slug = 'river'; project.title = 'Published title'; project.status = 'approved'

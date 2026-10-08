@@ -469,7 +469,7 @@ def test_verify_activates_a_citizen_account(monkeypatch):
     profile = _verify_profile('citizen')
     activated = {'called': False}
     user = type('User', (), {
-        'activate': lambda self: activated.update(called=True)})()
+        'state': 'pending', 'activate': lambda self: activated.update(called=True)})()
     monkeypatch.setattr(cs_db, 'get_citizen_scientist_by_token',
                         lambda token: profile)
     monkeypatch.setattr(cs_db, 'verify_citizen_scientist', lambda p: p)
@@ -480,17 +480,20 @@ def test_verify_activates_a_citizen_account(monkeypatch):
     assert activated['called'] is True
 
 
-def test_verify_keeps_a_manager_account_pending(monkeypatch):
+def test_verify_activates_manager_login_without_approving_application(monkeypatch):
     from ckanext.csunesco import db as cs_db
     profile = _verify_profile('manager')
     monkeypatch.setattr(cs_db, 'get_citizen_scientist_by_token',
                         lambda token: profile)
     monkeypatch.setattr(cs_db, 'verify_citizen_scientist', lambda p: p)
-    monkeypatch.setattr(
-        model.User, 'get',
-        staticmethod(lambda uid: pytest.fail('manager must not be activated')))
+    activated = []
+    user = type('User', (), {'state': 'pending', 'activate': lambda self: activated.append(True)})()
+    monkeypatch.setattr(model.User, 'get', staticmethod(lambda uid: user))
+    monkeypatch.setattr(model.Session, 'commit', lambda: None)
     monkeypatch.setattr(registration, '_render_verify', lambda state, project_slug=None: state)
     assert registration.verify_citizen('tok') == 'manager_pending'
+    assert activated == [True]
+    assert not getattr(profile, 'manager_decision', None)
 
 
 def test_resend_verification_is_rate_limited(app, monkeypatch):

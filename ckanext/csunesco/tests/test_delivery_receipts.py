@@ -11,6 +11,7 @@ from ckanext.csunesco.tests.test_db_behavior import session  # noqa: F401
 @pytest.fixture
 def bridge(monkeypatch):
     monkeypatch.setattr(portal, 'require_service', lambda context: None)
+    monkeypatch.setattr(projects.auth, '_is_sysadmin', lambda context: True)
     return {'user': 'bridge'}
 
 

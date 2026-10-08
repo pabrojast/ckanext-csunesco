@@ -75,6 +75,8 @@ def session():
 @pytest.fixture
 def service(session, monkeypatch):
     """A sysadmin service token, which is what the outbox actually holds."""
+    from ckanext.csunesco.logic import registration_profile
+    monkeypatch.setattr(registration_profile, "require_complete", lambda user: None)
     monkeypatch.setattr(tk, 'check_access', lambda *a, **k: True)
     monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: True)
     monkeypatch.setattr(cs_auth, 'can_manage_project',
@@ -188,6 +190,8 @@ def test_an_unknown_requested_by_falls_back_to_the_token_but_is_recorded(
 
 
 def test_a_non_sysadmin_requested_by_is_ignored(session, monkeypatch):
+    from ckanext.csunesco.logic import registration_profile
+    monkeypatch.setattr(registration_profile, 'require_complete', lambda user: None)
     monkeypatch.setattr(tk, 'check_access', lambda *a, **k: True)
     monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: False)
     ctx = {'user': 'mallory', 'auth_user_obj': _User('mallory')}
@@ -337,6 +341,8 @@ def test_a_non_sysadmin_cannot_impersonate(session, project, monkeypatch):
     """Only the trusted service token may act for someone else. An ordinary
     caller's `username` is ignored, never honoured and never rejected -- so it
     cannot be used to probe which accounts exist."""
+    from ckanext.csunesco.logic import registration_profile
+    monkeypatch.setattr(registration_profile, 'require_complete', lambda user: None)
     monkeypatch.setattr(tk, 'check_access', lambda *a, **k: True)
     monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: False)
     ctx = {'user': 'mallory', 'auth_user_obj': _User('mallory')}

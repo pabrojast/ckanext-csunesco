@@ -1,0 +1,37 @@
+{% extends "csunesco/base.html" %}
+{% block subtitle %}{{ _("Complete your Citizen Science profile") }}{% endblock %}
+{% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+{% block cs_content %}
+<section class="cs-register-page cs-onboarding">
+  <div class="cs-register-shell">
+    <h1>{{ _("Complete your Citizen Science profile") }}</h1>
+    <p>{{ _("Keep your existing account. Complete these details before requesting to join or proposing a project.") }}</p>
+    <p>{{ data.username }} · {{ data.email }}</p>
+    {% if errors %}<div class="alert alert-error" role="alert">{{ _("Please check the required fields and accept the terms of use.") }}</div>{% endif %}
+    <form method="post">
+      {{ h.csrf_input() }}
+      <input type="hidden" name="next" value="{{ next }}">
+      <div class="cs-field"><label for="profile-fullname">{{ _("Full name") }}</label><input id="profile-fullname" name="fullname" required maxlength="200" value="{{ data.fullname or '' }}"></div>
+      <div class="cs-field"><label for="profile-dob">{{ _("Date of birth") }}</label><input id="profile-dob" name="date_of_birth" type="date" required max="{{ today }}" value="{{ data.date_of_birth or '' }}"></div>
+      <div class="cs-field"><label for="profile-nationality">{{ _("Nationality") }}</label><select id="profile-nationality" name="nationality" required>
+        <option value="">{{ _("Select an option") }}</option>
+        {% for country in country_options %}<option value="{{ country.code }}" {% if data.nationality == country.code %}selected{% endif %}>{{ country.label }}</option>{% endfor %}
+        <option value="OTHER" {% if data.nationality == 'OTHER' %}selected{% endif %}>{{ _("Other") }}</option>
+        <option value="PREFER_NOT_TO_SAY" {% if data.nationality == 'PREFER_NOT_TO_SAY' %}selected{% endif %}>{{ _("Prefer not to say") }}</option>
+      </select></div>
+      <div class="cs-field"><label for="profile-gender">{{ _("Gender") }}</label><select id="profile-gender" name="gender" required>
+        <option value="">{{ _("Select an option") }}</option>
+        {% for key, label in [('female', _('Female')), ('male', _('Male')), ('non_binary', _('Non-binary')), ('prefer_not_to_say', _('Prefer not to say'))] %}<option value="{{ key }}" {% if data.gender == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select></div>
+      <div class="cs-field"><label for="profile-language">{{ _("Preferred language") }}</label><select id="profile-language" name="language" required>
+        <option value="">{{ _("Select an option") }}</option>
+        {% for code, name in [('en','English'),('es','Español'),('fr','Français'),('pt','Português'),('uk','Українська'),('ar','العربية'),('quh','Qhichwa (Bolivia)')] %}<option value="{{ code }}" {% if data.language == code %}selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select></div>
+      <div class="cs-field"><label for="profile-other">{{ _("Other language (optional)") }}</label><input id="profile-other" name="language_other" maxlength="64" value="{{ data.language_other or '' }}"></div>
+      <div class="cs-field"><label for="profile-motivation">{{ _("Why would you like to take part?") }}</label><textarea id="profile-motivation" name="motivation" required minlength="20" maxlength="500" rows="4">{{ data.motivation or '' }}</textarea></div>
+      {% if not data.terms_accepted_at %}<label><input type="checkbox" name="terms_accepted" required> {{ _("I accept the Terms of Use") }} <a href="https://www.unesco.org/en/terms-use" target="_blank" rel="noopener">{{ _("Terms of Use") }}</a></label>{% endif %}
+      <p><button class="cs-btn cs-btn-primary" type="submit">{{ _("Save and continue") }}</button> <a href="{{ next }}">{{ _("Cancel") }}</a></p>
+    </form>
+  </div>
+</section>
+{% endblock %}

@@ -115,6 +115,15 @@ def get_on_board():
     return registration.get_on_board()
 
 
+def complete_profile():
+    _protect_project_form()
+    from ckanext.csunesco.logic.registration_profile import complete_profile as render
+    return render()
+
+
+csunesco_bp.add_url_rule('/profile/complete', 'complete_profile', complete_profile, methods=['GET', 'POST'])
+
+
 def register_citizen():
     """Citizen Scientist self-registration (GET form / POST create account)."""
     from ckanext.csunesco.logic import registration
@@ -702,7 +711,7 @@ def guard_migrated_local_assets():
 def prevent_migrated_asset_caching(response):
     from ckanext.csunesco.logic import snapshots
     from flask import request
-    if request.endpoint in ('csunesco.register_manager', 'csunesco.project_new',
+    if request.endpoint in ('csunesco.complete_profile', 'csunesco.register_manager', 'csunesco.project_new',
                             'csunesco.project_edit', 'csunesco.project_validate',
                             'csunesco.project_editor_options'):
         response.headers['Cache-Control'] = 'private, no-store'

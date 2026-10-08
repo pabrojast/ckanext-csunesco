@@ -434,6 +434,8 @@ def _render_project_form(data, errors, success=False, mode='new',
     choices, states_available = _member_state_choices()
     steps = [dict(step) for step in constants.PROJECT_FORM_STEPS]
     open_step = next((step['step'] for step in steps if set(errors).intersection(step['fields'])), 1)
+    from ckanext.csunesco.logic.registration_profile import pending_manager
+    pending_profile = pending_manager(model.User.get(tk.g.user)) if tk.g.user else None
     return tk.render('csunesco/project_request.html', extra_vars={
         'mode': mode,
         'project': project,
@@ -461,6 +463,7 @@ def _render_project_form(data, errors, success=False, mode='new',
             eligible_only=True,
             include_id=(project or {}).get('organization_id')),
         'is_draft': bool(project and project.get('status') == 'draft'),
+        'requested_organization': pending_profile.org_name_requested if pending_profile else None,
     })
 
 
@@ -708,8 +711,12 @@ def project_new():
     from ckanext.csunesco.logic import auth
     context = _context()
     eligible_organizations = _organization_choices(eligible_only=True)
+    from ckanext.csunesco.logic.registration_profile import completeness, pending_manager
+    applicant = auth._user_obj(context)
+    if applicant and not completeness(applicant)['profile_complete']:
+        return tk.redirect_to('csunesco.complete_profile', next=tk.url_for('csunesco.project_new'))
     if (not tk.g.user or not auth._is_sysadmin(context)
-            and not eligible_organizations):
+            and not eligible_organizations and not pending_manager(applicant)):
         return tk.render('csunesco/project_eligibility.html', extra_vars={
             'logged_in': bool(tk.g.user),
         })
@@ -1018,6 +1025,10 @@ def join_project(slug):
             came_from=tk.h.url_for('csunesco.project_landing', slug=slug))
 
     context = _context()
+    from ckanext.csunesco.logic.registration_profile import completeness
+    from ckanext.csunesco.logic import auth
+    if not completeness(auth._user_obj(context))['profile_complete']:
+        return tk.redirect_to('csunesco.complete_profile', next=tk.url_for('csunesco.project_landing', slug=slug))
     # Resolve the project first so a valid redirect target exists on every path.
     try:
         project = tk.get_action('csunesco_project_show')(

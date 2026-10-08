@@ -545,16 +545,16 @@
 
           <div class="cs-field">
             <label for="cs-f-organization_id">{{ _("Proposing organization") }} <span class="cs-req" aria-hidden="true">*</span></label>
-            <select id="cs-f-organization_id" name="organization_id" required aria-required="true"
+            <select id="cs-f-organization_id" name="organization_id" {% if not requested_organization %}required aria-required="true"{% endif %}
                     {% if errors.organization_id %}aria-invalid="true"{% endif %}
                     {{- described_by('organization_id', true) }}>
-              <option value="">{{ _("Select an organization") }}</option>
+              <option value="">{{ requested_organization or _("Select an organization") }}</option>
               {% for org in organizations %}
                 <option value="{{ org.id or org.name }}"
                         {% if (org.id or org.name) == data.organization_id %}selected{% endif %}>{{ org.title }}</option>
               {% endfor %}
             </select>
-            <p id="cs-f-organization_id-hint" class="cs-hint">{{ _("Choose an organization where you are an administrator, editor or approved Project Manager member.") }}</p>
+            <p id="cs-f-organization_id-hint" class="cs-hint">{% if requested_organization %}{{ _("This organization will be created after your Project Manager account is approved.") }}{% else %}{{ _("Choose an organization associated with your Project Manager application or existing permissions.") }}{% endif %}</p>
             {{ field_error('organization_id') }}
           </div>
 

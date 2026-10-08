@@ -307,8 +307,7 @@ def test_registration_retry_requires_original_active_identity(store, monkeypatch
     user.email = 'author@example.org'
     user.state = state
     user.validate_password = lambda value: value == 'original-password'
-    profile = db.CsCitizenScientist()
-    profile.user_id = user.id
+    profile = db.get_or_create_citizen_scientist(user.id)
     db.Session.add(profile)
     db.Session.commit()
     monkeypatch.setattr(tk, '_', lambda value: value)

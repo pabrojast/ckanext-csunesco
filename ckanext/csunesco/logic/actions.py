@@ -30,4 +30,6 @@ def get_actions():
     actions.update(managed_data.get_actions())
     from ckanext.csunesco.logic import onboarding
     actions.update(onboarding.get_actions())
+    from ckanext.csunesco.logic import registration_profile
+    actions.update(registration_profile.get_actions())
     return actions

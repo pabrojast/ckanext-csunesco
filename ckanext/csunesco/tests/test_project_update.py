@@ -69,6 +69,8 @@ def session():
 @pytest.fixture
 def actions(session, monkeypatch):
     """Neutralize the web-stack pieces so the actions run on the bare ORM."""
+    from ckanext.csunesco.logic import registration_profile
+    monkeypatch.setattr(registration_profile, 'require_complete', lambda user: None)
     monkeypatch.setattr(tk, 'check_access', lambda *a, **k: True)
     monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: False)
     monkeypatch.setattr(cs_auth, 'can_manage_project',
@@ -328,6 +330,8 @@ def test_update_sanitizes_free_text(actions, session):
 @pytest.fixture
 def as_author(session, monkeypatch):
     """The acting user is NOT a manager by membership -- only the author."""
+    from ckanext.csunesco.logic import registration_profile
+    monkeypatch.setattr(registration_profile, 'require_complete', lambda user: None)
     monkeypatch.setattr(tk, 'check_access', lambda *a, **k: True)
     monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: False)
     monkeypatch.setattr(cs_auth, 'can_manage_project',

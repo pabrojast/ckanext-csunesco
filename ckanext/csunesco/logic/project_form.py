@@ -21,6 +21,10 @@ def validate(data, context, strict=True, project=None, draft=False):
     if external_selected:
         incoming['initiative'] = ''
     rules = schema.project_request_form_schema() if strict else schema.project_request_schema()
+    from ckanext.csunesco.logic.registration_profile import pending_manager
+    applicant = pending_manager(auth._user_obj(context))
+    if applicant and applicant.org_name_requested and not incoming.get('organization_id'):
+        rules['organization_id'] = schema.project_request_schema()['organization_id']
     if project:
         rules.pop('slug', None)
         context = dict(context, csunesco_existing_countries=project.get('countries') or [])

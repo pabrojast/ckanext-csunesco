@@ -848,6 +848,9 @@ def register_manager():
 
     if user:
         if auth.can_propose_project(context):
+            from ckanext.csunesco.logic.registration_profile import completeness
+            if not completeness(user, profile)['profile_complete']:
+                return tk.redirect_to('csunesco.complete_profile', next=tk.url_for('csunesco.project_new'))
             return tk.redirect_to('csunesco.project_new')
         if profile and profile.profile_type == 'manager':
             return render({'data': {}, 'errors': {},
@@ -1065,18 +1068,15 @@ def verify_citizen(token):
     if created is None or (datetime.datetime.utcnow() - created) > ttl:
         return _render_verify('expired')
 
-    # Project Manager accounts have a SECOND gate: verifying the email proves
-    # the address but the account stays CKAN-pending until a sysadmin approves
-    # it (csunesco_manager_approve) -- the spec's "IHP Admin approves/declines
-    # the user account" step. Citizens activate right here as before.
+    # Verification enables login and proposal preparation. PM approval remains
+    # a separate prerequisite for project publication.
     is_manager = getattr(profile, 'profile_type', None) == 'manager'
 
     try:
-        if not is_manager:
-            user_obj = model.User.get(profile.user_id)
-            if user_obj is not None:
-                user_obj.activate()
-                model.Session.commit()
+        user_obj = model.User.get(profile.user_id)
+        if user_obj is not None and user_obj.state == 'pending' and getattr(profile, 'manager_decision', None) != 'rejected':
+            user_obj.activate()
+            model.Session.commit()
         db.verify_citizen_scientist(profile)
     except Exception:
         model.Session.rollback()
@@ -1118,8 +1118,8 @@ def resend_verification():
                      .filter(model.User.email == email).all())
             for user_obj in users:
                 profile = db.get_citizen_scientist(user_obj.id)
-                if (profile is not None and not profile.email_verified
-                        and user_obj.is_pending()):
+                from ckanext.csunesco.logic.registration_profile import needs_verification_link
+                if needs_verification_link(user_obj, profile):
                     token = secrets.token_urlsafe(32)
                     db.set_verification_token(user_obj.id, token)
                     _send_verification_email(

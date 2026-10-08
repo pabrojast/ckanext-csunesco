@@ -70,6 +70,8 @@ def session():
 
 @pytest.fixture
 def actions(session, monkeypatch):
+    from ckanext.csunesco.logic import registration_profile
+    monkeypatch.setattr(registration_profile, 'require_complete', lambda user: None)
     monkeypatch.setattr(tk, 'check_access', lambda *a, **k: True)
     monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: False)
     return members_action

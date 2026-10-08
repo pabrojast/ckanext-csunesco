@@ -162,6 +162,12 @@ def _is_org_admin(context, org_id):
 
 
 def can_propose_for_org(context, org_id):
+    from ckanext.csunesco.logic.registration_profile import pending_manager
+    applicant = pending_manager(_user_obj(context))
+    if applicant and applicant.org_id:
+        requested = model.Group.get(applicant.org_id)
+        if requested and requested.id == org_id and requested.state == 'active':
+            return True
     if _is_org_editor(context, org_id):
         return True
     user = _user_obj(context)
@@ -182,6 +188,9 @@ def can_propose_for_org(context, org_id):
 def can_propose_project(context, organization_id=None):
     """Portal eligibility: sysadmin, organization editor, or approved PM member."""
     if _is_sysadmin(context):
+        return True
+    from ckanext.csunesco.logic.registration_profile import pending_manager
+    if not organization_id and pending_manager(_user_obj(context)):
         return True
     if organization_id:
         return can_propose_for_org(context, organization_id)
@@ -452,6 +461,10 @@ def csunesco_project_request_create(context, data_dict):
     if _is_sysadmin(context):
         return {'success': True}
     organization_id = (data_dict or {}).get('organization_id')
+    from ckanext.csunesco.logic.registration_profile import pending_manager
+    applicant = pending_manager(_user_obj(context))
+    if applicant and applicant.org_name_requested and not organization_id:
+        return {'success': True}
     # This flag is set by the web view, never read from user-supplied data.
     # A proposer may save a private draft before reaching organization setup.
     if context.get('csunesco_draft') and not organization_id:
@@ -956,6 +969,7 @@ def get_auth_functions():
         'csunesco_join_approve': csunesco_join_approve,
         'csunesco_join_reject': csunesco_join_reject,
         'csunesco_project_manager_set': csunesco_project_manager_set,
+        'csunesco_project_member_remove': lambda c, d: {'success': _is_sysadmin(c)},
         'csunesco_project_trusted_set': csunesco_project_trusted_set,
         'csunesco_project_request_create': csunesco_project_request_create,
         'csunesco_project_delete': csunesco_project_delete,
@@ -1005,6 +1019,8 @@ def get_auth_functions():
             csunesco_initiative_page_publish,
         'csunesco_register_citizen_scientist':
             csunesco_register_citizen_scientist,
+        'csunesco_registration_profile_show': lambda c, d: {'success': bool(c.get('user'))},
+        'csunesco_registration_profile_update': lambda c, d: {'success': bool(c.get('user'))},
         'csunesco_registration_review_show': lambda c, d: {'success': bool(c.get('user'))},
         'csunesco_manager_list': lambda c, d: {'success': bool(c.get('user'))},
         'csunesco_registration_project_review': lambda c, d: {'success': bool(c.get('user'))},

@@ -216,7 +216,7 @@ def test_render_failure_preserves_plain_text_delivery(mail, monkeypatch, kind):
 
 @pytest.mark.parametrize('profile_type', ['citizen', 'manager'])
 def test_resend_uses_branded_verification_and_fresh_token(mail, monkeypatch, profile_type):
-    user = SimpleNamespace(id='u1', fullname='Pablo', name='pablo', is_pending=lambda: True)
+    user = SimpleNamespace(id='u1', fullname='Pablo', name='pablo', state='pending', is_pending=lambda: True)
     query = SimpleNamespace(filter=lambda *args: SimpleNamespace(all=lambda: [user]))
     monkeypatch.setattr(model.Session, 'query', lambda *args: query)
     monkeypatch.setattr(db, 'get_citizen_scientist', lambda user_id:

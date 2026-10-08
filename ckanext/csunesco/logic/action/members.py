@@ -142,6 +142,10 @@ def csunesco_join_request_create(context, data_dict):
             'Project not found or not open for join requests')]})
 
     user_id, on_behalf = _resolve_actor(context, data_dict)
+    from ckanext.csunesco.logic.registration_profile import require_complete
+    if not on_behalf:
+        from ckanext.csunesco.logic import auth
+        require_complete(auth._user_obj(context))
 
     # A project that explicitly closed public participation takes no new join
     # requests from the web. Sysadmin callers bypass the gate: that is the
@@ -400,8 +404,56 @@ def csunesco_project_manager_set(context, data_dict):
 
 def get_actions():
     return {
+        'csunesco_project_member_remove': csunesco_project_member_remove,
         'csunesco_join_request_create': csunesco_join_request_create,
         'csunesco_join_approve': csunesco_join_approve,
         'csunesco_join_reject': csunesco_join_reject,
         'csunesco_project_manager_set': csunesco_project_manager_set,
     }
+
+
+def csunesco_project_member_remove(context, data_dict):
+    """Trusted Toolbox revocation, atomic with its durable delivery receipt.
+
+    Project membership is distinct from organization/system authority. Never
+    remove the latter, change credentials, or delete an identity here.
+    """
+    from ckanext.csunesco.logic import deliveries, portal
+    portal.require_service(context)
+    data = data_dict or {}
+    receipt, previous = deliveries.begin(context, data, 'csunesco_project_member_remove')
+    if previous is not None:
+        return previous
+    role = data.get('actor_role')
+    if role not in ('platform_admin', 'project_manager') or not data.get('toolbox_actor_id') or not data.get('actor_username'):
+        raise tk.NotAuthorized('A named Toolbox administrator or manager is required')
+    project = db.get_project(data.get('project_id') or data.get('project_slug'))
+    user = model.User.get(data.get('id'))
+    if project is None or user is None or user.name != data.get('username'):
+        raise tk.ObjectNotFound('Project or identity not found')
+    if data.get('actor_id') == user.id:
+        raise tk.ValidationError({'self_account': ['You cannot remove yourself']})
+    # Serializes competing removals so two admins cannot remove the last two PMs.
+    model.Session.query(db.CsProject).filter(db.CsProject.id == project.id).with_for_update().one()
+    member = db.project_member(project.id, user.id)
+    if member and member.status == C.MEMBER_STATUS_ACTIVE:
+        if role != 'platform_admin' and (member.role != C.MEMBER_ROLE_CS or user.sysadmin):
+            raise tk.NotAuthorized('Only an administrator can remove a manager')
+        if member.role == C.MEMBER_ROLE_PM and len(db.project_admin_user_ids(project.id)) <= 1:
+            raise tk.ValidationError({'last_owner': ['Assign another project manager before removing this one']})
+        if member.role == C.MEMBER_ROLE_CS:
+            db.ensure_stats(project.id)
+            db.stats_increment(project.id, 'citizen_scientists', -1)
+    if member and member.status != C.MEMBER_STATUS_REJECTED:
+        member.status = C.MEMBER_STATUS_REJECTED
+        member.reviewed_at = _utcnow()
+        member.reviewed_by = data.get('actor_id')
+        member.reviewed_role = role
+        member.reviewed_via = C.MEMBER_SOURCE_APP
+        db.append_member_event(member, 'revoked', actor_id=data.get('actor_id'),
+                               actor_name=data['actor_username'], actor_role=role,
+                               via=C.MEMBER_SOURCE_APP)
+    result = {'project_id': project.id, 'user_id': user.id, 'status': 'removed'}
+    deliveries.complete(receipt, result)
+    model.Session.commit()
+    return result

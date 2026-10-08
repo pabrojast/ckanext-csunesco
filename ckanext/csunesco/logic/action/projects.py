@@ -352,6 +352,10 @@ def csunesco_project_request_create(context, data_dict):
     if delivered is not None:
         return delivered
 
+    if not auth._is_sysadmin(context):
+        from ckanext.csunesco.logic.registration_profile import require_complete
+        require_complete(auth._user_obj(context))
+
     schema = cs_schema.project_request_schema()
     # Keep only whitelisted keys so navl never reports "unexpected field"; the
     # schema itself re-adds required fields as missing when absent.
@@ -419,6 +423,22 @@ def csunesco_project_request_create(context, data_dict):
     # always files pending, unchanged.
     project.status = 'draft' if context.get('csunesco_draft') else 'pending'
     project.created_by = creator_id
+    from ckanext.csunesco.logic.registration_profile import pending_manager
+    creator_profile = db.get_citizen_scientist(creator_id)
+    applicant = None
+    if creator_profile and creator_profile.profile_type == 'manager' and creator_profile.manager_decision != 'approved':
+        creator = model.User.get(creator_id)
+        applicant = pending_manager(creator)
+        # Preserve independently granted organization-editor authority.
+        if not applicant and not auth._is_org_editor({'user': creator.name}, project.organization_id):
+            raise tk.ValidationError({'manager_approval_required': [tk._('A verified, pending Project Manager application is required.')]})
+    if applicant:
+        if organization and organization.id != applicant.org_id:
+            raise tk.ValidationError({'organization_id': ['Use the organization from your PM application']})
+        project.organization_id = applicant.org_id
+        extras['manager_registration_user_id'] = creator_id
+        extras['requested_organization_name'] = applicant.org_name_requested
+        project.extras = json.dumps(extras)
     project.created = now
     project.modified = now
     model.Session.add(project)
@@ -739,6 +759,15 @@ def csunesco_project_approve(context, data_dict):
             'Only pending projects can be approved (current status: %s)'
         ) % project.status]})
 
+    extras = db._load_json(project.extras, {})
+    if extras.get('manager_registration_user_id'):
+        profile = db.get_citizen_scientist(project.created_by)
+        if not profile or profile.manager_decision != 'approved':
+            raise tk.ValidationError({'manager_approval_required': [tk._('Approve the Project Manager account before publishing this project.')]})
+        organization = model.Group.get(profile.org_id) if profile.org_id else None
+        if organization is None or organization.state != 'active':
+            raise tk.ValidationError({'organization_id': [tk._('Resolve the manager organization before publishing.')]})
+        project.organization_id = organization.id
     now = _utcnow()
     project.status = 'approved'
     project.reviewed_by = current_user_id(context)

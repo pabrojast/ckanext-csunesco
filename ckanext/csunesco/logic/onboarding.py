@@ -44,6 +44,8 @@ def profile_dict(user, profile=None):
     result['organization_title'] = (org.title or org.name) if org else result['org_name_requested']
     reviewer = model.User.get(result['manager_reviewed_by']) if result['manager_reviewed_by'] else None
     result['reviewer_name'] = (reviewer.fullname or reviewer.name) if reviewer else None
+    from ckanext.csunesco.logic.registration_profile import completeness
+    result.update(completeness(user, profile))
     return result
 
 
@@ -114,7 +116,8 @@ def csunesco_registration_resend(context, data_dict):
     import secrets
     user = model.User.get(data_dict.get('username'))
     profile = db.get_citizen_scientist(user.id) if user else None
-    if profile and not profile.email_verified:
+    from ckanext.csunesco.logic.registration_profile import needs_verification_link
+    if profile and (not profile.email_verified or needs_verification_link(user, profile)):
         stamp = profile.token_created
         # Keep both anonymous and trusted entrypoints bounded.
         if not stamp or datetime.datetime.utcnow() - stamp >= datetime.timedelta(minutes=2):
