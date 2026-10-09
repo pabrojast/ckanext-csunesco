@@ -135,3 +135,81 @@ def test_completion_returns_to_same_local_context(monkeypatch,path):
 def test_completion_rejects_external_or_recursive_return(monkeypatch,path):
     monkeypatch.setattr(tk,'url_for',lambda *a,**kw:'/citizen-science/')
     assert profiles.safe_next(path)=='/citizen-science/'
+
+
+@pytest.fixture
+def colab_source(monkeypatch):
+    from ckanext.csunesco.logic import colab_profile
+    from ckanext.colab.lib import registration_details
+    monkeypatch.setattr(colab_profile.plugins, 'plugin_loaded', lambda name: name == 'colab')
+    source = dict(fullname='Colab Name', date_of_birth=datetime.date(1990, 5, 18),
+                  nationality='Chile', gender='preferNotToSay', user_role='admin',
+                  terms_accepted_at='2026-01-01', language='fr')
+    monkeypatch.setattr(registration_details, 'registration_details', lambda user: source)
+    return source
+
+
+def test_colab_prefills_self_service_without_creating_profile_or_consent(session, identity, colab_source):
+    user, ctx = identity
+    out = profiles.csunesco_registration_profile_show(ctx, {})
+    assert out['fullname'] == user.fullname
+    assert out['date_of_birth'] == '1990-05-18'
+    assert out['nationality'] == 'CL' and out['gender'] == 'prefer_not_to_say'
+    assert out['colab_prefilled_fields'] == ['date_of_birth', 'nationality', 'gender']
+    assert not out['profile_complete'] and not out['can_propose_project']
+    assert out['terms_accepted_at'] is None and out['language'] is None
+    assert session.query(db.CsCitizenScientist).count() == 0
+    with pytest.raises(tk.ValidationError):
+        profiles.require_complete(user)
+    saved = profiles.csunesco_registration_profile_update(ctx, {**BODY, 'date_of_birth':out['date_of_birth'], 'nationality':out['nationality'], 'gender':out['gender']})
+    assert saved['profile_complete'] and saved['terms_accepted_at']
+    assert session.query(db.CsCitizenScientist).count() == 1
+    assert not user.sysadmin
+
+
+def test_colab_does_not_replace_saved_cs_details(session, identity, colab_source):
+    user, ctx = identity
+    profiles.csunesco_registration_profile_update(ctx, BODY)
+    out = profiles.csunesco_registration_profile_show(ctx, {})
+    assert out['fullname'] == BODY['fullname']
+    assert out['date_of_birth'] == BODY['date_of_birth']
+    assert out['colab_prefilled_fields'] == []
+
+
+@pytest.mark.parametrize('nationality,expected', [('cl','CL'), ('Francia','FR'), ('France','FR'), ('Canada','CA'), ('PREFER_NOT_TO_SAY','PREFER_NOT_TO_SAY'), ('French',None), ('Atlantis',None)])
+def test_colab_nationality_preserves_free_text_when_not_a_country_code(identity,colab_source,nationality,expected):
+    _, ctx = identity
+    colab_source['nationality'] = nationality
+    out = profiles.csunesco_registration_profile_show(ctx, {})
+    if expected:
+        assert out['nationality'] == expected
+    else:
+        assert out['nationality'] is None
+        assert out['colab_unmapped_fields']['nationality'] == nationality
+
+
+@pytest.mark.parametrize('gender,expected', [('woman','female'), ('man','male'), ('non-binary','non_binary'), ('preferNotToSay','prefer_not_to_say'), ('Custom identity',None)])
+def test_colab_gender_normalization_and_unmapped_text(identity,colab_source,gender,expected):
+    _, ctx = identity
+    colab_source['gender'] = gender
+    out = profiles.csunesco_registration_profile_show(ctx, {})
+    assert out['gender'] == expected
+    if expected is None:
+        assert out['colab_unmapped_fields']['gender'] == gender
+
+
+def test_colab_only_fills_valid_missing_values(identity, colab_source):
+    user, ctx = identity
+    user.fullname = ''
+    colab_source['date_of_birth'] = 'not a date'
+    out = profiles.csunesco_registration_profile_show(ctx, {})
+    assert out['fullname'] == 'Colab Name'
+    assert out['date_of_birth'] is None
+    colab_source['date_of_birth'] = '2999-01-01'
+    assert profiles.csunesco_registration_profile_show(ctx, {})['date_of_birth'] is None
+
+
+def test_colab_prefill_still_rejects_another_identity(identity,colab_source):
+    _, ctx = identity
+    with pytest.raises(tk.NotAuthorized):
+        profiles.csunesco_registration_profile_show(ctx, {'id':'another-user'})

@@ -6,13 +6,17 @@
 {% block cs_content %}
 {% set field_errors = errors.get('fields', errors) %}
 {% macro field_label(key, text) -%}
-  <label for="profile-{{ key }}">{{ text }}{% if not data.get(key) %}<span class="cs-profile-missing">{{ _("To complete") }}</span>{% endif %}</label>
+  <label for="profile-{{ key }}">{{ text }}{% if not data.get(key) %}<span class="cs-profile-missing">{{ _("To complete") }}</span>{% elif key in (data.colab_prefilled_fields or []) %}<span class="cs-profile-source">{{ _("From Colab") }}</span>{% endif %}</label>
 {%- endmacro %}
 {% macro field_error(key, message) -%}
   {% if field_errors.get(key) %}<p id="profile-{{ key }}-error" class="cs-field-error">{{ message }}</p>{% endif %}
 {%- endmacro %}
+{% macro colab_hint(key) -%}
+  {% if data.colab_unmapped_fields and data.colab_unmapped_fields.get(key) %}<p class="cs-hint" id="profile-{{ key }}-colab">{{ _("In Colab: %(value)s. Choose the matching option below.", value=data.colab_unmapped_fields[key]) }}</p>{% endif %}
+{%- endmacro %}
 {% macro error_attrs(key) -%}
-  {% if field_errors.get(key) %}aria-invalid="true" aria-describedby="profile-{{ key }}-error"{% endif %}
+  {% if field_errors.get(key) %}aria-invalid="true"{% endif %}
+  {% if field_errors.get(key) or (data.colab_unmapped_fields and data.colab_unmapped_fields.get(key)) %}aria-describedby="{% if field_errors.get(key) %}profile-{{ key }}-error {% endif %}{% if data.colab_unmapped_fields and data.colab_unmapped_fields.get(key) %}profile-{{ key }}-colab{% endif %}"{% endif %}
 {%- endmacro %}
 
 <section dir="{{ 'rtl' if h.lang() == 'ar' else 'ltr' }}" class="cs-profile-page" aria-labelledby="profile-title">
@@ -34,6 +38,7 @@
         </div>
       </div>
       <p class="cs-profile-account-note">{{ _("Your saved details are already filled in. You can review and update them below.") }}</p>
+      {% if data.colab_prefilled_fields or data.colab_unmapped_fields %}<p class="cs-profile-colab-note">{{ _("We also found details from your Colab registration. Review them before saving your profile.") }}</p>{% endif %}
       <details class="cs-profile-next">
         <summary>{{ _("What happens next?") }}</summary>
         <p>{{ _("Once your profile is complete, you can request to join a project or request Project Manager access to propose one.") }}</p>
@@ -67,6 +72,7 @@
           </div>
           <div class="cs-field">
             {{ field_label('gender', _('Gender')) }}
+            {{ colab_hint('gender') }}
             <select id="profile-gender" name="gender" required {{ error_attrs('gender') }}>
               <option value="">{{ _("Select an option") }}</option>
               {% for key, label in [('female', _('Female')), ('male', _('Male')), ('non_binary', _('Non-binary')), ('prefer_not_to_say', _('Prefer not to say'))] %}<option value="{{ key }}" {% if data.gender == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
@@ -76,6 +82,7 @@
         </div>
         <div class="cs-field">
           {{ field_label('nationality', _('Nationality')) }}
+          {{ colab_hint('nationality') }}
           <select id="profile-nationality" name="nationality" required {{ error_attrs('nationality') }}>
             <option value="">{{ _("Select an option") }}</option>
             {% for country in country_options %}<option value="{{ country.code }}" {% if data.nationality == country.code %}selected{% endif %}>{{ country.label }}</option>{% endfor %}

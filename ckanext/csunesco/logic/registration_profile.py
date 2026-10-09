@@ -53,12 +53,13 @@ def acting_user(context, data):
 
 def csunesco_registration_profile_show(context, data_dict):
     from ckanext.csunesco.logic.onboarding import profile_dict
+    from ckanext.csunesco.logic.colab_profile import prefill
     user = acting_user(context, data_dict or {})
     state = completeness(user)
     profile = db.get_citizen_scientist(user.id)
     eligible = bool(state['profile_complete'] and profile.email_verified
                     and auth.can_propose_project({'user': user.name, 'auth_user_obj': user}))
-    return dict(profile_dict(user), **state, can_propose_project=eligible)
+    return prefill(user, dict(profile_dict(user), **state, can_propose_project=eligible))
 
 
 def csunesco_registration_profile_update(context, data_dict):

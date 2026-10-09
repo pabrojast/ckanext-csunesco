@@ -4827,6 +4827,8 @@
 .cs-profile-form .cs-field label { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin-bottom: 7px; font-size: 14px; }
 .cs-profile-form label::after { content: none !important; }
 .cs-profile-missing { display: inline-block; padding: 2px 7px; border-radius: 5px; background: #fff3dc; color: #805316; font-size: 11px; line-height: 1.5; font-weight: 600; }
+.cs-profile-source { display: inline-block; padding: 2px 7px; border-radius: 5px; background: #e8f3f9; color: #24607e; font-size: 11px; line-height: 1.5; font-weight: 600; }
+.cs-profile-colab-note { padding: 12px; border-inline-start: 3px solid #68a9c9; border-radius: 4px; background: #e8f3f9; }
 .cs-profile-form input[type="text"],
 .cs-profile-form input[type="date"],
 .cs-profile-form select,
