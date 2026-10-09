@@ -8,11 +8,12 @@
 
   Vars: block, ctx.
 #}
+  {% set cta_label = _('Get on board') if not block.cta_label or block.cta_label == 'Get on board' else block.cta_label %}
   <section class="cs-section cs-cta-band" id="block-{{ block.id }}"
-           aria-label="{{ block.title or _('Get on board') }}">
+           aria-label="{{ _('Get on board') if not block.title or block.title == 'Get on board' else block.title }}">
     <p>{{ block.text or _("Start by registering as a Citizen Scientist and verifying your email. Then you can join projects or request Project Manager access to propose your own.") }}</p>
     <a class="cs-btn cs-btn-primary"
        href="{{ block.cta_url or h.url_for('csunesco.get_on_board') }}">
-      {{ block.cta_label or _("Get on board") }}
+      {{ cta_label }}
     </a>
   </section>
