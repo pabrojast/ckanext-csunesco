@@ -20,7 +20,7 @@
       <p>{{ _("Your Citizen Scientist account is now active.") }}</p>
     </section>
     <section class="cs-card" aria-label="{{ _('Next step') }}">
-      <p>{{ _("You can now log in with your username and password.") }}</p>
+      <p>{{ _("After registering and verifying your email, request Project Manager access with your organization details. You can then submit a project proposal.") if next_path else _("Your Citizen Scientist registration is complete. Choose your next step.") }}</p>
       <a class="cs-btn cs-btn-primary" href="{{ h.url_for('user.login', came_from=next_path) if next_path else (h.csunesco_login_url(project_slug) or h.url_for('user.login')) }}">
         {{ _("Log in") }}
       </a>
@@ -31,7 +31,7 @@
       <p>{{ _("Thanks for confirming your email address.") }}</p>
     </section>
     <section class="cs-card" aria-label="{{ _('Next step') }}">
-      <p>{{ _("You can now sign in and propose a project. Your Project Manager account and project will be reviewed before publication.") }}</p>
+      <p>{{ _("You can submit your proposal while your Project Manager request is reviewed. Both must be approved before the project is published.") }}</p>
     </section>
     <p><a class="cs-btn cs-btn-primary" href="{{ h.url_for('user.login', came_from=h.url_for('csunesco.project_new')) }}">{{ _('Sign in and propose a project') }}</a></p>
   {% elif state == 'expired' %}

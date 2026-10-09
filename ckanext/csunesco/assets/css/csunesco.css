@@ -4657,6 +4657,9 @@
 .cs-role-cta:focus-visible { outline: 3px solid #173b51; outline-offset: 2px; }
 .cs-roles-signin { margin: 1.4rem 0 0; color: #64758a; text-align: center; }
 .cs-roles-signin a { color: var(--unesco-blue-dark); font-weight: 700; }
+.cs-onboarding-start { margin: 1.5rem auto; padding: 1.5rem; text-align: center; background: #f1f7fa; border-radius: 12px; }
+.cs-onboarding-start .cs-btn { white-space: normal; }
+.cs-role-card > .cs-role-cta { margin-top: 1.4rem; }
 @media (max-width: 700px) { .cs-role-grid { grid-template-columns: 1fr; } }
 
 /* Registration step 3: optional join by QR code (no project list). */

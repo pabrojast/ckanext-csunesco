@@ -406,9 +406,31 @@ def _render(extra_vars):
 
 
 def get_on_board():
-    """GET /get-on-board: choose between the two registration paths."""
+    """One registration, followed by participation or a PM application."""
+    from ckanext.csunesco.logic.registration_profile import completeness
+    from ckanext.csunesco import db
+    user = model.User.get(tk.g.user) if getattr(tk.g, 'user', None) else None
+    profile = db.get_citizen_scientist(user.id) if user else None
+    stage = 'register'
+    if user:
+        stage = 'complete' if not completeness(user, profile)['profile_complete'] else (
+            'ready' if profile.email_verified else 'verify')
+    next_path = _registration_next()
+    if not next_path and request.args.get('role') == 'manager':
+        next_path = tk.url_for('csunesco.register_manager')
+    params = {}
+    if next_path:
+        params['next'] = next_path
+    if request.args.get('project'):
+        params['project'] = request.args['project']
+    invited = _selected_project(_registration_projects(), params['project']) if params.get('project') else None
     return tk.render('csunesco/get_on_board.html', extra_vars={
-        'logged_in': bool(getattr(tk.g, 'user', None)),
+        'logged_in': bool(user), 'registration_stage': stage,
+        'registration_url': tk.url_for('csunesco.register_citizen', **params),
+        'completion_url': tk.url_for('csunesco.complete_profile',
+                                    next=tk.url_for('csunesco.get_on_board', **params)),
+        'join_url': tk.url_for('csunesco.project_landing', slug=invited['slug']) if invited else tk.url_for('csunesco.project_list'),
+        'login_url': tk.url_for('user.login', came_from=tk.url_for('csunesco.get_on_board', **params)),
     })
 
 

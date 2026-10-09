@@ -48,7 +48,7 @@ def test_site_cta_defaults_to_the_role_chooser_and_keeps_overrides():
     template = env.get_template('csunesco/blocks/site_cta.html')
     for user in (None, 'citizen', 'manager'):
         html = template.render(block={'id': 'get-on-board'}, g=SimpleNamespace(user=user))
-        assert 'Get on board as a Citizen Scientist or a Project Manager.' in html
+        assert 'Start by registering as a Citizen Scientist and verifying your email.' in html
         assert 'href="/citizen-science/get-on-board"' in html
         assert 'Propose a project' not in html
     # A saved override still wins over every default.

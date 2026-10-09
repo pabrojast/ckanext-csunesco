@@ -61,22 +61,26 @@
                   <p>{{ _("Your request to join %(project)s has also been sent to the project manager.", project=join_project.title) }}</p>
                 </div>
               </li>
+            {% elif next_path %}
+              <li class="cs-confirm-step"><span class="cs-confirm-num" aria-hidden="true">2</span><div class="cs-confirm-card"><h2>{{ _("Request Project Manager access") }}</h2><p>{{ _("After registering and verifying your email, request Project Manager access with your organization details. You can then submit a project proposal.") }}</p></div></li>
             {% else %}
               <li class="cs-confirm-step">
                 <span class="cs-confirm-num" aria-hidden="true">2</span>
                 <div class="cs-confirm-card">
-                  <h2>{{ _("Choose your project") }}</h2>
-                  <p>{{ _("Sign in, open your project's page and select Request to join. In the Toolbox app you can also scan the QR code provided by your Project Manager.") }}</p>
+                  <h2>{{ _("Join a project") }} / {{ _("Propose a project") }}</h2>
+                  <p>{{ _("After confirming your email, sign in to join a project or request Project Manager access.") }}</p>
                 </div>
               </li>
             {% endif %}
+            {% if join_project or next_path %}
             <li class="cs-confirm-step">
               <span class="cs-confirm-num" aria-hidden="true">3</span>
               <div class="cs-confirm-card">
-                <h2>{{ _("Wait for approval") }}</h2>
-                <p>{{ _("The project manager reviews your request. You'll be notified once you're in.") }}</p>
+                <h2>{{ _("Propose a project") if next_path and not join_project else _("Wait for approval") }}</h2>
+                <p>{% if next_path and not join_project %}{{ _("You can submit your proposal while your Project Manager request is reviewed. Both must be approved before the project is published.") }}{% else %}{{ _("The project manager reviews your request. You'll be notified once you're in.") }}{% endif %}</p>
               </div>
             </li>
+            {% endif %}
           </ol>
           <a class="cs-btn cs-btn-primary cs-confirm-back" href="{{ h.url_for('csunesco.index') }}">{{ _("Back to Citizen Science") }}</a>
           <p class="cs-register-muted">
@@ -92,6 +96,8 @@
           {{ _("Contact details are available on the") }}
           <a href="{{ h.url_for('csunesco.index') }}">{{ _("Citizen Science Portal") }}</a>.
         </p>
+
+        {% if next_path %}<p class="cs-register-intro">{{ _("After registering and verifying your email, request Project Manager access with your organization details. You can then submit a project proposal.") }}</p>{% endif %}
 
         <p id="cs-reg-announcement" class="cs-visually-hidden" aria-live="polite"></p>
 

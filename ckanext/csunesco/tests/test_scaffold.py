@@ -273,11 +273,11 @@ def _template_source(*parts):
         return handle.read()
 
 
-def test_get_on_board_routes_to_both_registration_forms():
+def test_get_on_board_routes_to_common_registration_and_existing_pm_access():
     with open(os.path.join(PKG_DIR, 'blueprint.py'), 'r') as handle:
         assert "'/get-on-board', 'get_on_board'" in handle.read()
     chooser = _template_source('get_on_board.html')
-    assert "url_for('csunesco.register_citizen')" in chooser
+    assert 'href="{{ registration_url }}"' in chooser
     assert "url_for('csunesco.register_manager')" in chooser
     # The forms go back to the chooser instead of cross-linking each other.
     citizen = _template_source('register_citizen.html')
@@ -337,4 +337,4 @@ def test_confirmation_screens_list_the_real_next_steps():
     assert "url_for('csunesco.resend_verification')" in citizen
     assert 'Your existing account' in manager
     assert 'Email verified' in manager
-    assert 'Publication requires approval of both your PM request and your project.' in manager
+    assert 'Both must be approved before the project is published.' in manager
