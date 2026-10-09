@@ -115,3 +115,8 @@ cs-page-view-js:
   output: js/cs-page-view.js
   contents:
     - js/cs-page-view.js
+
+cs-admin-redirect-js:
+  output: csunesco/cs-admin-redirect.js
+  contents:
+    - js/cs-admin-redirect.js

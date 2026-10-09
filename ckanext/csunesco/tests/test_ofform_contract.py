@@ -48,6 +48,8 @@ class _User(object):
 
     def __init__(self, user_id):
         self.id = user_id
+        self.name = user_id
+        self.state = "active"
 
 
 def _service_ctx():
@@ -77,8 +79,12 @@ def service(session, monkeypatch):
     """A sysadmin service token, which is what the outbox actually holds."""
     from ckanext.csunesco.logic import registration_profile
     monkeypatch.setattr(registration_profile, "require_complete", lambda user: None)
+    monkeypatch.setattr(registration_profile, "require_registered", lambda user: None)
     monkeypatch.setattr(tk, 'check_access', lambda *a, **k: True)
     monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: True)
+    import ckan.model as model
+    monkeypatch.setattr(model.User, 'get', lambda key: _User('ana') if key == 'ana' else None)
+    monkeypatch.setattr(cs_auth, 'can_propose_project', lambda *args: True)
     monkeypatch.setattr(cs_auth, 'can_manage_project',
                         lambda context, project_id: True)
 
@@ -175,23 +181,18 @@ def test_project_request_from_the_app_names_the_pm_as_creator(
     assert db.get_project(out['id']).created_by == 'user-maria'
 
 
-def test_an_unknown_requested_by_falls_back_to_the_token_but_is_recorded(
-        service, session, monkeypatch):
-    """Unlike a join, a project is still worth creating when the PM has no
-    portal account yet (demo accounts, local-only PMs): it falls back to
-    the token and keeps the username so a reviewer can hand it over."""
+def test_an_unknown_requested_by_is_rejected(service, session, monkeypatch):
     import ckan.model as model
-    monkeypatch.setattr(model.User, 'get', staticmethod(lambda name: None))
-    out = projects_action.csunesco_project_request_create(
-        _service_ctx(), _project_payload(requested_by='ghost'))
-    row = db.get_project(out['id'])
-    assert row.created_by == 'cs-toolbox-service'
-    assert db._load_json(row.extras, {})['requested_by_username'] == 'ghost'
+    monkeypatch.setattr(model.User, 'get', lambda key: None)
+    with pytest.raises(tk.ValidationError):
+        projects_action.csunesco_project_request_create(_service_ctx(), _project_payload(requested_by='missing'))
+    assert session.query(db.CsProject).count() == 0
 
 
 def test_a_non_sysadmin_requested_by_is_ignored(session, monkeypatch):
     from ckanext.csunesco.logic import registration_profile
     monkeypatch.setattr(registration_profile, 'require_complete', lambda user: None)
+    monkeypatch.setattr(registration_profile, 'require_registered', lambda user: None)
     monkeypatch.setattr(tk, 'check_access', lambda *a, **k: True)
     monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: False)
     ctx = {'user': 'mallory', 'auth_user_obj': _User('mallory')}
@@ -343,6 +344,7 @@ def test_a_non_sysadmin_cannot_impersonate(session, project, monkeypatch):
     cannot be used to probe which accounts exist."""
     from ckanext.csunesco.logic import registration_profile
     monkeypatch.setattr(registration_profile, 'require_complete', lambda user: None)
+    monkeypatch.setattr(registration_profile, 'require_registered', lambda user: None)
     monkeypatch.setattr(tk, 'check_access', lambda *a, **k: True)
     monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: False)
     ctx = {'user': 'mallory', 'auth_user_obj': _User('mallory')}

@@ -17,7 +17,7 @@
   <section class="cs-roles" aria-labelledby="cs-roles-title">
     <header class="cs-roles-head">
       <h1 id="cs-roles-title">{{ _("Get on board with us!") }}</h1>
-      <p>{{ _("Whether you want to collect data in your community or lead a project of your own, choose the role that fits you and create your account in a few minutes.") }}</p>
+      <p>{{ _("Start by registering as a Citizen Scientist and verifying your email. You can then join projects or request Project Manager access to propose your own.") }}</p>
     </header>
 
     <div class="cs-role-grid">
@@ -43,7 +43,7 @@
         {% elif logged_in %}
           <a class="cs-role-cta" href="{{ h.url_for('csunesco.register_manager') }}">{{ _("Request Project Manager access") }} {{ h.csunesco_icon('arrow-right', 16) }}</a>
         {% else %}
-          <a class="cs-role-cta" href="{{ h.url_for('csunesco.register_manager') }}">{{ _("Become a Project Manager") }} {{ h.csunesco_icon('arrow-right', 16) }}</a>
+          <a class="cs-role-cta" href="{{ h.url_for('csunesco.register_manager') }}">{{ _("Register as a Citizen Scientist") }} {{ h.csunesco_icon('arrow-right', 16) }}</a>
         {% endif %}
       </article>
     </div>

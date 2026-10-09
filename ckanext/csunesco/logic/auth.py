@@ -1024,6 +1024,7 @@ def get_auth_functions():
         'csunesco_registration_review_show': lambda c, d: {'success': bool(c.get('user'))},
         'csunesco_manager_list': lambda c, d: {'success': bool(c.get('user'))},
         'csunesco_registration_project_review': lambda c, d: {'success': bool(c.get('user'))},
+        'csunesco_registration_join_decide': lambda c, d: {'success': bool(c.get('user'))},
         'csunesco_registration_resend': csunesco_manager_approve,
         'csunesco_manager_approve': csunesco_manager_approve,
         'csunesco_manager_reject': csunesco_manager_reject,

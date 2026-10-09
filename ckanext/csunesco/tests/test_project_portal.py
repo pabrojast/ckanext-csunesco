@@ -444,6 +444,7 @@ def test_initial_upload_moves_out_of_public_storage_and_binds_after_retry(store,
 
 
 def test_app_proposal_upload_is_private_durable_and_bound_to_requester(store, monkeypatch):
+    monkeypatch.setattr(auth, 'can_propose_project', lambda *args: True)
     from ckanext.csunesco.logic.action import projects
     _, users = store
     fetched = []

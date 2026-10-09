@@ -380,6 +380,14 @@ def _verify_recaptcha(token):
     return bool(result.get('success')) and result.get('score', 0) > 0.5
 
 
+def _registration_next():
+    """Preserve proposal intent, without accepting arbitrary redirect URLs."""
+    from flask import has_request_context
+    value = request.values.get('next', '') if has_request_context() else ''
+    allowed = '/citizen-science/register/project-manager'
+    return value if value in [allowed] + ['/' + lang + allowed for lang in ('en', 'es', 'fr', 'pt', 'ar', 'uk', 'quh')] else None
+
+
 def _render(extra_vars):
     """Render registration with stable choices and optional integration links."""
     extra_vars.setdefault('recaptcha_publickey',
@@ -388,6 +396,7 @@ def _render(extra_vars):
     extra_vars.setdefault('projects', _registration_projects())
     extra_vars.setdefault('ofform_register_url', _ofform_register_url())
     extra_vars.setdefault('today', datetime.date.today().isoformat())
+    extra_vars.setdefault('next_path', _registration_next())
     projects = extra_vars.get('projects') or []
     extra_vars.setdefault('project_refs', _project_refs(projects))
     selected_value = (extra_vars.get('data') or {}).get('project')
@@ -534,8 +543,9 @@ def _send_verification_email(recipient_name, recipient_email, token, language=No
         return False
 
     try:
+        kwargs = {'next': _registration_next()} if _registration_next() else {}
         verify_url = tk.url_for('csunesco.verify_citizen', token=token,
-                                _external=True)
+                                _external=True, **kwargs)
     except Exception:
         # BuildError / malformed ckan.site_url must not abort a registration
         # that already created the account.
@@ -579,6 +589,14 @@ def _send_verification_email(recipient_name, recipient_email, token, language=No
 
 def register_citizen():
     """GET renders the form; POST creates a pending Citizen Scientist account."""
+    if getattr(tk.g, 'user', None):
+        from ckanext.csunesco.logic.registration_profile import completeness
+        user = model.User.get(tk.g.user)
+        if user and user.state == 'active':
+            destination = _registration_next() or tk.url_for('csunesco.my_projects')
+            if not completeness(user)['profile_complete']:
+                return tk.redirect_to('csunesco.complete_profile', next=destination)
+            return tk.redirect_to(destination)
     if request.method == 'GET':
         return _render({
             'data': {'project': request.args.get('project', '').strip()},
@@ -789,23 +807,14 @@ def _request_manager_access(user_id, data, manager):
                .populate_existing().first())
     if profile and profile.profile_type == 'manager':
         return False
-    if profile is None:
-        profile = db.get_or_create_citizen_scientist(user.id, defer_commit=True)
-    for field in ('date_of_birth', 'nationality', 'gender', 'motivation',
-                  'language', 'language_other'):
-        setattr(profile, field, data.get(field) or None)
+    from ckanext.csunesco.logic.registration_profile import require_registered
+    require_registered(user)
     for field, value in manager.items():
         setattr(profile, field, value)
-    if not user.fullname:
-        user.fullname = data['fullname']
+    # PM is an application attached to the existing Citizen Scientist dossier.
+    # Identity, consent, demographics and verification remain authoritative.
     profile.profile_type = 'manager'
     profile.manager_application_origin = 'existing_account'
-    # Existing active CKAN identities are trusted, just like the established
-    # server-to-server registration path. No new verification is required.
-    profile.email_verified = True
-    profile.verification_token = None
-    profile.token_created = None
-    profile.terms_accepted_at = profile.terms_accepted_at or datetime.datetime.utcnow()
     profile.responsibilities_accepted_at = datetime.datetime.utcnow()
     model.Session.commit()
     return True
@@ -822,60 +831,38 @@ def _manager_account_data(user, profile):
 
 
 def register_manager():
-    """GET/POST: Project Manager self-registration (spec section 3).
-
-    Same hardening as the Citizen Scientist form (rate limit, reCAPTCHA,
-    generic errors, email verification), plus the Organization block. The
-    account is double-gated: after the email is verified it STAYS pending
-    until a sysadmin approves it (``csunesco_manager_approve``), which is when
-    the declared organization is created/joined -- never at sign-up, so an
-    unvetted visitor cannot spam the org registry.
-    """
+    """Request PM access only after completing Citizen Scientist registration."""
     from ckanext.csunesco import db
     from ckanext.csunesco.logic import auth
+    from ckanext.csunesco.logic.registration_profile import completeness, require_registered
     context = {'model': model, 'session': model.Session, 'user': tk.g.user}
     user = auth._user_obj(context) if tk.g.user else None
-    if user and user.state != 'active':
+    if user is None:
+        if request.method == 'POST':
+            return tk.redirect_to('user.login', came_from=tk.url_for('csunesco.register_manager'))
+        return tk.redirect_to('csunesco.register_citizen', next=tk.url_for('csunesco.register_manager'))
+    if user.state != 'active':
         return tk.abort(403, tk._('An active account is required.'))
-    if not user and request.method == 'POST' and request.form.get('existing_account'):
-        return tk.redirect_to('user.login', came_from=tk.url_for('csunesco.register_manager'))
-    profile = db.get_citizen_scientist(user.id) if user else None
+    profile = db.get_citizen_scientist(user.id)
+    if not completeness(user, profile)['profile_complete']:
+        return tk.redirect_to('csunesco.complete_profile', next=tk.url_for('csunesco.register_manager'))
+    if not profile.email_verified:
+        return tk.redirect_to('csunesco.resend_verification')
+    require_registered(user)
 
     def render(values):
-        if user:
-            values.update(existing_account=True, account=user, recaptcha_publickey='')
+        values.update(existing_account=True, account=user, recaptcha_publickey='')
         return _render_manager(values)
 
-    if user:
-        if auth.can_propose_project(context):
-            from ckanext.csunesco.logic.registration_profile import completeness
-            if not completeness(user, profile)['profile_complete']:
-                return tk.redirect_to('csunesco.complete_profile', next=tk.url_for('csunesco.project_new'))
-            return tk.redirect_to('csunesco.project_new')
-        if profile and profile.profile_type == 'manager':
-            return render({'data': {}, 'errors': {},
-                           'application_status': profile.manager_decision or 'pending',
-                           'review_reason': profile.manager_review_reason})
+    if auth.can_propose_project(context):
+        return tk.redirect_to('csunesco.project_new')
+    if profile.profile_type == 'manager':
+        return render({'data': _manager_account_data(user, profile), 'errors': {},
+                       'application_status': profile.manager_decision or 'pending',
+                       'review_reason': profile.manager_review_reason})
     if request.method == 'GET':
-        return render({'data': _manager_account_data(user, profile) if user else {}, 'errors': {}})
+        return render({'data': _manager_account_data(user, profile), 'errors': {}})
 
-    # --- POST ---------------------------------------------------------------
-    retry_after = _registration_retry_after()
-
-    email = request.form.get('email', '').strip()
-    username = request.form.get('username', '').lower().strip()
-    fullname = request.form.get('fullname', '').strip()
-    if user:
-        username, email = user.name, user.email or ''
-        fullname = user.fullname or fullname
-    password = request.form.get('password', '')
-    confirm_password = request.form.get('confirm_password', '')
-    date_of_birth = request.form.get('date_of_birth', '').strip()
-    nationality = request.form.get('nationality', '').strip().upper()
-    gender = request.form.get('gender', '').strip()
-    motivation = request.form.get('motivation', '').strip()
-    language = request.form.get('language', '').strip()
-    language_other = request.form.get('language_other', '').strip()
     org_type = request.form.get('org_type', '').strip()
     org_name = request.form.get('org_name', '').strip()
     new_org_name = request.form.get('new_org_name', '').strip()
@@ -884,53 +871,24 @@ def register_manager():
     org_role = request.form.get('org_role', 'member').strip()
     org_description = request.form.get('org_description', '').strip()
 
-    data = {
-        'email': email,
-        'username': username,
-        'fullname': fullname,
-        'date_of_birth': date_of_birth,
-        'nationality': nationality,
-        'gender': gender,
-        'org_type': org_type,
-        'org_name': org_name,
-        'new_org_name': new_org_name,
-        'org_title': org_title,
-    }
-
-    data.update(motivation=motivation, language=language, language_other=language_other,
+    data = dict(_manager_account_data(user, profile), org_type=org_type,
+                org_name=org_name, new_org_name=new_org_name, org_title=org_title,
                 org_role=org_role, org_description=org_description)
 
     def _fail(status=200, headers=None, errors=None):
-        rendered = render({
-            'data': data,
-            'errors': errors or problem('required'),
-        })
-        if status == 200 and not headers:
-            return rendered
-        return rendered, status, (headers or {})
+        rendered = render({'data': data, 'errors': errors or problem('required')})
+        return rendered if status == 200 and not headers else (rendered, status, headers or {})
 
+    retry_after = _registration_retry_after()
     if retry_after is not None:
         return _fail(429, {'Retry-After': str(retry_after)}, problem('too_many_attempts'))
-    if user and not EMAIL_RE.match(email):
-        return _fail(errors=problem('email_invalid', 'email'))
-
-    # The responsibilities acknowledgement is this form's terms checkbox.
     if not responsibilities:
         return _fail(errors=problem('terms_required', 'responsibilities'))
-
-    # Required fields: identity, demographics (incl. nationality -- the 2026
-    # Member-State reporting rule, same as the citizen form) and the whole
-    # org block.
-    if not fullname or not date_of_birth or not gender or not nationality:
-        missing = [k for k in ('fullname', 'date_of_birth', 'gender', 'nationality') if not data[k]]
-        return _fail(errors=problem('required', *missing))
     if org_type not in {row['name'] for row in constants.ORG_TYPES}:
         return _fail(errors=problem('organization_invalid', 'org_name', 'org_title', 'org_type', 'new_org_name'))
     if not org_title:
         return _fail(errors=problem('organization_invalid', 'org_name', 'org_title', 'org_type', 'new_org_name'))
 
-    if not 20 <= len(motivation) <= 500:
-        return _fail(errors=problem('motivation_invalid', 'motivation'))
     if org_role not in ('member', 'admin') or len(org_description) > 5000:
         return _fail(errors=problem('organization_invalid', 'org_role', 'org_description'))
 
@@ -949,29 +907,6 @@ def register_manager():
             return _fail(errors=problem('organization_invalid', 'org_name', 'org_title', 'org_type', 'new_org_name'))
         org_id = org_name
 
-    if not user and (not password or len(password) < MIN_PASSWORD_LENGTH):
-        return _fail(errors=problem('password_short', 'password'))
-    if not user and password != confirm_password:
-        return _fail(errors=problem('password_mismatch', 'confirm_password'))
-
-    try:
-        parsed_dob, parsed_nationality, parsed_gender = _parse_optional_profile({
-            'date_of_birth': date_of_birth,
-            'nationality': nationality,
-            'gender': gender,
-        })
-    except ValidationError as exc:
-        return _fail(errors=from_validation(exc))
-
-    if not user and _recaptcha_configured():
-        if not _verify_recaptcha(request.form.get('recaptcha_response')):
-            return _fail(errors=problem('captcha_failed'))
-
-    context = {
-        'model': model,
-        'session': model.Session,
-        'user': tk.g.user,
-    }
     org_image_url = None
     logo_upload = None
     if creating_org:
@@ -982,72 +917,36 @@ def register_manager():
             org_image_url, logo_upload = store_org_logo(request.files.get('org_logo'))
         except ValidationError as exc:
             return _fail(errors=from_validation(exc))
-    verification_token = None if user else secrets.token_urlsafe(32)
-
     try:
-        payload = {
-            'email': email,
-            'username': username,
-            'fullname': fullname,
-            'password': password,
-            'date_of_birth': parsed_dob,
-            'nationality': parsed_nationality,
-            'gender': parsed_gender,
-            'motivation': motivation, 'language': language, 'language_other': language_other,
-            'terms_accepted': True,
-            'manager': {
-                'org_id': org_id,
-                'org_name_requested': new_org_name if creating_org else None,
-                'org_type': org_type,
-                'org_title': org_title,
-                # New organizations start with the requester as admin;
-                # existing organizations use the requested Member/Admin role.
-                'org_role': 'admin' if creating_org else org_role,
-                'org_description': org_description if creating_org else None,
-                'org_image_url': org_image_url,
-            },
-        }
-        if user:
-            created = _request_manager_access(user.id, payload, payload['manager'])
-            if not created and logo_upload:
-                logo_upload.rollback()
-        else:
-            create_citizen_scientist(context, payload, verification_token=verification_token)
-    except NotAuthorized:
+        created = _request_manager_access(user.id, {}, {
+            'org_id': org_id,
+            'org_name_requested': new_org_name if creating_org else None,
+            'org_type': org_type, 'org_title': org_title,
+            'org_role': 'admin' if creating_org else org_role,
+            'org_description': org_description if creating_org else None,
+            'org_image_url': org_image_url,
+        })
+        if not created and logo_upload:
+            logo_upload.rollback()
+    except (NotAuthorized, ValidationError) as exc:
         model.Session.rollback()
         if logo_upload:
             logo_upload.rollback()
-        if user:
+        if isinstance(exc, NotAuthorized):
             return tk.abort(403, tk._('An active account is required.'))
-        log.warning('csunesco: user_create not authorized for PM register')
-        return _fail(errors=problem('registration_disabled'))
-    except ValidationError as exc:
-        model.Session.rollback()
-        if logo_upload:
-            logo_upload.rollback()
         return _fail(errors=from_validation(exc))
     except Exception:
         model.Session.rollback()
         if logo_upload:
             logo_upload.rollback()
         raise
-
-    if user:
-        return tk.redirect_to('csunesco.register_manager')
-    _send_verification_email(fullname or username, email, verification_token, language=language)
-
-    return _render_manager({
-        'data': {},
-        'errors': {},
-        'pending_verification': True,
-        'email': email,
-    })
+    return tk.redirect_to('csunesco.register_manager')
 
 
 def _render_verify(state, project_slug=None):
     """Render the /verify result page for a single ``state`` string."""
     return tk.render('csunesco/verify_result.html',
-                     extra_vars={'state': state, 'project_slug': project_slug})
+                     extra_vars={'state': state, 'project_slug': project_slug, 'next_path': _registration_next()})
 
 
 def verify_citizen(token):

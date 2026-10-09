@@ -31,6 +31,14 @@ def require_complete(user):
         raise tk.ValidationError({'registration_profile_required': state['missing_fields']})
 
 
+def require_registered(user):
+    require_complete(user)
+    profile = db.get_citizen_scientist(user.id)
+    if user.state != 'active' or not profile.email_verified:
+        raise tk.ValidationError({'email_verification_required': ['Verify your email before continuing.']})
+    return profile
+
+
 def acting_user(context, data):
     from ckanext.csunesco.logic.onboarding import review_context
     actual = review_context(context, data)
@@ -46,7 +54,11 @@ def acting_user(context, data):
 def csunesco_registration_profile_show(context, data_dict):
     from ckanext.csunesco.logic.onboarding import profile_dict
     user = acting_user(context, data_dict or {})
-    return dict(profile_dict(user), **completeness(user))
+    state = completeness(user)
+    profile = db.get_citizen_scientist(user.id)
+    eligible = bool(state['profile_complete'] and profile.email_verified
+                    and auth.can_propose_project({'user': user.name, 'auth_user_obj': user}))
+    return dict(profile_dict(user), **state, can_propose_project=eligible)
 
 
 def csunesco_registration_profile_update(context, data_dict):

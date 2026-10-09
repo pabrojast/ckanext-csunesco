@@ -109,6 +109,29 @@ def csunesco_registration_project_review(context, data_dict):
     return tk.get_action('csunesco_admin_pending_list')(context, data_dict)
 
 
+def csunesco_registration_join_decide(context, data_dict):
+    """Compatibility bridge: the actual reviewer must have CKAN permissions."""
+    context = review_context(context, data_dict)
+    decision = data_dict.get('decision')
+    if decision not in ('approve', 'reject'):
+        raise tk.ValidationError({'decision': ['Invalid decision']})
+    project = db.get_project(data_dict.get('project_slug'))
+    if project is None:
+        raise tk.ObjectNotFound('Project not found')
+    payload = {'project_id': project.id, 'user_id': data_dict.get('user_id')}
+    action = 'csunesco_join_' + decision
+    tk.check_access(action, context, payload)
+    member = db.project_member(project.id, payload['user_id'])
+    if member is None:
+        raise tk.ObjectNotFound('The join request has not reached the portal yet')
+    desired = 'active' if decision == 'approve' else 'rejected'
+    if member.status == desired:
+        return {'membership': db.member_dictize(member)}
+    if member.status != 'pending':
+        raise tk.ValidationError({'status': ['This request has already been decided.']})
+    return tk.get_action(action)(context, payload)
+
+
 def csunesco_registration_resend(context, data_dict):
     if not auth._is_sysadmin(context):
         raise tk.NotAuthorized('Trusted backend required')
@@ -176,4 +199,5 @@ def store_org_logo(upload):
 
 def get_actions():
     return {fn.__name__: fn for fn in (csunesco_registration_review_show,
-        csunesco_manager_list, csunesco_registration_project_review, csunesco_registration_resend)}
+        csunesco_manager_list, csunesco_registration_project_review,
+        csunesco_registration_join_decide, csunesco_registration_resend)}

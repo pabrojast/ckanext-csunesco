@@ -139,3 +139,41 @@ def test_rejection_retry_does_not_notify_twice(harness, session):
     for _ in range(2):
         registration.csunesco_manager_reject(_ctx(), {'username':'paula', 'reason':'Please confirm affiliation.'})
     assert len([call for call in calls if call[0] == 'email']) == 1
+
+
+@pytest.mark.parametrize('state,decision,allowed', [
+    ('pending', 'approve', True), ('active', 'approve', True),
+    ('rejected', 'reject', True), ('active', 'reject', False),
+    ('rejected', 'approve', False)])
+def test_join_bridge_rechecks_actor_and_terminal_state(monkeypatch, state, decision, allowed):
+    user = NS(id='reviewer-id', name='reviewer', state='active')
+    monkeypatch.setattr(model.User, 'get', lambda key: user)
+    monkeypatch.setattr(auth, '_is_sysadmin', lambda ctx: ctx.get('user') == 'service')
+    monkeypatch.setattr(db, 'get_project', lambda key: NS(id='project'))
+    monkeypatch.setattr(db, 'project_member', lambda *a: NS(status=state))
+    monkeypatch.setattr(db, 'member_dictize', lambda member: {'status': member.status})
+    checks = []
+    def check(action, ctx, data):
+        assert ctx['user'] == 'reviewer' and 'ignore_auth' not in ctx
+        checks.append(action)
+    monkeypatch.setattr(tk, 'check_access', check)
+    monkeypatch.setattr(tk, 'get_action', lambda action: lambda ctx, data: {'membership': {'status':'active'}})
+    payload = {'actor_username':'reviewer','actor_id':'reviewer-id',
+               'project_slug':'project','user_id':'applicant','decision':decision}
+    if allowed:
+        assert onboarding.csunesco_registration_join_decide({'user':'service','ignore_auth':True}, payload)['membership']
+    else:
+        with pytest.raises(tk.ValidationError):
+            onboarding.csunesco_registration_join_decide({'user':'service'}, payload)
+    assert checks == ['csunesco_join_' + decision]
+
+
+def test_join_bridge_permission_checked_even_for_an_existing_decision(monkeypatch):
+    monkeypatch.setattr(db, 'get_project', lambda key: NS(id='project'))
+    def denied(*args):
+        raise tk.NotAuthorized('Not this project')
+    monkeypatch.setattr(tk, 'check_access', denied)
+    monkeypatch.setattr(db, 'project_member', lambda *args: pytest.fail('Must authorize first'))
+    with pytest.raises(tk.NotAuthorized):
+        onboarding.csunesco_registration_join_decide({'user':'outsider'},
+            {'project_slug':'project', 'user_id':'applicant','decision':'approve'})

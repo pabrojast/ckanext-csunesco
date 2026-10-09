@@ -90,7 +90,8 @@ def csunesco_pending_count():
         import ckan.model as model
         from ckanext.csunesco.logic.action.admin import _get_pending_counts
         context = {'model': model, 'session': model.Session, 'user': tk.g.user}
-        return _get_pending_counts(context).get('total', 0)
+        counts = _get_pending_counts(context)
+        return sum(counts.get(key, 0) for key in ('content_requests', 'data_requests', 'page_requests'))
     except Exception:
         log.warning('csunesco: pending count could not be computed')
         return 0

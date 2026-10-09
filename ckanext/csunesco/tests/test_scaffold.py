@@ -332,10 +332,9 @@ def test_citizen_join_step_is_qr_only_and_optional():
 def test_confirmation_screens_list_the_real_next_steps():
     citizen = _template_source('register_citizen.html')
     manager = _template_source('register_manager.html')
-    for source in (citizen, manager):
-        assert 'Check your inbox' in source
-        assert 'cs-confirm-steps' in source
-        assert "url_for('csunesco.resend_verification')" in source
-    # Verified PMs can prepare a proposal before account approval.
-    assert manager.index('Sign in and propose a project') < \
-        manager.index('Submit your project')
+    assert 'Check your inbox' in citizen
+    assert 'cs-confirm-steps' in citizen
+    assert "url_for('csunesco.resend_verification')" in citizen
+    assert 'Your existing account' in manager
+    assert 'Email verified' in manager
+    assert 'Publication requires approval of both your PM request and your project.' in manager

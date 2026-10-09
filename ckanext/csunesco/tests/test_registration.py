@@ -383,30 +383,29 @@ _MANAGER_FORM = {
 
 
 def _manager_post(app, monkeypatch, overrides=None):
+    import datetime
+    from types import SimpleNamespace
+    from ckanext.csunesco import db
+    from ckanext.csunesco.logic import auth, onboarding
+    from ckanext.csunesco.logic.registration_profile import completeness
     captured = {}
-    from ckanext.csunesco.logic import onboarding
+    profile = SimpleNamespace(profile_type='citizen', date_of_birth=datetime.date(1985,2,3),
+        nationality='CL', gender='female', language='fr', motivation='Protect our local river together.',
+        terms_accepted_at=datetime.datetime.utcnow(), email_verified=True)
+    user = SimpleNamespace(id='user-1', name='paula', fullname='Paula Manager', email='pm@example.org', state='active')
+    monkeypatch.setattr(auth, '_user_obj', lambda ctx: user)
+    monkeypatch.setattr(auth, 'can_propose_project', lambda ctx: False)
+    monkeypatch.setattr(db, 'get_citizen_scientist', lambda uid: profile)
     monkeypatch.setattr(onboarding, 'exact_org_match', lambda title: False)
     monkeypatch.setattr(registration, '_registration_retry_after', lambda: None)
-    monkeypatch.setattr(registration, '_recaptcha_configured', lambda: False)
     monkeypatch.setattr(registration, '_render_manager', lambda values: values)
-    monkeypatch.setattr(registration, '_organization_options',
-                        lambda: [{'name': 'existing-org',
-                                  'title': 'Existing Org'}])
-    monkeypatch.setattr(registration.secrets, 'token_urlsafe',
-                        lambda size: 'token')
-    monkeypatch.setattr(
-        registration, '_send_verification_email',
-        lambda name, email, token, language=None: captured.update(mail=(email, token), mail_language=language))
-
-    def create(context, data, verification_token=None):
-        captured.update(created=data, token=verification_token)
-        return {'id': 'user-1', 'name': 'paula'}
-
-    monkeypatch.setattr(registration, 'create_citizen_scientist', create)
+    monkeypatch.setattr(registration, '_organization_options', lambda: [{'name':'existing-org','title':'Existing Org'}])
+    monkeypatch.setattr(tk, 'redirect_to', lambda *a, **kw: ('redirect', a, kw))
+    monkeypatch.setattr(registration, '_request_manager_access', lambda uid, data, manager: captured.update(created={'manager': manager}) or True)
     form = dict(_MANAGER_FORM)
     form.update(overrides or {})
     with app.test_request_context('/register-pm', method='POST', data=form):
-        g.user = ''
+        g.user = user.name
         out = registration.register_manager()
     return out, captured
 
@@ -418,10 +417,8 @@ def test_manager_registration_new_org_derives_admin(app, monkeypatch):
     assert manager['org_id'] is None
     assert manager['org_role'] == 'admin'
     assert manager['org_type'] == 'university'
-    assert captured['token'] == 'token'
-    assert captured['mail'] == ('pm@example.org', 'token')
-    assert captured['mail_language'] == 'fr'
-    assert out['pending_verification'] is True
+    assert 'token' not in captured and 'mail' not in captured
+    assert out[0] == 'redirect'
 
 
 def test_manager_registration_existing_org_requests_member(app, monkeypatch):
@@ -436,7 +433,7 @@ def test_manager_registration_existing_org_requests_member(app, monkeypatch):
 def test_manager_registration_requires_the_org_block(app, monkeypatch):
     for missing, value in (('org_type', ''), ('org_name', ''),
                            ('org_title', ''), ('responsibilities', ''),
-                           ('new_org_name', ''), ('nationality', '')):
+                           ('new_org_name', '')):
         out, captured = _manager_post(app, monkeypatch, {missing: value})
         expected = {'responsibilities': 'terms_required', 'nationality': 'required'}.get(missing, 'organization_invalid')
         assert out['errors']['code'] == 'registration_' + expected, missing
@@ -537,3 +534,15 @@ def test_resend_verification_does_not_touch_tokens_when_limited(app, monkeypatch
                                   data={'email': 'victim@example.org'}):
         _body, status, _headers = registration.resend_verification()
     assert status == 429
+
+
+@pytest.mark.parametrize('value,expected', [
+    ('/citizen-science/register/project-manager', True),
+    ('/es/citizen-science/register/project-manager', True),
+    ('https://evil.example/citizen-science/register/project-manager', False),
+    ('//evil.example', False), ('/user/logout', False)])
+def test_proposal_intent_only_accepts_known_local_destinations(value, expected):
+    from flask import Flask
+    from ckanext.csunesco.logic import registration
+    with Flask(__name__).test_request_context(query_string={'next': value}):
+        assert registration._registration_next() == (value if expected else None)

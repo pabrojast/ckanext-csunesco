@@ -35,6 +35,11 @@ def existing(harness, monkeypatch):
     monkeypatch.setattr(registration, 'create_citizen_scientist', unexpected)
     monkeypatch.setattr(registration, '_send_verification_email', unexpected)
     monkeypatch.setattr(registration, '_verify_recaptcha', unexpected)
+    profile = db.get_or_create_citizen_scientist(user.id,
+        date_of_birth=datetime.date(1985, 2, 3), nationality='CL', gender='female',
+        language='fr', motivation='Protect local rivers together.', terms_accepted=True)
+    profile.email_verified = True
+    model.Session.commit()
     return user, calls
 
 
@@ -47,12 +52,15 @@ def post(app, user, **overrides):
         return registration.register_manager()
 
 
-@pytest.mark.parametrize('has_profile', [False, True])
-def test_request_reuses_identity_and_preserves_citizen_data(app, existing, session, has_profile):
+def test_request_reuses_identity_and_preserves_citizen_data(app, existing, session):
+    has_profile = True
     user, calls = existing
     if has_profile:
         profile = db.get_or_create_citizen_scientist(user.id,
             country='Chile', registration_project_slug='river', terms_accepted=True)
+        profile.country = 'Chile'
+        profile.registration_project_slug = 'river'
+        session.commit()
         original_id, accepted_at = profile.id, profile.terms_accepted_at
     out = post(app, user, username='someone-else', email='other@example.org', fullname='Forged name', password='overwrite-attempt')
     assert out[:2] == ('redirect', 'csunesco.register_manager')
@@ -124,7 +132,7 @@ def test_eligible_user_goes_directly_to_project_form(app, existing, monkeypatch)
     user, _ = existing
     monkeypatch.setattr(auth, 'can_propose_project', lambda ctx: True)
     assert post(app, user)[:2] == ('redirect', 'csunesco.project_new')
-    assert db.get_citizen_scientist(user.id) is None
+    assert db.get_citizen_scientist(user.id).profile_type == 'citizen'
 
 
 def test_expired_session_never_falls_through_to_new_registration(app, existing):
@@ -140,7 +148,7 @@ def test_invalid_organization_keeps_existing_identity_and_selection(app, existin
     out = post(app, user, org_name='forged-org')
     assert out['errors']['code'] == 'registration_organization_invalid'
     assert out['data']['org_name'] == 'forged-org'
-    assert out['existing_account'] and db.get_citizen_scientist(user.id) is None
+    assert out['existing_account'] and db.get_citizen_scientist(user.id).profile_type == 'citizen'
 
 
 def test_disabled_during_submission_creates_no_profile(existing, monkeypatch):
@@ -148,7 +156,7 @@ def test_disabled_during_submission_creates_no_profile(existing, monkeypatch):
     user.state = 'deleted'
     with pytest.raises(tk.NotAuthorized):
         registration._request_manager_access(user.id, {}, {})
-    assert db.get_citizen_scientist(user.id) is None
+    assert db.get_citizen_scientist(user.id).profile_type == 'citizen'
 
 
 def test_concurrent_duplicate_does_not_change_reviewed_application(app, existing, session):
@@ -211,3 +219,33 @@ def test_manager_route_enforces_csrf_even_when_extensions_are_exempt(monkeypatch
     accepted = client.post('/manager', base_url='https://example.test',
         data={'_csrf_token': token}, headers={'Referer': 'https://example.test/manager'})
     assert accepted.status_code == 200 and accepted.get_data(as_text=True) == 'accepted'
+
+
+def test_incomplete_account_must_register_before_pm(app, existing, session):
+    user, _ = existing
+    profile = db.get_citizen_scientist(user.id)
+    profile.terms_accepted_at = None
+    session.commit()
+    assert post(app, user)[:2] == ('redirect', 'csunesco.complete_profile')
+    with pytest.raises(tk.ValidationError):
+        registration._request_manager_access(user.id, {}, {'org_id': 'existing-org'})
+    assert profile.profile_type == 'citizen' and profile.org_id is None
+
+
+def test_pm_application_does_not_overwrite_citizen_fields(app, existing):
+    user, _ = existing
+    profile = db.get_citizen_scientist(user.id)
+    before = (profile.motivation, profile.language, profile.date_of_birth, profile.terms_accepted_at)
+    post(app, user, motivation='Forged replacement', language='ar', date_of_birth='2000-01-01')
+    assert before == (profile.motivation, profile.language, profile.date_of_birth, profile.terms_accepted_at)
+
+
+def test_pm_entry_requires_registration_and_verification(app, existing, monkeypatch):
+    user, _ = existing
+    with app.test_request_context('/register-pm'):
+        g.user = ''
+        assert registration.register_manager()[:2] == ('redirect', 'csunesco.register_citizen')
+    profile = db.get_citizen_scientist(user.id)
+    profile.email_verified = False
+    assert post(app, user)[:2] == ('redirect', 'csunesco.resend_verification')
+    assert profile.profile_type == 'citizen'

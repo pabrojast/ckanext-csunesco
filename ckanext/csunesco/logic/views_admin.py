@@ -68,8 +68,8 @@ def _not_authorized_response():
 
 def _redirect_dashboard(tab):
     """PRG back to the dashboard, re-opening ``tab`` via a URL fragment."""
-    if tab == 'managers':
-        return redirect(tk.h.url_for('csunesco.manager_reviews'))
+    if tab in ('managers', 'projects', 'joins'):
+        return redirect(tk.h.url_for('colab.show_admin', tab=tab))
     url = tk.h.url_for('csunesco.admin_dashboard')
     return redirect('{0}#tab-{1}'.format(url, tab))
 
@@ -132,6 +132,8 @@ def admin_dashboard():
     if not tk.g.user:
         return _not_authorized_response()
 
+    if request.args.get('tab') in ('managers', 'joins', 'projects'):
+        return tk.redirect_to('colab.show_admin', tab=request.args['tab'])
     offset = _positive_int(request.args.get('offset'), 0)
     context = _context()
     try:
@@ -247,23 +249,11 @@ def admin_dashboard():
     project_requests = views._decorate_projects(
         data.get('project_requests', []))
 
-    # Manager accounts awaiting the sysadmin decision (spec: "the IHP Admin
-    # approves or declines the user account"). Sysadmin-only queue -- the
-    # actions behind the buttons are too. Fail-soft like every other band.
-    pending_managers = []
-    if is_sysadmin:
-        try:
-            from ckanext.csunesco import db as cs_db
-            import ckan.model as model
-            for profile in cs_db.pending_managers():
-                user = model.User.get(profile.user_id)
-                from ckanext.csunesco.logic.onboarding import profile_dict
-                pending_managers.append(profile_dict(user, profile))
-        except Exception:
-            log.warning('csunesco: pending manager list unavailable')
+    counts = dict(data.get('counts', {}))
+    counts['total'] = sum(counts.get(key, 0) for key in
+                          ('content_requests', 'data_requests', 'page_requests'))
 
     return tk.render('csunesco/cs-admin-dashboard.html', extra_vars={
-        'pending_managers': pending_managers,
         'my_projects': my_projects,
         'managed_projects': views._decorate_projects(managed_projects),
         'admin_initiatives': admin_initiatives,
@@ -279,7 +269,7 @@ def admin_dashboard():
         'data_requests': data.get('data_requests', []),
         'data_connected': data_connected,
         'page_requests': data.get('page_requests', []),
-        'counts': data.get('counts', {}),
+        'counts': counts,
         'organizations': organizations,
         'default_owner_org': (
             tk.config.get('ckanext.csunesco.dataset_owner_org') or '').strip(),
@@ -287,30 +277,7 @@ def admin_dashboard():
 
 
 def project_review(id):
-    if not tk.g.user:
-        return _not_authorized_response()
-    try:
-        project = tk.get_action('csunesco_project_review_show')(
-            _context(), {'id': id})
-    except tk.NotAuthorized:
-        return _not_authorized_response()
-    except tk.ObjectNotFound:
-        return tk.abort(404, tk._('No project request is awaiting review'))
-    except Exception:
-        log.warning('csunesco: project review could not be loaded')
-        return tk.abort(404, tk._('No project request is awaiting review'))
-    if project.get('organization_id'):
-        try:
-            organization = tk.get_action('organization_show')(
-                _context(), {'id': project['organization_id']})
-            project['organization_title'] = (
-                organization.get('title') or organization.get('name'))
-        except Exception:
-            log.warning('csunesco: project review organization unavailable')
-    return tk.render('csunesco/project_review.html', extra_vars={
-        'project': project,
-        'project_steps': constants.PROJECT_FORM_STEPS,
-    })
+    return tk.redirect_to('colab_cs.project_review', project_id=id)
 
 
 # ---------------------------------------------------------------------------
@@ -620,18 +587,6 @@ def page_reject(project_id):
 
 
 def manager_reviews():
-    if not _is_sysadmin():
-        return _not_authorized_response()
-    status = request.args.get('status', 'pending')
-    q = request.args.get('q', '').strip()[:100]
-    offset = _positive_int(request.args.get('offset'), 0)
-    try:
-        result = tk.get_action('csunesco_manager_list')(_context(), {
-            'status': status, 'q': q, 'offset': offset, 'limit': PANEL_PAGE_SIZE})
-    except tk.ValidationError:
-        tk.abort(400, tk._('Invalid filter'))
-    from ckanext.csunesco.logic.registration import _organization_options
-    return tk.render('csunesco/manager_reviews.html', extra_vars={
-        'result': result, 'status': status, 'q': q, 'offset': offset,
-        'page_size': PANEL_PAGE_SIZE,
-        'organizations': _organization_options()})
+    return tk.redirect_to('colab.show_admin', tab='managers',
+                          status=request.args.get('status', 'pending'),
+                          q=request.args.get('q', ''), offset=_positive_int(request.args.get('offset'), 0))

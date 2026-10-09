@@ -1,17 +1,8 @@
 {% extends "csunesco/base.html" %}
 
-{#
-  Project Manager self-registration (spec "Public Portal Structure + Project
-  Forms", section 3): the Citizen Scientist identity/demographics plus the
-  Organization block. The account is double-gated -- email verification first,
-  then a sysadmin decision (csunesco_manager_approve) that also creates/joins
-  the declared organization.
+{# A verified Citizen Scientist requests the additional Project Manager role. #}
 
-  Server errors stay deliberately generic (no account enumeration). Client
-  hints are progressive enhancement; every rule is repeated server-side.
-#}
-
-{% block subtitle %}{{ _("Request Project Manager access") if existing_account else _("Register as a Project Manager") }}{% endblock %}
+{% block subtitle %}{{ _("Request Project Manager access") }}{% endblock %}
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
@@ -47,61 +38,13 @@
           <p>{{ _("Your existing account and access remain unchanged.") }}</p>
           <a class="cs-btn cs-btn-secondary" href="{{ h.url_for('csunesco.index') }}">{{ _("Back to Citizen Science") }}</a>
         </div>
-      {% elif pending_verification %}
-        {# Confirmation. The order is the real one: a Project Manager cannot
-           sign in -- and so cannot propose a project -- until an administrator
-           approves the account (see csunesco_manager_approve). #}
-        <div class="cs-register-success cs-confirm" role="status">
-          <span class="cs-confirm-mail" aria-hidden="true">{{ h.csunesco_icon('mail', 36) }}</span>
-          <span class="cs-role-chip">{{ _("Project Manager") }}</span>
-          <h1 id="cs-reg-title">{{ _("Check your inbox") }}</h1>
-          <p>
-            {% if email %}
-              {{ _("We've sent a confirmation email to") }} <strong>{{ email }}</strong>.
-            {% else %}
-              {{ _("We've sent you a confirmation email.") }}
-            {% endif %}
-          </p>
-          <ol class="cs-confirm-steps">
-            <li class="cs-confirm-step is-active">
-              <span class="cs-confirm-num" aria-hidden="true">1</span>
-              <div class="cs-confirm-card">
-                <h2>{{ _("Confirm your email") }}</h2>
-                <p>{{ _("Click the link in the email to validate your address. The link expires in 48 hours.") }}</p>
-              </div>
-            </li>
-            <li class="cs-confirm-step">
-              <span class="cs-confirm-num" aria-hidden="true">2</span>
-              <div class="cs-confirm-card">
-                <h2>{{ _("Sign in and propose a project") }}</h2>
-                <p>{{ _("After verifying your email, you can sign in and submit a project proposal while your Project Manager account is reviewed.") }}</p>
-              </div>
-            </li>
-            <li class="cs-confirm-step">
-              <span class="cs-confirm-num" aria-hidden="true">3</span>
-              <div class="cs-confirm-card">
-                <h2>{{ _("Submit your project") }}</h2>
-                <p>{{ _("Sign in to the Citizen Science Portal and fill in the form describing your project. An administrator reviews it before you can invite citizen scientists and start collecting data.") }}</p>
-              </div>
-            </li>
-          </ol>
-          <a class="cs-btn cs-btn-primary cs-confirm-back" href="{{ h.url_for('csunesco.index') }}">{{ _("Back to Citizen Science") }}</a>
-          <p class="cs-register-muted">
-            {{ _("Didn't receive it? Check your spam or junk folder or") }}
-            <a href="{{ h.url_for('csunesco.resend_verification') }}">{{ _("resend the email") }}</a>.
-          </p>
-        </div>
       {% else %}
-        <h1 id="cs-reg-title" class="cs-register-title">{{ _("Request Project Manager access") if existing_account else _("Register as a Project Manager") }}</h1>
+        <h1 id="cs-reg-title" class="cs-register-title">{{ _("Request Project Manager access") }}</h1>
         <p class="cs-register-intro">
-          {% if existing_account %}
-            {{ _("Use your existing account to request Project Manager access. Complete your details and organization below. Your account stays active while an administrator reviews your request.") }}
-          {% else %}
-            {{ _("Project Managers propose and run citizen science projects on behalf of an organization. Your account will be reviewed by a platform administrator before it is activated.") }}
-          {% endif %}
+          {{ _("Your Citizen Scientist registration is complete. Add your organization and responsibilities to request Project Manager access.") }}
         </p>
         <p class="cs-register-muted">
-          {{ _("Once approved, you join your organization with the reviewed role and can propose citizen science projects. A new organization makes you its administrator.") }}
+          {{ _("You can submit a project while your PM request is reviewed. Publication requires approval of both your PM request and your project.") }}
           <a class="cs-link" href="{{ h.csunesco_editor_link('csunesco.project_new') }}">{{ _("Who can propose a project?") }}</a>
         </p>
 
@@ -116,164 +59,21 @@
         <form method="post"
               action="{{ h.url_for('csunesco.register_manager') }}"
               class="cs-register-form" id="cs-register-form" enctype="multipart/form-data" novalidate
-              data-recaptcha-key="{{ recaptcha_publickey or '' }}"
               data-sending-label="{{ _('Sending…') }}"
-              data-submit-label="{{ _('Submit PM request') if existing_account else _('Create account') }}"
+              data-submit-label="{{ _('Submit PM request') }}"
               data-recaptcha-loading="{{ _('Security check is still loading. Please try again.') }}"
               data-recaptcha-error="{{ _('The security check could not be completed. Please try again.') }}">
           {{ h.csrf_input() }}
 
           <fieldset class="cs-register-fieldset">
-            <legend><span class="cs-step-number">1</span> {{ _("Your existing account") if existing_account else _("Create your account") }}</legend>
-
-            {% if existing_account %}
-              <input type="hidden" name="existing_account" value="1">
-              <p><strong>{{ account.name }}</strong> · {{ account.email or _('No email address') }}</p>
-              <p class="cs-hint">{{ _("No new account, password or email verification is needed.") }}
-                <a href="{{ h.url_for('user.edit', id=account.name) }}">{{ _('Update your account details') }}</a>
-              </p>
-            {% endif %}
-
-            <div class="cs-field">
-              <label for="cs-fullname">{{ _("Full name") }}</label>
-              <input type="text" id="cs-fullname" name="fullname"
-                     value="{{ data.fullname or '' }}" autocomplete="name"
-                     {% if existing_account and account.fullname %}readonly{% endif %}
-                     required aria-required="true"
-                     aria-describedby="cs-fullname-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-              <p id="cs-fullname-hint" class="cs-hint"
-                 data-default="{{ _('Not shown publicly.') }}"
-                 data-error="{{ _('Enter your full name.') }}">
-                {{ _("Not shown publicly.") }}
-              </p>
-            </div>
-
-            {% if not existing_account %}
-            <div class="cs-field">
-              <label for="cs-email">{{ _("Email") }}</label>
-              <input type="email" id="cs-email" name="email"
-                     value="{{ data.email or '' }}" autocomplete="email"
-                     autocapitalize="none" spellcheck="false"
-                     aria-describedby="cs-email-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-              <p id="cs-email-hint" class="cs-hint"
-                 data-default="{{ _('Used to identify your account.') }}"
-                 data-error="{{ _('Enter a valid email address.') }}">
-                {{ _("Used to identify your account.") }}
-              </p>
-            </div>
-
-            <div class="cs-field">
-              <label for="cs-username">{{ _("Username") }} <span class="cs-hint-inline">{{ _("(optional)") }}</span></label>
-              <input type="text" id="cs-username" name="username"
-                     value="{{ data.username or '' }}" autocomplete="username"
-                     autocapitalize="none" spellcheck="false"
-                     aria-describedby="cs-username-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-              <p id="cs-username-hint" class="cs-hint"
-                 data-default="{{ _('Leave blank to generate one from your name.') }}"
-                 data-error="{{ _('Lowercase letters, numbers and dashes.') }}">
-                {{ _("Leave blank to generate one from your name.") }}
-              </p>
-            </div>
-
-            <div class="cs-field">
-              <label for="cs-password">{{ _("Password") }}</label>
-              <div class="cs-password-field">
-                <input type="password" id="cs-password" name="password"
-                       autocomplete="new-password"
-                       aria-describedby="cs-password-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-                <button type="button" class="cs-password-toggle"
-                        aria-label="{{ _('Show password') }}"
-                        data-show-label="{{ _('Show password') }}"
-                        data-hide-label="{{ _('Hide password') }}"
-                        aria-pressed="false">
-                  {{ h.csunesco_icon('eye', 18) }}
-                </button>
-              </div>
-              <div class="cs-password-meter" aria-hidden="true">
-                <span></span><span></span><span></span><span></span>
-              </div>
-              <p id="cs-password-hint" class="cs-hint"
-                 data-default="{{ _('At least 8 characters.') }}"
-                 data-error="{{ _('Password must be at least 8 characters.') }}"
-                 data-strength-label="{{ _('Password strength') }}"
-                 data-strengths="{{ _('Weak') }}|{{ _('Fair') }}|{{ _('Good') }}|{{ _('Strong') }}">
-                {{ _("At least 8 characters.") }}
-              </p>
-            </div>
-
-            <div class="cs-field">
-              <label for="cs-confirm-password">{{ _("Confirm password") }}</label>
-              <input type="password" id="cs-confirm-password" name="confirm_password"
-                     autocomplete="new-password"
-                     aria-describedby="cs-confirm-password-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-              <p id="cs-confirm-password-hint" class="cs-hint cs-field-message"
-                 data-default="" data-error="{{ _('Passwords do not match.') }}"></p>
-            </div>
-            {% endif %}
+            <legend>{{ _("Your existing account") }}</legend>
+            <input type="hidden" name="existing_account" value="1">
+            <p><strong>{{ account.fullname or account.name }}</strong> · {{ account.email }}</p>
+            <p>{{ _("Citizen Scientist") }} · {{ _("Email verified") }}</p>
+            <a href="{{ h.url_for('csunesco.complete_profile', next=h.url_for('csunesco.register_manager')) }}">{{ _("Update your account details") }}</a>
           </fieldset>
-
           <fieldset class="cs-register-fieldset">
-            <legend><span class="cs-step-number">2</span> {{ _("About you") }}</legend>
-            <p class="cs-hint">
-              {{ _("Never public. Used only to understand the age and gender groups within projects.") }}
-            </p>
-
-            <div class="cs-field">
-              <label for="cs-date-of-birth">{{ _("Date of birth") }}</label>
-              <input type="date" id="cs-date-of-birth" name="date_of_birth"
-                     value="{{ data.date_of_birth or '' }}" max="{{ today }}"
-                     autocomplete="bday" required aria-required="true"
-                     aria-describedby="cs-date-of-birth-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-              <p id="cs-date-of-birth-hint" class="cs-hint cs-field-message"
-                 data-default="" data-error="{{ _('Enter your date of birth.') }}"></p>
-            </div>
-
-            <div class="cs-register-grid">
-              <div class="cs-field">
-                <label for="cs-gender">{{ _("Gender") }}</label>
-                <select id="cs-gender" name="gender" required aria-required="true"
-                        aria-describedby="cs-gender-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-                  <option value="">{{ _("Select…") }}</option>
-                  <option value="female"{% if data.gender == 'female' %} selected{% endif %}>{{ _("Female") }}</option>
-                  <option value="male"{% if data.gender == 'male' %} selected{% endif %}>{{ _("Male") }}</option>
-                  <option value="non_binary"{% if data.gender == 'non_binary' %} selected{% endif %}>{{ _("Non-binary / Other") }}</option>
-                  <option value="prefer_not_to_say"{% if data.gender == 'prefer_not_to_say' %} selected{% endif %}>{{ _("Prefer not to say") }}</option>
-                </select>
-                <p id="cs-gender-hint" class="cs-hint cs-field-message"
-                   data-default="" data-error="{{ _('Select an option.') }}"></p>
-              </div>
-
-              <div class="cs-field">
-                <label for="cs-nationality">{{ _("Nationality") }}</label>
-                <select id="cs-nationality" name="nationality"
-                        required aria-required="true"
-                        aria-describedby="cs-nationality-hint{% if errors and errors.message %} cs-reg-error{% endif %}">
-                  <option value="">{{ _("Select…") }}</option>
-                  {% for option in country_options %}
-                    <option value="{{ option.code }}"
-                      {% if data.nationality == option.code %}selected{% endif %}>
-                      {{ option.label }}
-                    </option>
-                  {% endfor %}
-                  <option value="OTHER"
-                    {% if data.nationality == 'OTHER' %}selected{% endif %}>
-                    {{ _("Other") }}
-                  </option>
-                  <option value="PREFER_NOT_TO_SAY"
-                    {% if data.nationality == 'PREFER_NOT_TO_SAY' %}selected{% endif %}>
-                    {{ _("Prefer not to say") }}
-                  </option>
-                </select>
-                <p id="cs-nationality-hint" class="cs-hint cs-field-message"
-                   data-default="" data-error="{{ _('Select an option.') }}"></p>
-              </div>
-            </div>
-
-            {% snippet "csunesco/snippets/why_demographics.html" %}
-          </fieldset>
-
-          <fieldset class="cs-register-fieldset">
-            <legend><span class="cs-step-number">3</span> {{ _("Your organization") }}</legend>
+            <legend><span class="cs-step-number">2</span> {{ _("Your organization") }}</legend>
 
             <div class="cs-field">
               <label for="cs-org-type">{{ _("Organization type") }}</label>
@@ -363,7 +163,7 @@
               <p id="cs-org-role-note" class="cs-hint" data-role-admin="{{ _('You will be the Admin of the new organization.') }}" data-role-member="{{ _('Your requested role will be reviewed before membership is granted.') }}"></p>
             </div>
           </fieldset>
-          {% set manager_form = true %}{% include 'csunesco/snippets/motivation.html' %}
+          <details class="cs-dossier-details"><summary>{{ _("Motivation") }}</summary><p>{{ data.motivation }}</p></details>
           <fieldset class="cs-register-consent">
             <div class="cs-register-terms">
               <input type="checkbox" id="cs-terms" name="responsibilities" value="yes"
@@ -374,28 +174,19 @@
                data-default="" data-error="{{ _('Please accept the responsibilities to continue.') }}"></p>
           </fieldset>
 
-          {% if recaptcha_publickey %}
-            <input type="hidden" name="recaptcha_response" id="cs-recaptcha-response">
-          {% endif %}
+
 
           <button type="submit" id="cs-submit" class="cs-btn cs-btn-primary cs-register-submit">
-            {{ _("Submit PM request") if existing_account else _("Create account") }}
+            {{ _("Submit PM request") }}
           </button>
         </form>
 
-        {% if not existing_account %}
-        <p class="cs-register-footer">
-          {{ _("Already have an account?") }}
-          <a href="{{ (h.csunesco_login_url() or h.url_for('user.login')) }}">{{ _("Sign in") }}</a>
-        </p>
-        {% endif %}
+
       {% endif %}
     </section>
   </div>
 
-  {% if recaptcha_publickey and not pending_verification %}
-    <script src="https://www.google.com/recaptcha/api.js?render={{ recaptcha_publickey }}" async defer></script>
-  {% endif %}
+
 {% endblock %}
 
 {% block scripts %}

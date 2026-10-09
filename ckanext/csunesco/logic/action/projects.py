@@ -352,9 +352,18 @@ def csunesco_project_request_create(context, data_dict):
     if delivered is not None:
         return delivered
 
-    if not auth._is_sysadmin(context):
-        from ckanext.csunesco.logic.registration_profile import require_complete
-        require_complete(auth._user_obj(context))
+    from ckanext.csunesco.logic.registration_profile import require_registered
+    requester_name = (data_dict.get('requested_by') or '').strip()
+    if requester_name and auth._is_sysadmin(context):
+        requester = model.User.get(requester_name)
+        if requester is None:
+            raise tk.ValidationError({'requested_by': ['A registered Citizen Scientist is required.']})
+        require_registered(requester)
+        if not auth.can_propose_project({'user': requester.name, 'auth_user_obj': requester},
+                                        data_dict.get('organization_id')):
+            raise tk.ValidationError({'manager_application_required': ['Request Project Manager access before proposing a project.']})
+    elif not auth._is_sysadmin(context):
+        require_registered(auth._user_obj(context))
 
     schema = cs_schema.project_request_schema()
     # Keep only whitelisted keys so navl never reports "unexpected field"; the

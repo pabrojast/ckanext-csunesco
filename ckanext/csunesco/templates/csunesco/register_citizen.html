@@ -110,6 +110,7 @@
               data-recaptcha-loading="{{ _('Security check is still loading. Please try again.') }}"
               data-recaptcha-error="{{ _('The security check could not be completed. Please try again.') }}">
           {{ h.csrf_input() }}
+          {% if next_path %}<input type="hidden" name="next" value="{{ next_path }}">{% endif %}
 
           <fieldset class="cs-register-fieldset">
             <legend><span class="cs-step-number">1</span> {{ _("Create your account") }}</legend><div class="cs-field"><label for="cs-language">{{ _("Preferred language") }}</label><select id="cs-language" name="language">{% for code, title in [('en','English'),('fr','Français'),('es','Español'),('ar','العربية'),('pt','Português'),('uk','Українська'),('quh','Qhichwa (Bolivia)')] %}<option value="{{ code }}" {% if (data.language or h.lang()) == code %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></div>
