@@ -4775,3 +4775,117 @@
   text-align: center;
 }
 .cs-confirm .cs-register-muted a { color: var(--registration-ink); font-weight: 700; }
+
+/* Existing accounts: profile completion, separate from new-account signup. */
+.cs-profile-page {
+  text-align: start;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: clamp(20px, 4vw, 44px);
+  border: 1px solid #dce8ee;
+  border-radius: 22px;
+  background: linear-gradient(145deg, #eef7fa, #f7fafc 65%);
+}
+.cs-profile-header { max-width: 740px; margin-bottom: 30px; }
+.cs-profile-header .cs-profile-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 14px;
+  color: #006494;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .025em;
+}
+.cs-profile-header h1 {
+  margin: 0 0 12px;
+  color: #173b51;
+  -webkit-text-fill-color: #173b51;
+  font-size: clamp(26px, 3vw, 34px);
+  line-height: 1.2;
+  letter-spacing: -.025em;
+}
+.cs-profile-header > p:last-child { margin: 0; color: #486376; font-size: 16px; line-height: 1.65; }
+.cs-profile-layout { display: grid; grid-template-columns: minmax(0, 250px) minmax(0, 1fr); gap: 28px; align-items: start; }
+.cs-profile-sidebar { padding-block: 8px; }
+.cs-profile-account { display: flex; align-items: flex-start; gap: 12px; }
+.cs-profile-account > div { min-width: 0; }
+.cs-profile-account-icon { display: grid; place-items: center; flex: 0 0 42px; height: 42px; border-radius: 14px; background: #dcefe9; color: #1b6758; }
+.cs-profile-sidebar h2 { margin: 0 0 8px; color: #21485f; -webkit-text-fill-color: #21485f; font-size: 15px; line-height: 1.4; }
+.cs-profile-account strong { display: block; color: #173b51; font-size: 16px; overflow-wrap: anywhere; }
+.cs-profile-account p { margin: 3px 0 0; color: #486376; font-size: 13px; overflow-wrap: anywhere; }
+.cs-profile-sidebar .cs-profile-account-note { margin: 18px 0 24px; color: #486376; line-height: 1.65; font-size: 14px; }
+.cs-profile-next { padding-top: 22px; border-top: 1px solid #cedfe7; }
+.cs-profile-next p { margin: 0; color: #486376; font-size: 14px; line-height: 1.7; }
+.cs-profile-form { min-width: 0; margin: 0; padding: 28px; border: 1px solid #dce6ec; border-radius: 18px; background: #fff; box-shadow: 0 8px 24px #173b5108; }
+.cs-profile-form .cs-profile-required { margin: 0 0 24px; color: #526978; font-size: 12px; line-height: 1.6; }
+.cs-profile-section { min-width: 0; padding: 0; margin: 0 0 28px; border: 0; }
+.cs-profile-section + .cs-profile-section { border-top: 1px solid #e1eaf0; padding-top: 20px; }
+.cs-profile-section legend { float: left; width: 100%; margin: 0 0 2px; padding: 0; border: 0; color: #173b51; font-size: 18px; line-height: 1.5; font-weight: 700; }
+.cs-profile-section legend + * { clear: both; }
+.cs-profile-form .cs-field { margin-top: 17px; }
+.cs-profile-form .cs-field label { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin-bottom: 7px; font-size: 14px; }
+.cs-profile-form label::after { content: none !important; }
+.cs-profile-missing { display: inline-block; padding: 2px 7px; border-radius: 5px; background: #fff3dc; color: #805316; font-size: 11px; line-height: 1.5; font-weight: 600; }
+.cs-profile-form input[type="text"],
+.cs-profile-form input[type="date"],
+.cs-profile-form select,
+.cs-profile-form textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  box-sizing: border-box;
+  border: 1px solid #a9bdca;
+  border-radius: 9px;
+  padding: 11px 12px;
+  background: #f9fbfc;
+  color: #173b51;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.4;
+}
+.cs-profile-form select { height: auto; padding-inline-end: 28px; }
+.cs-profile-form textarea { min-height: 130px; resize: vertical; }
+.cs-profile-form input:focus,
+.cs-profile-form select:focus,
+.cs-profile-form textarea:focus { outline: 3px solid #0072bc30; outline-offset: 1px; border-color: #0072bc; background: #fff; }
+.cs-profile-form .cs-hint { margin: 0 0 8px; color: #526978; font-size: 12px; line-height: 1.6; }
+.cs-profile-form .cs-register-grid { gap: 0 18px; }
+.cs-profile-textarea-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; padding-top: 8px; }
+.cs-profile-form .cs-why-demographics { margin-top: 18px; }
+.cs-profile-consent { margin: 0 0 24px; padding: 16px; border-radius: 10px; background: #f3f7fa; }
+.cs-profile-consent .cs-register-terms { margin: 0; font-size: 14px; line-height: 1.65; }
+.cs-profile-actions { display: flex; align-items: center; gap: 24px; padding-top: 6px; }
+.cs-profile-actions .cs-btn { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; padding: 12px 24px; border-radius: 10px; background: #0069ad; font-size: 15px; }
+.cs-profile-actions .cs-btn:hover { background: #00588f; }
+.cs-profile-actions > a { display: inline-flex; align-items: center; min-height: 44px; color: #486376; font-size: 14px; text-decoration: underline; }
+.cs-profile-page a:focus-visible, .cs-profile-page button:focus-visible, .cs-profile-page summary:focus-visible { outline: 3px solid #0072bc; outline-offset: 3px; }
+.cs-profile-error { margin-bottom: 22px; padding: 16px; border: 1px solid #e0aaa4; border-inline-start: 4px solid #a83024; border-radius: 8px; background: #fff6f4; color: #862b22; }
+.cs-profile-error p { margin: 6px 0 0; color: inherit; font-size: 14px; }
+@media (max-width: 900px) {
+  .cs-profile-layout { grid-template-columns: 1fr; gap: 22px; }
+  .cs-profile-sidebar { padding: 18px; border: 1px solid #d3e3e9; border-radius: 14px; background: #f7fbfc; }
+  .cs-profile-sidebar .cs-profile-account-note { margin: 12px 0 0; }
+  .cs-profile-next { margin-top: 16px; padding-top: 16px; }
+}
+@media (max-width: 639px) {
+  .cs-profile-page { padding: 20px 12px; border-radius: 14px; }
+  .cs-profile-header { margin-bottom: 22px; padding-inline: 4px; }
+  .cs-profile-header > p:last-child { font-size: 15px; }
+  .cs-profile-form { padding: 20px 16px; border-radius: 14px; }
+  .cs-profile-actions { flex-direction: column; gap: 8px; }
+  .cs-profile-actions .cs-btn { width: 100%; }
+}
+
+/* The portal theme forces paragraph typography with !important. Keep this
+   override scoped to completion so supporting copy retains its hierarchy. */
+.cs-profile-page p { font-size: var(--profile-copy-size, 14px) !important; color: var(--profile-copy-color, #486376) !important; line-height: 1.65 !important; }
+.cs-profile-header > p:last-child { --profile-copy-size: 16px; }
+.cs-profile-header .cs-profile-eyebrow { --profile-copy-size: 13px; --profile-copy-color: #006494; }
+.cs-profile-account p { --profile-copy-size: 13px; }
+.cs-profile-form .cs-hint, .cs-profile-form .cs-profile-required { --profile-copy-size: 13px; --profile-copy-color: #526978; }
+.cs-profile-form .cs-field-error, .cs-profile-error p { --profile-copy-color: #862b22; }
+.cs-profile-next summary { color: #21485f; font-size: 15px; font-weight: 700; cursor: pointer; }
+.cs-profile-next[open] summary { margin-bottom: 10px; }
+.cs-profile-section legend { margin-bottom: 10px; }

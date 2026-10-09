@@ -29,6 +29,13 @@ cs-register-qr-js:
   contents:
     - js/cs-register-qr.js
 
+# Existing-account completion; independent of signup/password/CAPTCHA behavior.
+cs-profile-complete-js:
+  filters: rjsmin
+  output: js/cs-profile-complete.js
+  contents:
+    - js/cs-profile-complete.js
+
 # Shared borderless style setup. MapLibre and its Leaflet adapter are local
 # scripts loaded by snippets/map_assets.html, alongside Leaflet.
 cs-basemap-js:

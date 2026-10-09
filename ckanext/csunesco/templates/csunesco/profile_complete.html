@@ -1,37 +1,144 @@
 {% extends "csunesco/base.html" %}
+
 {% block subtitle %}{{ _("Complete your Citizen Science profile") }}{% endblock %}
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
+
 {% block cs_content %}
-<section class="cs-register-page cs-onboarding">
-  <div class="cs-register-shell">
-    <h1>{{ _("Complete your Citizen Science profile") }}</h1>
-    <p>{{ _("Keep your existing account. Complete these details before requesting to join or proposing a project.") }}</p>
-    <p>{{ data.username }} · {{ data.email }}</p>
-    {% if errors %}<div class="alert alert-error" role="alert">{{ _("Please check the required fields and accept the terms of use.") }}</div>{% endif %}
-    <form method="post">
+{% set field_errors = errors.get('fields', errors) %}
+{% macro field_label(key, text) -%}
+  <label for="profile-{{ key }}">{{ text }}{% if not data.get(key) %}<span class="cs-profile-missing">{{ _("To complete") }}</span>{% endif %}</label>
+{%- endmacro %}
+{% macro field_error(key, message) -%}
+  {% if field_errors.get(key) %}<p id="profile-{{ key }}-error" class="cs-field-error">{{ message }}</p>{% endif %}
+{%- endmacro %}
+{% macro error_attrs(key) -%}
+  {% if field_errors.get(key) %}aria-invalid="true" aria-describedby="profile-{{ key }}-error"{% endif %}
+{%- endmacro %}
+
+<section dir="{{ 'rtl' if h.lang() == 'ar' else 'ltr' }}" class="cs-profile-page" aria-labelledby="profile-title">
+  <header class="cs-profile-header">
+    <p class="cs-profile-eyebrow">{{ h.csunesco_icon('globe', 20) }} {{ _("UNESCO Citizen Science") }}</p>
+    <h1 id="profile-title">{{ _("Complete your Citizen Science profile") }}</h1>
+    <p>{{ _("Your account is already registered. Add the missing details to take part in Citizen Science.") }}</p>
+  </header>
+
+  <div class="cs-profile-layout">
+    <aside class="cs-profile-sidebar" aria-label="{{ _('Your account') }}">
+      <div class="cs-profile-account">
+        <span class="cs-profile-account-icon" aria-hidden="true">{{ h.csunesco_icon('check', 24) }}</span>
+        <div>
+          <h2>{{ _("Your account") }}</h2>
+          <strong>{{ data.fullname or data.username }}</strong>
+          <p><bdi>{{ data.username }}</bdi></p>
+          {% if data.email %}<p><bdi>{{ data.email }}</bdi></p>{% endif %}
+        </div>
+      </div>
+      <p class="cs-profile-account-note">{{ _("Your saved details are already filled in. You can review and update them below.") }}</p>
+      <details class="cs-profile-next">
+        <summary>{{ _("What happens next?") }}</summary>
+        <p>{{ _("Once your profile is complete, you can request to join a project or request Project Manager access to propose one.") }}</p>
+      </details>
+    </aside>
+
+    <form method="post" class="cs-register-form cs-profile-form" id="cs-profile-form">
       {{ h.csrf_input() }}
       <input type="hidden" name="next" value="{{ next }}">
-      <div class="cs-field"><label for="profile-fullname">{{ _("Full name") }}</label><input id="profile-fullname" name="fullname" required maxlength="200" value="{{ data.fullname or '' }}"></div>
-      <div class="cs-field"><label for="profile-dob">{{ _("Date of birth") }}</label><input id="profile-dob" name="date_of_birth" type="date" required max="{{ today }}" value="{{ data.date_of_birth or '' }}"></div>
-      <div class="cs-field"><label for="profile-nationality">{{ _("Nationality") }}</label><select id="profile-nationality" name="nationality" required>
-        <option value="">{{ _("Select an option") }}</option>
-        {% for country in country_options %}<option value="{{ country.code }}" {% if data.nationality == country.code %}selected{% endif %}>{{ country.label }}</option>{% endfor %}
-        <option value="OTHER" {% if data.nationality == 'OTHER' %}selected{% endif %}>{{ _("Other") }}</option>
-        <option value="PREFER_NOT_TO_SAY" {% if data.nationality == 'PREFER_NOT_TO_SAY' %}selected{% endif %}>{{ _("Prefer not to say") }}</option>
-      </select></div>
-      <div class="cs-field"><label for="profile-gender">{{ _("Gender") }}</label><select id="profile-gender" name="gender" required>
-        <option value="">{{ _("Select an option") }}</option>
-        {% for key, label in [('female', _('Female')), ('male', _('Male')), ('non_binary', _('Non-binary')), ('prefer_not_to_say', _('Prefer not to say'))] %}<option value="{{ key }}" {% if data.gender == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
-      </select></div>
-      <div class="cs-field"><label for="profile-language">{{ _("Preferred language") }}</label><select id="profile-language" name="language" required>
-        <option value="">{{ _("Select an option") }}</option>
-        {% for code, name in [('en','English'),('es','Español'),('fr','Français'),('pt','Português'),('uk','Українська'),('ar','العربية'),('quh','Qhichwa (Bolivia)')] %}<option value="{{ code }}" {% if data.language == code %}selected{% endif %}>{{ name }}</option>{% endfor %}
-      </select></div>
-      <div class="cs-field"><label for="profile-other">{{ _("Other language (optional)") }}</label><input id="profile-other" name="language_other" maxlength="64" value="{{ data.language_other or '' }}"></div>
-      <div class="cs-field"><label for="profile-motivation">{{ _("Why would you like to take part?") }}</label><textarea id="profile-motivation" name="motivation" required minlength="20" maxlength="500" rows="4">{{ data.motivation or '' }}</textarea></div>
-      {% if not data.terms_accepted_at %}<label><input type="checkbox" name="terms_accepted" required> {{ _("I accept the Terms of Use") }} <a href="https://www.unesco.org/en/terms-use" target="_blank" rel="noopener">{{ _("Terms of Use") }}</a></label>{% endif %}
-      <p><button class="cs-btn cs-btn-primary" type="submit">{{ _("Save and continue") }}</button> <a href="{{ next }}">{{ _("Cancel") }}</a></p>
+
+      {% if errors %}
+        <div class="cs-profile-error" id="profile-errors" role="alert" tabindex="-1">
+          <strong>{{ _("Please review the highlighted fields.") }}</strong>
+          <p>{{ _("Your changes have not been saved yet.") }}</p>
+        </div>
+      {% endif %}
+      <p class="cs-profile-required">{{ _("All fields are required unless marked optional.") }}</p>
+
+      <fieldset class="cs-profile-section">
+        <legend>{{ _("About you") }}</legend>
+        <div class="cs-field">
+          {{ field_label('fullname', _('Full name')) }}
+          <input type="text" id="profile-fullname" name="fullname" autocomplete="name" required maxlength="200" value="{{ data.fullname or '' }}" {{ error_attrs('fullname') }}>
+          {{ field_error('fullname', _('Enter your full name.')) }}
+        </div>
+        <div class="cs-register-grid">
+          <div class="cs-field">
+            {{ field_label('date_of_birth', _('Date of birth')) }}
+            <input id="profile-date_of_birth" name="date_of_birth" type="date" autocomplete="bday" required max="{{ today }}" value="{{ data.date_of_birth or '' }}" {{ error_attrs('date_of_birth') }}>
+            {{ field_error('date_of_birth', _('Enter a valid date of birth.')) }}
+          </div>
+          <div class="cs-field">
+            {{ field_label('gender', _('Gender')) }}
+            <select id="profile-gender" name="gender" required {{ error_attrs('gender') }}>
+              <option value="">{{ _("Select an option") }}</option>
+              {% for key, label in [('female', _('Female')), ('male', _('Male')), ('non_binary', _('Non-binary')), ('prefer_not_to_say', _('Prefer not to say'))] %}<option value="{{ key }}" {% if data.gender == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+            {{ field_error('gender', _('Select an option.')) }}
+          </div>
+        </div>
+        <div class="cs-field">
+          {{ field_label('nationality', _('Nationality')) }}
+          <select id="profile-nationality" name="nationality" required {{ error_attrs('nationality') }}>
+            <option value="">{{ _("Select an option") }}</option>
+            {% for country in country_options %}<option value="{{ country.code }}" {% if data.nationality == country.code %}selected{% endif %}>{{ country.label }}</option>{% endfor %}
+            <option value="OTHER" {% if data.nationality == 'OTHER' %}selected{% endif %}>{{ _("Other") }}</option>
+            <option value="PREFER_NOT_TO_SAY" {% if data.nationality == 'PREFER_NOT_TO_SAY' %}selected{% endif %}>{{ _("Prefer not to say") }}</option>
+          </select>
+          {{ field_error('nationality', _('Select an option.')) }}
+        </div>
+        {% snippet "csunesco/snippets/why_demographics.html" %}
+      </fieldset>
+
+      <fieldset class="cs-profile-section">
+        <legend>{{ _("Language preferences") }}</legend>
+        <div class="cs-register-grid">
+          <div class="cs-field">
+            {{ field_label('language', _('Preferred language')) }}
+            <select id="profile-language" name="language" required {{ error_attrs('language') }}>
+              <option value="">{{ _("Select an option") }}</option>
+              {% for code, name in [('en','English'),('es','Español'),('fr','Français'),('pt','Português'),('uk','Українська'),('ar','العربية'),('quh','Qhichwa (Bolivia)')] %}<option value="{{ code }}" {% if data.language == code %}selected{% endif %}>{{ name }}</option>{% endfor %}
+            </select>
+            {{ field_error('language', _('Select an option.')) }}
+          </div>
+          <div class="cs-field">
+            <label for="profile-language_other">{{ _("Other language (optional)") }}</label>
+            <input type="text" id="profile-language_other" name="language_other" maxlength="64" value="{{ data.language_other or '' }}" {{ error_attrs('language_other') }}>
+            {{ field_error('language_other', _('Use no more than 64 characters.')) }}
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="cs-profile-section">
+        <legend>{{ _("Your interests") }}</legend>
+        <div class="cs-field">
+          {{ field_label('motivation', _('Why would you like to take part?')) }}
+          <p class="cs-hint" id="profile-motivation-hint">{{ _("Share what motivates you to participate or what you would like to contribute.") }}</p>
+          <textarea id="profile-motivation" name="motivation" required minlength="20" maxlength="500" rows="4" aria-describedby="profile-motivation-hint profile-motivation-count{% if field_errors.motivation %} profile-motivation-error{% endif %}"{% if field_errors.motivation %} aria-invalid="true"{% endif %}>{{ data.motivation or '' }}</textarea>
+          <div class="cs-profile-textarea-footer">
+            <p class="cs-hint">{{ _("Use between 20 and 500 characters.") }}</p>
+            <span class="cs-hint" id="profile-motivation-count" dir="ltr"><span data-character-count>{{ (data.motivation or '')|length }}</span> / 500</span>
+          </div>
+          {{ field_error('motivation', _('Use between 20 and 500 characters.')) }}
+        </div>
+      </fieldset>
+
+      {% if not data.terms_accepted_at %}
+        <div class="cs-profile-consent">
+          <div class="cs-register-terms">
+            <input type="checkbox" id="profile-terms_accepted" name="terms_accepted" value="yes" required {% if data.terms_accepted %}checked{% endif %} {{ error_attrs('terms_accepted') }}>
+            <label for="profile-terms_accepted">{{ _("I accept the") }} <a href="https://www.unesco.org/en/terms-use" target="_blank" rel="noopener noreferrer">{{ _("UNESCO Terms of Use") }}</a>.</label>
+          </div>
+          {{ field_error('terms_accepted', _('Please accept the terms to continue.')) }}
+        </div>
+      {% endif %}
+      <div class="cs-profile-actions">
+        <button class="cs-btn cs-btn-primary" type="submit">{{ _("Save and continue") }} <span aria-hidden="true">{{ h.csunesco_icon('check', 18) }}</span></button>
+        <a href="{{ next }}">{{ _("Cancel") }}</a>
+      </div>
     </form>
   </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  {% asset 'csunesco/cs-profile-complete-js' %}
 {% endblock %}
