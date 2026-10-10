@@ -320,10 +320,11 @@ def csunesco_join_reject(context, data_dict):
     member = db.set_member_status(
         project_id, user_id, C.MEMBER_STATUS_REJECTED, reviewed_by=reviewer_id,
         reviewed_role=role, reviewed_via=via)
+    reason = _clean_note(data_dict.get('reason'))
     db.append_member_event(
         member, 'revoked' if was_active else 'rejected', actor_id=reviewer_id,
         actor_name=actor_name, actor_role=role, via=via,
-        note=_clean_note(data_dict.get('reason')))
+        note=reason)
     if was_active:
         db.ensure_stats(project_id)
         db.stats_increment(project_id, 'citizen_scientists', -1)
@@ -332,7 +333,7 @@ def csunesco_join_reject(context, data_dict):
     from ckanext.csunesco.logic import notify
     project = db.get_project(project_id)
     notify.notify_join_decision(
-        user_id, project.title if project else '', approved=False)
+        user_id, project.title if project else '', approved=False, reason=reason)
 
     return db.member_dictize(db.project_member(project_id, user_id))
 

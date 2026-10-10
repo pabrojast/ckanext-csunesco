@@ -273,35 +273,15 @@ def csunesco_manager_reject(context, data_dict):
     model.Session.commit()
 
     _send_decision_email(user, approved=False,
-                         reason=(data_dict or {}).get('reason'))
+                         reason=profile.manager_review_reason)
     return _profile_dictize(user, profile)
 
 
 def _send_decision_email(user, approved, reason=None):
     """Best-effort notification of the manager decision (never raises)."""
     try:
-        from ckan.lib.mailer import mail_recipient
-    except ImportError:
-        log.warning('csunesco: mailer unavailable; decision email skipped')
-        return False
-    if not getattr(user, 'email', None):
-        return False
-    if approved:
-        subject = tk._('Your UNESCO Citizen Science account was approved')
-        body = tk._(
-            'Good news! Your Project Manager account has been approved.\n\n'
-            'You can now log in and propose a citizen science project.')
-    else:
-        subject = tk._('About your UNESCO Citizen Science account')
-        body = tk._(
-            'Your Project Manager account request was not approved at this '
-            'time.')
-        if reason:
-            body += '\n\n' + tk._('Reviewer note: {reason}').format(
-                reason=reason)
-    try:
-        mail_recipient(user.fullname or user.name, user.email, subject, body)
-        return True
+        from ckanext.csunesco.logic import notify
+        return notify.notify_manager_decision(user.id, approved, reason=reason)
     except Exception as e:
         log.warning('csunesco: manager decision email failed: %s',
                     type(e).__name__)

@@ -31,7 +31,7 @@
         <tr><td class="px" align="{{ align }}" style="padding:40px;overflow-wrap:anywhere;word-wrap:break-word;">
           <h1 class="h1" style="margin:0 0 18px;font-family:'Space Grotesk',Arial,Helvetica,sans-serif;font-size:28px;line-height:1.25;color:#14303D;">{{ subject }}</h1>
           {% for paragraph in paragraphs %}
-          <p style="margin:0 0 16px;font-family:'Inter',Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#5C7A85;text-align:inherit;">{{ paragraph }}</p>
+          <p style="margin:0 0 16px;font-family:'Inter',Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#5C7A85;text-align:inherit;">{% for line in paragraph.splitlines() %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
           {% endfor %}
           {% if cta_url %}
           <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:24px;"><tr>

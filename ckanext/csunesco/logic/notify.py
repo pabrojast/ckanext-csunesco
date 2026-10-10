@@ -39,55 +39,73 @@ def notify_user(user_id, subject, body, body_html=None):
         return False
 
 
-def notify_join_decision(user_id, project_title, approved):
-    if approved:
-        subject = tk._('You joined {project}').format(project=project_title)
-        body = tk._(
-            'Your request to join "{project}" was approved. You can now '
-            'contribute through the Citizen Science Toolbox.'
-        ).format(project=project_title)
-    else:
-        subject = tk._('About your request to join {project}').format(
-            project=project_title)
-        body = tk._(
-            'Your request to join "{project}" was not approved this time.'
-        ).format(project=project_title)
-    return notify_user(user_id, subject, body)
+def _recipient_language(user_id):
+    """Use the applicant's saved language, never the reviewer's request locale."""
+    from ckanext.csunesco.logic.verification_copy import language_code
+    language = None
+    try:
+        import ckan.model as model
+        from ckanext.csunesco import db
+        user = model.User.get(user_id)
+        if user is not None:
+            language = getattr(user, 'language', None)
+            profile = db.get_citizen_scientist(user.id)
+            language = getattr(profile, 'language', None) or language
+    except Exception as e:
+        log.warning('csunesco: notification language unavailable: %s',
+                    type(e).__name__)
+    return language_code(language)
+
+
+def _notify_decision(user_id, kind, approved, *, project_title='', reason=None,
+                     project_slug=None):
+    from ckanext.csunesco.logic.decision_copy import COPY
+    language = _recipient_language(user_id)
+    copy = COPY[language]
+    prefix = kind + ('_approved' if approved else '_rejected')
+    subject = copy[prefix + '_subject'].format(project=project_title)
+    body = copy[prefix + '_body'].format(project=project_title)
+    if not approved:
+        note = str(reason or '').strip()
+        body += '\n\n' + (copy['reviewer_note'].format(reason=note)
+                            if note else copy['reason_not_provided'])
+
+    project_url = None
+    if kind == 'project' and approved and project_slug:
+        try:
+            project_url = tk.url_for('csunesco.project_landing',
+                                     slug=project_slug, _external=True)
+            body += '\n\n' + project_url
+        except Exception as e:
+            log.warning('csunesco: project email URL unavailable: %s',
+                        type(e).__name__)
+
+    body_html = None
+    try:
+        from ckanext.csunesco.logic.email_templates import render_notification
+        body_html = render_notification(
+            subject=subject, message=body,
+            cta_label=copy['project_cta'], cta_url=project_url,
+            footer_note=copy[kind + '_footer'], language=language,
+            brand_name=copy['brand'], support_label=copy['support'],
+        )
+    except Exception as e:
+        log.warning('csunesco: decision email HTML unavailable: %s',
+                    type(e).__name__)
+    return notify_user(user_id, subject, body, body_html=body_html)
+
+
+def notify_join_decision(user_id, project_title, approved, reason=None):
+    return _notify_decision(user_id, 'join', approved,
+                            project_title=project_title, reason=reason)
 
 
 def notify_project_decision(user_id, project_title, approved, reason=None,
                             project_slug=None):
-    body_html = None
-    if approved:
-        subject = tk._('Your project {project} was approved').format(
-            project=project_title)
-        body = tk._(
-            'Good news! "{project}" was approved and now has a public '
-            'landing page on the Citizen Science Portal. You are its '
-            'project manager.'
-        ).format(project=project_title)
-        project_url = None
-        try:
-            if project_slug:
-                project_url = tk.url_for('csunesco.project_landing',
-                                         slug=project_slug, _external=True)
-                body += '\n\n' + project_url
-            from ckanext.csunesco.logic.email_templates import render_notification
-            body_html = render_notification(
-                subject=subject, message=body,
-                cta_label=tk._('View project'), cta_url=project_url,
-                footer_note=tk._('You receive this email because you proposed a project.'),
-            )
-        except Exception as e:
-            log.warning('csunesco: project email HTML unavailable: %s',
-                        type(e).__name__)
-    else:
-        subject = tk._('About your project {project}').format(
-            project=project_title)
-        body = tk._(
-            'Your project request "{project}" was not approved.'
-        ).format(project=project_title)
-        if reason:
-            body += '\n\n' + tk._('Reviewer note: {reason}').format(
-                reason=reason)
-    return notify_user(user_id, subject, body, body_html=body_html)
+    return _notify_decision(user_id, 'project', approved,
+                            project_title=project_title, reason=reason,
+                            project_slug=project_slug)
+
+
+def notify_manager_decision(user_id, approved, reason=None):
+    return _notify_decision(user_id, 'manager', approved, reason=reason)

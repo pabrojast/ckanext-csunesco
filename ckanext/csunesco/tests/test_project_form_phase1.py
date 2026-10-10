@@ -356,7 +356,8 @@ def test_approve_notifies_the_creator(actions, session, monkeypatch):
     assert calls == [('author-1', 'Tell me when', True, None, created['slug'])]
 
 
-def test_reject_notifies_with_the_reason(actions, session, monkeypatch):
+@pytest.mark.parametrize('reason', ['Out of scope', None, '  ', 'Line one\nLine two'])
+def test_reject_notifies_with_the_reason(actions, session, monkeypatch, reason):
     from ckanext.csunesco.logic import notify
     calls = []
     monkeypatch.setattr(
@@ -366,8 +367,30 @@ def test_reject_notifies_with_the_reason(actions, session, monkeypatch):
     created = actions.csunesco_project_request_create(
         _ctx('author-1'), {'title': 'Not this time'})
     actions.csunesco_project_reject(
-        _ctx('reviewer-1'), {'id': created['id'], 'reason': 'Out of scope'})
-    assert calls == [(False, 'Out of scope')]
+        _ctx('reviewer-1'), {'id': created['id'], 'reason': reason})
+    assert db.get_project(created['id']).rejection_reason == reason
+    assert calls == [(False, reason)]
+
+
+@pytest.mark.parametrize('approved', [False, True])
+def test_email_transport_failure_does_not_undo_project_decision(
+        actions, session, monkeypatch, approved):
+    from types import SimpleNamespace
+    import ckan.model as model
+    from ckan.lib import mailer
+    attempts = []
+    def fail(*args, **kwargs):
+        attempts.append(args)
+        raise RuntimeError('mail server unavailable')
+    monkeypatch.setattr(mailer, 'mail_recipient', fail)
+    monkeypatch.setattr(model.User, 'get', staticmethod(lambda key: SimpleNamespace(
+        id='author-1', fullname='Author', name='author', email='author@example.org')))
+    created = actions.csunesco_project_request_create(_ctx('author-1'), {'title': 'Email failure'})
+    decide = actions.csunesco_project_approve if approved else actions.csunesco_project_reject
+    decide(_ctx('reviewer-1'), {'id': created['id'], 'reason': 'Out of scope'})
+    assert len(attempts) == 1
+    session.expire_all()
+    assert db.get_project(created['id']).status == ('approved' if approved else 'rejected')
 
 
 @pytest.mark.parametrize('level', ['private', 'confidential'])

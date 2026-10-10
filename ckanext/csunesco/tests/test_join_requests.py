@@ -323,6 +323,23 @@ def test_a_portal_decision_records_the_callers_role_from_auth(
     assert membership['history'][-1]['event'] == 'approved'
 
 
+@pytest.mark.parametrize('reason', ['  <b>More details</b>\nPlease add a location.  ', 'x' * 1200, None])
+def test_rejection_notification_matches_the_history_note(
+        actions, session, project, monkeypatch, reason):
+    from ckanext.csunesco.logic import notify
+    calls = []
+    monkeypatch.setattr(cs_auth, 'decider_role',
+                        lambda context, project_id: 'project_manager')
+    monkeypatch.setattr(notify, 'notify_join_decision',
+                        lambda *args, **kwargs: calls.append((args, kwargs)))
+    actions.csunesco_join_request_create(_ctx('citizen-3'), {'project_id': project.id})
+    out = actions.csunesco_join_reject(
+        _ctx('pm-1'), {'project_id': project.id, 'user_id': 'citizen-3', 'reason': reason})
+    note = out['history'][-1]['note']
+    assert note is None or (len(note) <= 1000 and '<b>' not in note)
+    assert calls == [(('citizen-3', project.title), {'approved': False, 'reason': note})]
+
+
 def test_revoking_an_active_member_is_its_own_event(
         actions, session, project, monkeypatch):
     monkeypatch.setattr(cs_auth, 'decider_role',

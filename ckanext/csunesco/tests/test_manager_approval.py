@@ -107,6 +107,16 @@ def _ctx():
         'Admin', (), {'id': 'admin-1', 'is_anonymous': False})()}
 
 
+@pytest.mark.parametrize('reason', ['  More details please  ', 'x' * 1200, None, '   '])
+def test_rejection_email_uses_the_recorded_reason(harness, session, reason):
+    user, calls = harness
+    profile = _manager_profile(session)
+    reg_action.csunesco_manager_reject(_ctx(), {'username': 'paula', 'reason': reason})
+    stored = profile.manager_review_reason
+    assert stored == str(reason or '').strip()[:1000]
+    assert ('email', (False, stored)) in calls
+
+
 def test_approve_new_org_creates_it_and_grants_admin(harness, session):
     user, calls = harness
     _manager_profile(session, org_name_requested='Hydrology Lab')
