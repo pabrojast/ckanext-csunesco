@@ -53,7 +53,8 @@ def test_verified_pm_continuation_uses_stored_path_not_query(app,monkeypatch):
 @pytest.mark.parametrize('language', ['en', 'es', 'fr', 'pt', 'uk', 'ar', 'quh'])
 def test_existing_portal_session_has_explicit_handoff(app, monkeypatch, language):
     monkeypatch.setattr(tk, 'render', lambda template, extra_vars: (template, extra_vars))
-    with app.test_request_context('/citizen-science/register/ihp-wins', environ_overrides={'CKAN_LANG': language}):
+    # Portuguese, Ukrainian and Qhichwa share the supported English URL locale.
+    with app.test_request_context('/citizen-science/register/ihp-wins?lng=' + language, environ_overrides={'CKAN_LANG': 'en'}):
         g.user = 'existing-citizen'
         template, values = registration.register_ihpwins()
         assert template == 'csunesco/identity_handoff.html'
@@ -61,6 +62,14 @@ def test_existing_portal_session_has_explicit_handoff(app, monkeypatch, language
         assert '/login' not in values['continue_url']
         assert parse_qs(urlsplit(values['continue_url']).query) == {'resume': ['ihpwins'], 'lng': [language]}
         assert values['copy']['signed_in']
+
+
+@pytest.mark.parametrize('language', ['pt', 'uk', 'quh'])
+def test_verification_continuation_keeps_profile_language(app, monkeypatch, language):
+    monkeypatch.setattr(tk, 'render', lambda template, extra_vars: extra_vars)
+    with app.test_request_context('/citizen-science/verify/used', environ_overrides={'CKAN_LANG': 'en'}):
+        values = registration._render_verify('ok', next_path='/register-project-manager', language=language)
+        assert parse_qs(urlsplit(values['toolbox_login_url']).query)['lng'] == [language]
 
 
 def test_manager_submission_is_self_service_and_idempotent(session,identity,monkeypatch):

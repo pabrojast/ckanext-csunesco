@@ -653,10 +653,10 @@ def register_citizen(ihpwins=False):
     if ihpwins and getattr(tk.g, 'user', None):
         from urllib.parse import urlencode
         from ckanext.csunesco.logic.identity_handoff_copy import COPY
-        language = request.environ.get('CKAN_LANG') or request.args.get('lng', 'en')
+        language = request.args.get('lng') or request.environ.get('CKAN_LANG') or 'en'
         language = language if language in COPY else 'en'
         return tk.render('csunesco/identity_handoff.html', extra_vars={
-            'account_name': tk.g.user, 'copy': COPY[language],
+            'account_name': tk.g.user, 'copy': COPY[language], 'language': language,
             'continue_url': toolbox_url('/register-project-manager?' + urlencode({'resume': 'ihpwins', 'lng': language})),
         })
     if getattr(tk.g, 'user', None):
@@ -1017,18 +1017,19 @@ def register_manager():
     return tk.redirect_to('csunesco.register_manager')
 
 
-def _render_verify(state, project_slug=None, next_path=None):
+def _render_verify(state, project_slug=None, next_path=None, language=None):
     from urllib.parse import urlencode
+    from ckanext.csunesco.logic.verification_copy import language_code
+    language = language_code(language or request.environ.get('CKAN_LANG') or 'en')
     destination = '/register-project-manager' if (next_path == '/register-project-manager' or _registration_next()) else '/'
     if project_slug and destination == '/':
         # Toolbox accepts canonical Portal slugs in onboarding invitations.
         destination = '/get-on-board?' + urlencode({'project': project_slug})
     login_params = {'next': destination}
-    if request.environ.get('CKAN_LANG'):
-        login_params['lng'] = request.environ['CKAN_LANG']
+    login_params['lng'] = language
     return tk.render('csunesco/verify_result.html', extra_vars={
         'state': state, 'project_slug': project_slug, 'next_path': destination if destination == '/register-project-manager' else _registration_next(),
-        'toolbox_login_url': (toolbox_url('/register-project-manager?' + urlencode({'resume': 'ihpwins', 'lng': request.environ.get('CKAN_LANG') or 'en'}))
+        'toolbox_login_url': (toolbox_url('/register-project-manager?' + urlencode({'resume': 'ihpwins', 'lng': language}))
                               if destination == '/register-project-manager' and toolbox_registration_enabled()
                               else toolbox_url('/login?' + urlencode(login_params))) if _ofform_register_url() else None,
     })
@@ -1067,7 +1068,7 @@ def verify_citizen(token):
         log.warning('csunesco: could not activate a verified citizen scientist')
         return _render_verify('error')
 
-    return _render_verify('manager_pending' if is_manager else 'ok', getattr(profile, 'registration_project_slug', None), getattr(profile, 'registration_return_path', None))
+    return _render_verify('manager_pending' if is_manager else 'ok', getattr(profile, 'registration_project_slug', None), getattr(profile, 'registration_return_path', None), getattr(profile, 'language', None))
 
 
 def resend_verification():

@@ -7,6 +7,6 @@
   <p>{{ copy.signed_in }} <strong>{{ account_name }}</strong></p>
   <p>{{ copy.help }}</p>
   <p><a class="cs-btn cs-btn-primary" href="{{ continue_url }}">{{ copy.continue_label }}</a></p>
-  <p><a href="{{ h.url_for('user.logout', came_from=h.url_for('csunesco.register_ihpwins')) }}">{{ copy.switch_label }}</a></p>
+  <p><a href="{{ h.url_for('user.logout', came_from=h.url_for('csunesco.register_ihpwins', lng=language)) }}">{{ copy.switch_label }}</a></p>
 </section>
 {% endblock %}
