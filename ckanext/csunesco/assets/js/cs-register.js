@@ -222,7 +222,7 @@
     try { serverFields = JSON.parse(serverError.getAttribute("data-fields") || "{}"); } catch (e) { /* no fields */ }
     var firstInvalid = null;
     Object.keys(serverFields).forEach(function (name) {
-      var input = form.elements.namedItem(name);
+      var input = form.elements.namedItem(name === "terms_accepted" ? "terms" : name);
       if (input && input.setAttribute) {
         input.setAttribute("aria-invalid", "true");
         input.setAttribute("aria-describedby", "cs-reg-error");
