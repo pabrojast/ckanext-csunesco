@@ -44,9 +44,9 @@ def test_dedicated_identity_form_does_not_redirect_to_local_registration(app,mon
 
 def test_verified_pm_continuation_uses_stored_path_not_query(app,monkeypatch):
     monkeypatch.setattr(tk,'render',lambda template,extra_vars:extra_vars)
-    with app.test_request_context('/citizen-science/verify/used'):
+    with app.test_request_context('/citizen-science/verify/used', environ_overrides={'CKAN_LANG':'es'}):
         values=registration._render_verify('ok',next_path='/register-project-manager')
-        assert parse_qs(urlsplit(values['toolbox_login_url']).query)['next']==['/register-project-manager']
+        assert parse_qs(urlsplit(values['toolbox_login_url']).query)=={'next':['/register-project-manager'],'lng':['es']}
 
 
 def test_manager_submission_is_self_service_and_idempotent(session,identity,monkeypatch):

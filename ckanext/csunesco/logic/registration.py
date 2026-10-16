@@ -1013,9 +1013,12 @@ def _render_verify(state, project_slug=None, next_path=None):
     if project_slug and destination == '/':
         # Toolbox accepts canonical Portal slugs in onboarding invitations.
         destination = '/get-on-board?' + urlencode({'project': project_slug})
+    login_params = {'next': destination}
+    if request.environ.get('CKAN_LANG'):
+        login_params['lng'] = request.environ['CKAN_LANG']
     return tk.render('csunesco/verify_result.html', extra_vars={
         'state': state, 'project_slug': project_slug, 'next_path': _registration_next(),
-        'toolbox_login_url': toolbox_url('/login?' + urlencode({'next': destination})) if _ofform_register_url() else None,
+        'toolbox_login_url': toolbox_url('/login?' + urlencode(login_params)) if _ofform_register_url() else None,
     })
 
 
