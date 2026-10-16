@@ -295,7 +295,7 @@ def test_decisions_without_recipient_send_nothing(mail, monkeypatch, kind, missi
 def test_ckan_transport_builds_multipart_alternative(mail, monkeypatch, kind):
     messages = []
     monkeypatch.setattr(mailer, 'mail_recipient', _REAL_MAIL_RECIPIENT)
-    monkeypatch.setattr(mailer.smtplib, 'SMTP', lambda host, port: SimpleNamespace(
+    monkeypatch.setattr(mailer.smtplib, 'SMTP', lambda *args, **kwargs: SimpleNamespace(
         ehlo=lambda: None, quit=lambda: None,
         sendmail=lambda sender, recipients, message: messages.append(message),
     ))

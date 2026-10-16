@@ -345,6 +345,22 @@ def _ofform_register_url():
     return (base + '/register-citizen') if base else None
 
 
+def toolbox_registration_enabled():
+    return tk.asbool(tk.config.get('ckanext.csunesco.toolbox_registration', False))
+
+
+def toolbox_url(path):
+    from ckanext.csunesco.logic import ofform
+    base = str(tk.config.get(ofform.APP_URL_OPTION) or '').strip().rstrip('/')
+    if not base:
+        tk.abort(503, tk._('Registration is temporarily unavailable. Please try again later.'))
+    return base + path
+
+
+def register_ihpwins():
+    return register_citizen(ihpwins=True)
+
+
 def _recaptcha_configured():
     """True only when BOTH reCAPTCHA keys are present -> verification enforced."""
     return bool(
@@ -397,6 +413,9 @@ def _render(extra_vars):
     extra_vars.setdefault('ofform_register_url', _ofform_register_url())
     extra_vars.setdefault('today', datetime.date.today().isoformat())
     extra_vars.setdefault('next_path', _registration_next())
+    extra_vars.setdefault('ihpwins_registration', request.endpoint == 'csunesco.register_ihpwins')
+    if extra_vars['ihpwins_registration']:
+        extra_vars['next_path'] = '/citizen-science/register/project-manager'
     projects = extra_vars.get('projects') or []
     extra_vars.setdefault('project_refs', _project_refs(projects))
     selected_value = (extra_vars.get('data') or {}).get('project')
@@ -407,6 +426,12 @@ def _render(extra_vars):
 
 def get_on_board():
     """One registration, followed by participation or a PM application."""
+    if toolbox_registration_enabled():
+        from urllib.parse import urlencode
+        params = {k: request.args[k] for k in ('role', 'project', 'lng') if k in request.args}
+        if _registration_next():
+            params['role'] = 'manager'
+        return tk.redirect_to(toolbox_url('/get-on-board') + ('?' + urlencode(params) if params else ''))
     from ckanext.csunesco.logic.registration_profile import completeness
     from ckanext.csunesco import db
     user = model.User.get(tk.g.user) if getattr(tk.g, 'user', None) else None
@@ -542,7 +567,7 @@ def create_citizen_scientist(context, data, verification_token=None):
             manager=data.get('manager'), motivation=motivation,
             language=language, language_other=language_other,
             registration_project_slug=project_slug,
-            defer_commit=True)
+            defer_commit=True, registration_return_path=data.get('registration_return_path'))
         model.Session.commit()
     except Exception:
         model.Session.rollback()
@@ -609,8 +634,17 @@ def _send_verification_email(recipient_name, recipient_email, token, language=No
         return False
 
 
-def register_citizen():
+def register_citizen(ihpwins=False):
     """GET renders the form; POST creates a pending Citizen Scientist account."""
+    if not ihpwins and toolbox_registration_enabled():
+        if _registration_next():
+            return tk.redirect_to('csunesco.register_ihpwins')
+        from urllib.parse import urlencode
+        params = {k: request.values[k] for k in ('project', 'lng') if k in request.values}
+        # Never forward passwords or an old form's POST body across origins.
+        return tk.redirect_to(toolbox_url('/register-citizen') + ('?' + urlencode(params) if params else ''))
+    if ihpwins and getattr(tk.g, 'user', None):
+        return tk.redirect_to(toolbox_url('/login?next=%2Fregister-project-manager'))
     if getattr(tk.g, 'user', None):
         from ckanext.csunesco.logic.registration_profile import completeness
         user = model.User.get(tk.g.user)
@@ -621,7 +655,8 @@ def register_citizen():
             return tk.redirect_to(destination)
     if request.method == 'GET':
         return _render({
-            'data': {'project': request.args.get('project', '').strip()},
+            'data': {'project': request.args.get('project', '').strip(),
+                     'language': request.args.get('lng', '') if request.args.get('lng') in ('en', 'es', 'fr', 'pt', 'ar', 'uk', 'quh') else ''},
             'errors': {},
         })
 
@@ -716,7 +751,7 @@ def register_citizen():
     # Resolve the project once. The stored slug must be canonical (it builds the
     # post-verification login link) and the join below reuses the same row; an
     # unknown or closed project is dropped rather than stored as typed.
-    selected_project = _selected_project(_registration_projects(), project_value)
+    selected_project = None if ihpwins else _selected_project(_registration_projects(), project_value)
 
     # Single-use, unguessable token that gates activation. The account is created
     # in ``pending`` state (cannot log in) until the emailed link is opened.
@@ -735,6 +770,7 @@ def register_citizen():
             'registration_project_slug': (
                 selected_project['slug'] if selected_project else ''),
             'terms_accepted': True,
+            'registration_return_path': '/register-project-manager' if ihpwins else None,
         }, verification_token=verification_token)
     except NotAuthorized:
         # Self-registration via the web is disabled
@@ -854,6 +890,8 @@ def _manager_account_data(user, profile):
 
 def register_manager():
     """Request PM access only after completing Citizen Scientist registration."""
+    if toolbox_registration_enabled():
+        return tk.redirect_to(toolbox_url('/register-project-manager'))
     from ckanext.csunesco import db
     from ckanext.csunesco.logic import auth
     from ckanext.csunesco.logic.registration_profile import completeness, require_registered
@@ -965,10 +1003,16 @@ def register_manager():
     return tk.redirect_to('csunesco.register_manager')
 
 
-def _render_verify(state, project_slug=None):
-    """Render the /verify result page for a single ``state`` string."""
-    return tk.render('csunesco/verify_result.html',
-                     extra_vars={'state': state, 'project_slug': project_slug, 'next_path': _registration_next()})
+def _render_verify(state, project_slug=None, next_path=None):
+    from urllib.parse import urlencode
+    destination = '/register-project-manager' if (next_path == '/register-project-manager' or _registration_next()) else '/'
+    if project_slug and destination == '/':
+        # Toolbox accepts canonical Portal slugs in onboarding invitations.
+        destination = '/get-on-board?' + urlencode({'project': project_slug})
+    return tk.render('csunesco/verify_result.html', extra_vars={
+        'state': state, 'project_slug': project_slug, 'next_path': _registration_next(),
+        'toolbox_login_url': toolbox_url('/login?' + urlencode({'next': destination})) if _ofform_register_url() else None,
+    })
 
 
 def verify_citizen(token):
@@ -1004,7 +1048,7 @@ def verify_citizen(token):
         log.warning('csunesco: could not activate a verified citizen scientist')
         return _render_verify('error')
 
-    return _render_verify('manager_pending' if is_manager else 'ok', getattr(profile, 'registration_project_slug', None))
+    return _render_verify('manager_pending' if is_manager else 'ok', getattr(profile, 'registration_project_slug', None), getattr(profile, 'registration_return_path', None))
 
 
 def resend_verification():

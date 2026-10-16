@@ -271,6 +271,7 @@ cs_citizen_scientist_table = Table(
     # (``org_name_requested``, role admin) -- the org itself is only created
     # when a sysadmin approves the account (``manager_decision``).
     Column('registration_project_slug', types.UnicodeText),
+    Column('registration_return_path', types.UnicodeText),
     Column('motivation', types.UnicodeText),
     Column('language', types.UnicodeText),
     Column('language_other', types.UnicodeText),
@@ -441,6 +442,7 @@ _AUTO_HEAL_COLUMNS = [
     ('cs_citizen_scientist', 'verification_token', 'TEXT'),
     ('cs_citizen_scientist', 'token_created', 'TIMESTAMP'),
     ('cs_citizen_scientist', 'registration_project_slug', 'TEXT'),
+    ('cs_citizen_scientist', 'registration_return_path', 'TEXT'),
     ('cs_citizen_scientist', 'motivation', 'TEXT'),
     ('cs_citizen_scientist', 'language', 'TEXT'),
     ('cs_citizen_scientist', 'language_other', 'TEXT'),
@@ -590,7 +592,7 @@ def get_or_create_citizen_scientist(user_id, country=None,
                                     date_of_birth=None, nationality=None,
                                     gender=None, terms_accepted=False,
                                     manager=None, motivation=None, language=None,
-                                    language_other=None, registration_project_slug=None, defer_commit=False):
+                                    language_other=None, registration_project_slug=None, defer_commit=False, registration_return_path=None):
     """Idempotently mark a CKAN user as a Citizen Scientist.
 
     Inserts one ``cs_citizen_scientist`` row per ``user_id``; if a row already
@@ -621,6 +623,7 @@ def get_or_create_citizen_scientist(user_id, country=None,
     profile.nationality = nationality or None
     profile.gender = gender or None
     profile.registration_project_slug = registration_project_slug
+    profile.registration_return_path = registration_return_path
     profile.motivation = motivation or None
     profile.language = language or None
     profile.language_other = language_other or None

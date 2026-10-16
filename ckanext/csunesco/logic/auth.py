@@ -1019,6 +1019,8 @@ def get_auth_functions():
             csunesco_initiative_page_publish,
         'csunesco_register_citizen_scientist':
             csunesco_register_citizen_scientist,
+        'csunesco_manager_application_show': lambda c, d: {'success': bool(c.get('user'))},
+        'csunesco_manager_application_submit': lambda c, d: {'success': bool(c.get('user'))},
         'csunesco_registration_profile_show': lambda c, d: {'success': bool(c.get('user'))},
         'csunesco_registration_profile_update': lambda c, d: {'success': bool(c.get('user'))},
         'csunesco_registration_review_show': lambda c, d: {'success': bool(c.get('user'))},

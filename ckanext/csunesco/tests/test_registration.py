@@ -472,7 +472,7 @@ def test_verify_activates_a_citizen_account(monkeypatch):
     monkeypatch.setattr(cs_db, 'verify_citizen_scientist', lambda p: p)
     monkeypatch.setattr(model.User, 'get', staticmethod(lambda uid: user))
     monkeypatch.setattr(model.Session, 'commit', lambda: None)
-    monkeypatch.setattr(registration, '_render_verify', lambda state, project_slug=None: state)
+    monkeypatch.setattr(registration, '_render_verify', lambda state, project_slug=None, next_path=None: state)
     assert registration.verify_citizen('tok') == 'ok'
     assert activated['called'] is True
 
@@ -487,7 +487,7 @@ def test_verify_activates_manager_login_without_approving_application(monkeypatc
     user = type('User', (), {'state': 'pending', 'activate': lambda self: activated.append(True)})()
     monkeypatch.setattr(model.User, 'get', staticmethod(lambda uid: user))
     monkeypatch.setattr(model.Session, 'commit', lambda: None)
-    monkeypatch.setattr(registration, '_render_verify', lambda state, project_slug=None: state)
+    monkeypatch.setattr(registration, '_render_verify', lambda state, project_slug=None, next_path=None: state)
     assert registration.verify_citizen('tok') == 'manager_pending'
     assert activated == [True]
     assert not getattr(profile, 'manager_decision', None)

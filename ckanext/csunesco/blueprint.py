@@ -130,6 +130,11 @@ def register_citizen():
     return registration.register_citizen()
 
 
+def register_ihpwins():
+    from ckanext.csunesco.logic import registration
+    return registration.register_ihpwins()
+
+
 def register_manager():
     """PM registration/application with explicit browser CSRF protection."""
     from flask import current_app, g, request
@@ -478,6 +483,8 @@ csunesco_bp.add_url_rule('/my-projects', 'my_projects', my_projects,
                          methods=['GET'])
 # The "Get on board" role chooser the home banner links to. It only links on to
 # the two registration forms below; it writes nothing.
+csunesco_bp.add_url_rule('/register/ihp-wins', 'register_ihpwins', register_ihpwins, methods=['GET', 'POST'])
+
 csunesco_bp.add_url_rule('/get-on-board', 'get_on_board', get_on_board,
                          methods=['GET'])
 # Resolves to /citizen-science/register-citizen (blueprint prefix). Parallel to

@@ -1,5 +1,11 @@
 version: 1
 groups:
+  - annotation: Toolbox registration
+    options:
+      - key: ckanext.csunesco.toolbox_registration
+        type: bool
+        default: false
+        description: Send Citizen Scientists to local Toolbox registration and PM applications to Toolbox.
   - annotation: Citizen Science media uploads
     options:
       - key: ckan.upload.csunesco.types
