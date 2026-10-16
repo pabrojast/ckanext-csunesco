@@ -334,7 +334,7 @@ def test_confirmation_screens_list_the_real_next_steps():
     manager = _template_source('register_manager.html')
     assert 'Check your inbox' in citizen
     assert 'cs-confirm-steps' in citizen
-    assert "url_for('csunesco.resend_verification')" in citizen
+    assert "{{ registration_resend_url }}" in citizen
     assert 'Your existing account' in manager
     assert 'Email verified' in manager
     assert 'Both must be approved before the project is published.' in manager
