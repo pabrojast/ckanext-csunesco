@@ -43,3 +43,35 @@ def test_verification_lookup_failure_allows_retry(monkeypatch):
     monkeypatch.setattr(registration, '_render_verify', lambda state: state)
     with Flask(__name__).test_request_context('/verify/valid-token'):
         assert registration.verify_citizen('valid-token') == 'error'
+
+
+@pytest.mark.parametrize('language,translated', [
+    ('fr', "Ce nom d'utilisateur n'est pas disponible."),
+    ('es', 'Ese nombre de usuario no está disponible.'),
+    ('ar', 'اسم المستخدم غير متاح.')])
+def test_translated_core_username_conflicts_keep_their_meaning(monkeypatch, language, translated):
+    from flask import Flask
+    app = Flask(__name__)
+    app.extensions['babel'] = object()
+    monkeypatch.setattr(tk, '_', lambda text: translated)
+    with app.test_request_context('/?lng=' + language):
+        result = errors.from_validation(tk.ValidationError({'name': [translated]}))
+    assert result['code'] == 'registration_username_taken'
+    assert result['fields'] == {'username': 'registration_username_taken'}
+    assert result['message'] == COPY[language]['username_taken']
+
+
+def test_translated_core_email_conflict_does_not_echo_the_address(monkeypatch):
+    from flask import Flask
+    app = Flask(__name__)
+    app.extensions['babel'] = object()
+    template = "L'adresse '{email}' appartient à un utilisateur inscrit."
+    monkeypatch.setattr(tk, '_', lambda text: template)
+    with app.test_request_context('/?lng=fr'):
+        result = errors.from_validation(tk.ValidationError({'email': [template.format(email='private@example.invalid')]}))
+    assert result['code'] == 'registration_account_conflict'
+    assert 'private@example.invalid' not in str(result)
+
+
+def test_legacy_terms_field_uses_the_public_field_contract():
+    assert errors.problem('terms_required', 'terms')['fields'] == {'terms_accepted': 'registration_terms_required'}

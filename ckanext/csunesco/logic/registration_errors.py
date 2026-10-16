@@ -50,6 +50,7 @@ def copy_for(value=None):
 def problem(code, *fields, retry_seconds=None):
     if code not in MESSAGES:
         code = 'service_unavailable'
+    fields = tuple('terms_accepted' if field == 'terms' else field for field in fields)
     copy = copy_for()
     message = copy[code] if code in copy else tk._(MESSAGES[code])
     if code == 'too_many_attempts':
@@ -70,6 +71,16 @@ def from_validation(error):
             continue
         text = str(data[source]).lower()
         duplicate = any(x in text for x in ('already', 'unavailable', 'not available', 'exists', 'in use', 'belongs to', 'registered user'))
+        # CKAN's validators translate these messages before returning them.
+        # Match the active catalog too; never classify a translated conflict
+        # as an invalid username or email simply because it is not English.
+        from flask import current_app, has_request_context
+        if not duplicate and has_request_context() and 'babel' in current_app.extensions:
+            templates = {'name': 'That login name is not available.',
+                         'email': "The email address '{email}' belongs to a registered user."}
+            if source in templates:
+                parts = tk._(templates[source]).lower().split('{email}')
+                duplicate = all(part in text for part in parts if part)
         code = ('username_taken' if duplicate else 'username_invalid') if field == 'username' else (
             ('account_conflict' if duplicate else 'email_invalid') if field == 'email' else 'password_short')
         return problem(code, field)
