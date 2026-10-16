@@ -35,7 +35,8 @@ import ckan.model as model
 from ckan.logic import check_access, NotAuthorized, ValidationError
 
 from ckanext.csunesco import constants
-from ckanext.csunesco.logic.registration_errors import problem, from_validation
+from ckanext.csunesco.logic.registration_errors import problem, from_validation, integrity_problem, record_failure, form_error_context, selected_language
+from sqlalchemy.exc import IntegrityError
 
 log = logging.getLogger(__name__)
 
@@ -416,6 +417,7 @@ def _render(extra_vars):
     extra_vars.setdefault('ihpwins_registration', request.endpoint == 'csunesco.register_ihpwins')
     if extra_vars['ihpwins_registration']:
         extra_vars['next_path'] = '/citizen-science/register/project-manager'
+    extra_vars.update(form_error_context((extra_vars.get('data') or {}).get('language'), extra_vars.get('next_path') or _registration_next()))
     projects = extra_vars.get('projects') or []
     extra_vars.setdefault('project_refs', _project_refs(projects))
     selected_value = (extra_vars.get('data') or {}).get('project')
@@ -535,12 +537,16 @@ def create_citizen_scientist(context, data, verification_token=None):
         raise ValidationError(from_validation(exc))
     except NotAuthorized:
         raise
-    except Exception:
+    except IntegrityError as exc:
+        model.Session.rollback()
+        record_failure('account_create', exc)
+        raise ValidationError(integrity_problem(exc) or problem('service_unavailable')) from None
+    except Exception as exc:
         # Any unexpected error (DB, mailer, ...) -> still generic, never leaked.
         # Roll back first: a DB error leaves the session in an aborted
         # transaction and the error page itself would 500 on the next query.
         model.Session.rollback()
-        log.warning('csunesco: unexpected error creating citizen scientist')
+        record_failure('account_create', exc)
         raise ValidationError(problem('service_unavailable'))
 
     # Verified-registration path: hold the account in ``pending`` state until the emailed link is
@@ -551,9 +557,10 @@ def create_citizen_scientist(context, data, verification_token=None):
             user_obj = model.User.get(new_user['id'])
             if user_obj is not None:
                 user_obj.set_pending()
-        except Exception:
+        except Exception as exc:
             model.Session.rollback()
-            raise ValidationError(problem('service_unavailable'))
+            record_failure('account_pending', exc)
+            raise ValidationError(problem('service_unavailable')) from None
 
     # Commit the CKAN account, pending state and private profile together.
     # A failed profile write must not leave an active account without a dossier.
@@ -571,10 +578,10 @@ def create_citizen_scientist(context, data, verification_token=None):
             registration_project_slug=project_slug,
             defer_commit=True, registration_return_path=data.get('registration_return_path'))
         model.Session.commit()
-    except Exception:
+    except Exception as exc:
         model.Session.rollback()
-        log.warning('csunesco: registration transaction failed')
-        raise ValidationError(problem('service_unavailable'))
+        record_failure('profile_commit', exc)
+        raise ValidationError((integrity_problem(exc) if isinstance(exc, IntegrityError) else None) or problem('service_unavailable')) from None
 
     return new_user
 
@@ -716,7 +723,7 @@ def register_citizen(ihpwins=False):
         return rendered, status, (headers or {})
 
     if retry_after is not None:
-        return _fail(429, {'Retry-After': str(retry_after)}, problem('too_many_attempts'))
+        return _fail(429, {'Retry-After': str(retry_after)}, problem('too_many_attempts', retry_seconds=retry_after))
 
     # Terms acceptance is mandatory (server-side, truthy).
     if not terms:
@@ -852,6 +859,7 @@ def _organization_options():
 
 def _render_manager(extra_vars):
     """Render the PM registration form with its stable choice lists."""
+    extra_vars.update(form_error_context((extra_vars.get('data') or {}).get('language'), extra_vars.get('next_path') or _registration_next()))
     extra_vars.setdefault('recaptcha_publickey',
                           tk.config.get('ckan.recaptcha.publickey'))
     extra_vars.setdefault('country_options', _country_options())
@@ -955,7 +963,7 @@ def register_manager():
 
     retry_after = _registration_retry_after()
     if retry_after is not None:
-        return _fail(429, {'Retry-After': str(retry_after)}, problem('too_many_attempts'))
+        return _fail(429, {'Retry-After': str(retry_after)}, problem('too_many_attempts', retry_seconds=retry_after))
     if not responsibilities:
         return _fail(errors=problem('terms_required', 'responsibilities'))
     if org_type not in {row['name'] for row in constants.ORG_TYPES}:
@@ -1019,8 +1027,7 @@ def register_manager():
 
 def _render_verify(state, project_slug=None, next_path=None, language=None):
     from urllib.parse import urlencode
-    from ckanext.csunesco.logic.verification_copy import language_code
-    language = language_code(language or request.environ.get('CKAN_LANG') or 'en')
+    language = selected_language(language)
     destination = '/register-project-manager' if (next_path == '/register-project-manager' or _registration_next()) else '/'
     if project_slug and destination == '/':
         # Toolbox accepts canonical Portal slugs in onboarding invitations.
@@ -1028,6 +1035,7 @@ def _render_verify(state, project_slug=None, next_path=None, language=None):
     login_params = {'next': destination}
     login_params['lng'] = language
     return tk.render('csunesco/verify_result.html', extra_vars={
+        **form_error_context(language, destination),
         'state': state, 'project_slug': project_slug, 'next_path': destination if destination == '/register-project-manager' else _registration_next(),
         'toolbox_login_url': (toolbox_url('/register-project-manager?' + urlencode({'resume': 'ihpwins', 'lng': language}))
                               if destination == '/register-project-manager' and toolbox_registration_enabled()
@@ -1044,14 +1052,19 @@ def verify_citizen(token):
     and never reveals whether a given address exists.
     """
     from ckanext.csunesco import db
-    profile = db.get_citizen_scientist_by_token(token)
+    try:
+        profile = db.get_citizen_scientist_by_token(token)
+    except Exception as exc:
+        model.Session.rollback()
+        record_failure('verification_lookup', exc)
+        return _render_verify('error')
     if profile is None:
         return _render_verify('invalid')
 
     created = getattr(profile, 'token_created', None)
     ttl = datetime.timedelta(hours=constants.VERIFICATION_TOKEN_TTL_HOURS)
     if created is None or (datetime.datetime.utcnow() - created) > ttl:
-        return _render_verify('expired')
+        return _render_verify('expired', next_path=getattr(profile, 'registration_return_path', None), language=getattr(profile, 'language', None))
 
     # Verification enables login and proposal preparation. PM approval remains
     # a separate prerequisite for project publication.
@@ -1063,10 +1076,10 @@ def verify_citizen(token):
             user_obj.activate()
             model.Session.commit()
         db.verify_citizen_scientist(profile)
-    except Exception:
+    except Exception as exc:
         model.Session.rollback()
-        log.warning('csunesco: could not activate a verified citizen scientist')
-        return _render_verify('error')
+        record_failure('verification', exc)
+        return _render_verify('error', next_path=getattr(profile, 'registration_return_path', None), language=getattr(profile, 'language', None))
 
     return _render_verify('manager_pending' if is_manager else 'ok', getattr(profile, 'registration_project_slug', None), getattr(profile, 'registration_return_path', None), getattr(profile, 'language', None))
 
@@ -1080,7 +1093,7 @@ def resend_verification():
     """
     if request.method == 'GET':
         return tk.render('csunesco/resend_verification.html',
-                         extra_vars={'sent': False})
+                         extra_vars=dict(form_error_context(next_path=_registration_next()), sent=False))
 
     # MISMO throttle que el alta (`register_citizen` / `register_manager`).
     # Sin él este POST era anónimo e ilimitado, y cada llamada rotaba el token
@@ -1092,7 +1105,7 @@ def resend_verification():
     retry_after = _registration_retry_after()
     if retry_after is not None:
         response = tk.render('csunesco/resend_verification.html',
-                             extra_vars={'sent': True})
+                             extra_vars=dict(form_error_context(next_path=_registration_next()), sent=False, errors=problem('too_many_attempts', retry_seconds=retry_after)))
         return (response, 429, {'Retry-After': str(retry_after)})
 
     email = request.form.get('email', '').strip()
@@ -1115,4 +1128,4 @@ def resend_verification():
             log.warning('csunesco: resend verification could not be processed')
 
     return tk.render('csunesco/resend_verification.html',
-                     extra_vars={'sent': True})
+                     extra_vars=dict(form_error_context(next_path=_registration_next()), sent=True))

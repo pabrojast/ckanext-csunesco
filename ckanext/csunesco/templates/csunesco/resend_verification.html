@@ -11,6 +11,7 @@
 {% block styles %}{{ super() }}{% asset 'csunesco/csunesco-css' %}{% endblock %}
 
 {% block cs_content %}
+  {% include 'csunesco/snippets/registration_error.html' %}
   {% if sent %}
     <section class="cs-hero" aria-labelledby="cs-resend-title">
       <h1 id="cs-resend-title">{{ _("Check your inbox") }}</h1>
@@ -30,7 +31,7 @@
     <section class="cs-card cs-form-card" aria-labelledby="cs-resend-form-title">
       <h2 id="cs-resend-form-title" class="cs-form-heading">{{ _("Request a new link") }}</h2>
       <form method="post"
-            action="{{ h.url_for('csunesco.resend_verification') }}"
+            action="{{ registration_resend_url }}"
             class="cs-form" novalidate>
         {{ h.csrf_input() }}
         <div class="cs-field">

@@ -10,6 +10,7 @@ import ckan.plugins.toolkit as tk
 
 from ckanext.csunesco import db
 from ckanext.csunesco.logic import auth
+from ckanext.csunesco.logic.registration_errors import problem
 
 FIELDS = ('fullname', 'date_of_birth', 'nationality', 'gender', 'language',
           'language_other', 'motivation')
@@ -73,11 +74,11 @@ def csunesco_registration_profile_update(context, data_dict):
     values = {key: str(data.get(key) or '').strip() for key in FIELDS}
     missing = [key for key in REQUIRED if key != 'terms_accepted_at' and not values.get(key)]
     if missing:
-        raise tk.ValidationError({key: ['Missing value'] for key in missing})
+        raise tk.ValidationError(problem('required', *missing))
     if not 20 <= len(values['motivation']) <= 500 or len(values['fullname']) > 200:
-        raise tk.ValidationError({'motivation': ['Use between 20 and 500 characters']})
+        raise tk.ValidationError(problem('motivation_invalid', 'motivation'))
     if values['language'] not in ('en', 'es', 'fr', 'pt', 'ar', 'uk', 'quh') or len(values['language_other']) > 64:
-        raise tk.ValidationError({'language': ['Invalid language']})
+        raise tk.ValidationError(problem('language_invalid', 'language', 'language_other'))
     dob, nationality, gender = registration._parse_optional_profile(values)
     try:
         accepted = tk.asbool(data.get('terms_accepted', False))
@@ -87,7 +88,7 @@ def csunesco_registration_profile_update(context, data_dict):
     user = registration._lock_manager_account(user.id)
     profile = db.get_citizen_scientist(user.id)
     if not accepted and not getattr(profile, 'terms_accepted_at', None):
-        raise tk.ValidationError({'terms_accepted': ['Accept the terms of use']})
+        raise tk.ValidationError(problem('terms_required', 'terms_accepted'))
     if profile is None:
         profile = db.get_or_create_citizen_scientist(user.id, defer_commit=True)
         # Existing active CKAN accounts retain the established trusted-identity policy.

@@ -16,6 +16,17 @@
   var toggle = form.querySelector(".cs-password-toggle");
   var meter = form.querySelectorAll(".cs-password-meter span");
 
+  var translations = {};
+  try { translations = JSON.parse(form.getAttribute("data-error-translations") || "{}"); } catch (e) { /* use existing hints */ }
+  var errorCodes = {motivation: "motivation_invalid", email: "email_invalid", password: "password_short",
+    confirm_password: "password_mismatch", date_of_birth: "date_invalid", gender: "gender_invalid",
+    nationality: "nationality_invalid", terms: "terms_required", responsibilities: "terms_required"};
+  function errorCopy(code) {
+    var language = form.elements.namedItem("language");
+    var copy = translations[language ? language.value : document.documentElement.lang] || translations.en || {};
+    return copy[code];
+  }
+
   function hintFor(id) { return document.getElementById(id + "-hint"); }
 
   /* Shared by the citizen AND the manager form: a rule only applies when its
@@ -59,7 +70,7 @@
     item.input.setAttribute("aria-invalid", invalid ? "true" : "false");
     if (item.hint) {
       var text = item.hint.getAttribute(invalid ? "data-error" : "data-default");
-      item.hint.textContent = text || "";
+      item.hint.textContent = (invalid && errorCopy(errorCodes[item.input.name] || "required")) || text || "";
       item.hint.classList.toggle("is-error", invalid);
     }
   }
@@ -198,7 +209,7 @@
           submit.classList.remove("is-loading");
           submit.textContent = form.getAttribute("data-submit-label") || "";
           if (announce) {
-            announce.textContent = form.getAttribute("data-recaptcha-error") || "";
+            announce.textContent = errorCopy("captcha_failed") || form.getAttribute("data-recaptcha-error") || "";
           }
         }
       );

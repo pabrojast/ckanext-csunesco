@@ -20,6 +20,13 @@ pytestmark = pytest.mark.skipif(not HAVE_CKAN, reason='requires CKAN')
 @pytest.fixture
 def app(monkeypatch):
     app = Flask(__name__)
+    for endpoint, path in [('csunesco.index', '/citizen-science/'),
+                           ('csunesco.register_manager', '/citizen-science/register/project-manager'),
+                           ('csunesco.resend_verification', '/citizen-science/verify/resend'),
+                           ('user.login', '/user/login'), ('user.request_reset', '/user/reset')]:
+        app.add_url_rule(path, endpoint, lambda: '')
+    from flask import url_for
+    monkeypatch.setattr(tk, 'url_for', url_for)
     app.secret_key = 'registration-test'
     monkeypatch.setattr(tk, '_', lambda message: message)
     return app
@@ -515,10 +522,10 @@ def test_resend_verification_is_rate_limited(app, monkeypatch):
     body, status, headers = out
     assert status == 429
     assert headers['Retry-After'] == '37'
-    # Misma página "ya te hemos mandado un enlace": el 429 no puede convertirse
-    # en un oráculo de qué direcciones existen.
+    # A rate limit must not claim that mail was sent.
     assert body == 'PAGE'
-    assert rendered[-1][1] == {'sent': True}
+    assert rendered[-1][1]['sent'] is False
+    assert rendered[-1][1]['errors']['code'] == 'registration_too_many_attempts'
 
 
 def test_resend_verification_does_not_touch_tokens_when_limited(app, monkeypatch):

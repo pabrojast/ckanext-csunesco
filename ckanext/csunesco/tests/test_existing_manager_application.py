@@ -182,7 +182,8 @@ def test_existing_account_template_has_no_credentials_or_signup_call_to_action()
         csunesco_editor_link=lambda *a: '/new', csunesco_login_url=lambda: '/login')
     values = dict(_=lambda text: text, h=helpers, existing_account=True,
         account=SimpleNamespace(name='paula', email='pm@example.org', fullname='Paula'),
-        data={'fullname':'Paula'}, errors={}, country_options=[], org_types=[], organizations=[])
+        data={'fullname':'Paula'}, errors={}, country_options=[], org_types=[], organizations=[],
+        registration_error_translations={})
     html = env.get_template('form.html').render(**values)
     assert 'Submit PM request' in html and 'name="existing_account"' in html
     assert not any('name="' + key + '"' in html for key in ('email','username','password','confirm_password'))

@@ -4,8 +4,8 @@
   Result page for GET /citizen-science/verify/<token>.
 
   ``state`` is one of: ok | manager_pending | expired | invalid | error. The
-  copy never reveals whether an address exists -- invalid and error share the
-  same neutral message. ``manager_pending`` is the Project Manager double
+  copy distinguishes expired links from temporary failures without revealing
+  whether an address exists. ``manager_pending`` is the Project Manager double
   gate: email confirmed, account still awaiting a sysadmin decision.
 #}
 
@@ -34,32 +34,15 @@
       <p>{{ _("You can submit your proposal while your Project Manager request is reviewed. Both must be approved before the project is published.") }}</p>
     </section>
     <p><a class="cs-btn cs-btn-primary" href="{{ toolbox_login_url or h.url_for('user.login', came_from=h.url_for('csunesco.project_new')) }}">{{ _('Sign in and propose a project') }}</a></p>
-  {% elif state == 'expired' %}
-    <section class="cs-hero" aria-labelledby="cs-verify-title">
-      <h1 id="cs-verify-title">{{ _("This link has expired") }}</h1>
-      <p>{{ _("Verification links are valid for 48 hours.") }}</p>
-    </section>
-    <section class="cs-card" aria-label="{{ _('Next step') }}">
-      <p>{{ _("Request a fresh link and we'll email it to you.") }}</p>
-      <a class="cs-btn cs-btn-primary" href="{{ h.url_for('csunesco.resend_verification') }}">
-        {{ _("Resend verification email") }}
-      </a>
-    </section>
   {% else %}
-    {# invalid token or an unexpected error -- same neutral message. #}
-    <section class="cs-hero" aria-labelledby="cs-verify-title">
-      <h1 id="cs-verify-title">{{ _("We couldn't verify that link") }}</h1>
-      <p>{{ _("The link may be invalid or may already have been used.") }}</p>
-    </section>
-    <section class="cs-card" aria-label="{{ _('Next step') }}">
-      <p>{{ _("If your account still needs verifying, request a new link.") }}</p>
-      <a class="cs-btn cs-btn-primary" href="{{ h.url_for('csunesco.resend_verification') }}">
-        {{ _("Resend verification email") }}
-      </a>
-      <p class="cs-form-footer">
-        {{ _("Already verified?") }}
-        <a href="{{ toolbox_login_url or (h.url_for('user.login', came_from=next_path) if next_path else (h.csunesco_login_url(project_slug) or h.url_for('user.login'))) }}">{{ _("Log in") }}</a>
-      </p>
+    <section class="cs-card" lang="{{ registration_error_language }}" dir="{{ 'rtl' if registration_error_language == 'ar' else 'ltr' }}">
+      <h1 id="cs-verify-title" role="alert">{{ registration_error_copy.token_expired if state == 'expired' else (registration_error_copy.service_unavailable if state == 'error' else registration_error_copy.token_invalid) }}</h1>
+      {% if state == 'error' %}
+        <a class="cs-btn cs-btn-primary" href="{{ registration_retry_url }}">{{ registration_error_copy.retry }}</a>
+      {% else %}
+        <a class="cs-btn cs-btn-primary" href="{{ registration_resend_url }}">{{ registration_error_copy.resend }}</a>
+      {% endif %}
+      <p><a href="{{ toolbox_login_url or registration_signin_url }}">{{ registration_error_copy.sign_in }}</a></p>
     </section>
   {% endif %}
 {% endblock %}

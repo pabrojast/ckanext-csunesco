@@ -343,9 +343,17 @@ def test_resend_uses_branded_verification_and_fresh_token(mail, monkeypatch, pro
     monkeypatch.setattr(registration, '_registration_retry_after', lambda: None)
     monkeypatch.setattr(tk, 'render', lambda name, extra_vars: extra_vars)
     app = Flask(__name__)
+    for endpoint, path in [('csunesco.index', '/citizen-science/'),
+                           ('csunesco.register_manager', '/citizen-science/register/project-manager'),
+                           ('csunesco.resend_verification', '/citizen-science/verify/resend'),
+                           ('user.login', '/user/login'), ('user.request_reset', '/user/reset')]:
+        app.add_url_rule(path, endpoint, lambda: '')
+    from flask import url_for
+    original_url_for = tk.url_for
+    monkeypatch.setattr(tk, 'url_for', lambda endpoint, **kw: original_url_for(endpoint, **kw) if endpoint == 'csunesco.verify_citizen' else url_for(endpoint, **kw))
     with app.test_request_context('/resend-verification', method='POST',
                                   data={'email': 'pablo@example.org'}):
-        assert registration.resend_verification() == {'sent': True}
+        assert registration.resend_verification()['sent'] is True
     assert tokens == [('u1', 'fresh-token')]
     assert mail[0][0][2] == 'Vérifiez votre compte de science citoyenne de l’UNESCO'
     assert '<html lang="fr"' in mail[0][1]['body_html']

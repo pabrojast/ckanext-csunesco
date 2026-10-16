@@ -18,7 +18,15 @@ def app(monkeypatch):
     monkeypatch.setitem(tk.config,'ckanext.csunesco.ofform_app_url','https://toolbox.example/cstoolbox')
     monkeypatch.setattr(tk,'_',lambda text:text)
     monkeypatch.setattr(tk,'redirect_to',lambda url,**kwargs:(url,kwargs))
-    return Flask(__name__)
+    app = Flask(__name__)
+    for endpoint, path in [('csunesco.index', '/citizen-science/'),
+                           ('csunesco.register_manager', '/citizen-science/register/project-manager'),
+                           ('csunesco.resend_verification', '/citizen-science/verify/resend'),
+                           ('user.login', '/user/login'), ('user.request_reset', '/user/reset')]:
+        app.add_url_rule(path, endpoint, lambda: '')
+    from flask import url_for
+    monkeypatch.setattr(tk, 'url_for', url_for)
+    return app
 
 
 def test_citizen_post_never_creates_portal_account(app,monkeypatch):
