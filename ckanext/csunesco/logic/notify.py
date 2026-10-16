@@ -28,6 +28,9 @@ def notify_user(user_id, subject, body, body_html=None):
         if user is None or not getattr(user, 'email', None):
             return False
         from ckanext.csunesco.logic.email_templates import mail_headers
+        from ckanext.csunesco.logic.qa_email_capture import capture
+        if capture(user.email, subject, body, body_html):
+            return True
         mail_recipient(user.fullname or user.name, user.email, subject, body,
                        body_html=body_html, headers=mail_headers())
         return True

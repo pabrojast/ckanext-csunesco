@@ -620,6 +620,9 @@ def _send_verification_email(recipient_name, recipient_email, token, language=No
                     type(e).__name__)
         body_html = None
     try:
+        from ckanext.csunesco.logic.qa_email_capture import capture
+        if capture(recipient_email, subject, body, body_html):
+            return True
         mail_recipient(recipient_name or recipient_email, recipient_email,
                        subject, body, body_html=body_html,
                        headers=mail_headers())
@@ -648,7 +651,14 @@ def register_citizen(ihpwins=False):
         # Never forward passwords or an old form's POST body across origins.
         return tk.redirect_to(toolbox_url('/register-citizen') + ('?' + urlencode(params) if params else ''))
     if ihpwins and getattr(tk.g, 'user', None):
-        return tk.redirect_to(toolbox_url('/login?next=%2Fregister-project-manager'))
+        from urllib.parse import urlencode
+        from ckanext.csunesco.logic.identity_handoff_copy import COPY
+        language = request.environ.get('CKAN_LANG') or request.args.get('lng', 'en')
+        language = language if language in COPY else 'en'
+        return tk.render('csunesco/identity_handoff.html', extra_vars={
+            'account_name': tk.g.user, 'copy': COPY[language],
+            'continue_url': toolbox_url('/register-project-manager?' + urlencode({'resume': 'ihpwins', 'lng': language})),
+        })
     if getattr(tk.g, 'user', None):
         from ckanext.csunesco.logic.registration_profile import completeness
         user = model.User.get(tk.g.user)
@@ -1017,8 +1027,10 @@ def _render_verify(state, project_slug=None, next_path=None):
     if request.environ.get('CKAN_LANG'):
         login_params['lng'] = request.environ['CKAN_LANG']
     return tk.render('csunesco/verify_result.html', extra_vars={
-        'state': state, 'project_slug': project_slug, 'next_path': _registration_next(),
-        'toolbox_login_url': toolbox_url('/login?' + urlencode(login_params)) if _ofform_register_url() else None,
+        'state': state, 'project_slug': project_slug, 'next_path': destination if destination == '/register-project-manager' else _registration_next(),
+        'toolbox_login_url': (toolbox_url('/register-project-manager?' + urlencode({'resume': 'ihpwins', 'lng': request.environ.get('CKAN_LANG') or 'en'}))
+                              if destination == '/register-project-manager' and toolbox_registration_enabled()
+                              else toolbox_url('/login?' + urlencode(login_params))) if _ofform_register_url() else None,
     })
 
 
