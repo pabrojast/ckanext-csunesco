@@ -429,6 +429,8 @@ def get_on_board():
     if toolbox_registration_enabled():
         from urllib.parse import urlencode
         params = {k: request.args[k] for k in ('role', 'project', 'lng') if k in request.args}
+        if request.environ.get('CKAN_LANG'):
+            params.setdefault('lng', request.environ['CKAN_LANG'])
         if _registration_next():
             params['role'] = 'manager'
         return tk.redirect_to(toolbox_url('/get-on-board') + ('?' + urlencode(params) if params else ''))
@@ -641,6 +643,8 @@ def register_citizen(ihpwins=False):
             return tk.redirect_to('csunesco.register_ihpwins')
         from urllib.parse import urlencode
         params = {k: request.values[k] for k in ('project', 'lng') if k in request.values}
+        if request.environ.get('CKAN_LANG'):
+            params.setdefault('lng', request.environ['CKAN_LANG'])
         # Never forward passwords or an old form's POST body across origins.
         return tk.redirect_to(toolbox_url('/register-citizen') + ('?' + urlencode(params) if params else ''))
     if ihpwins and getattr(tk.g, 'user', None):
