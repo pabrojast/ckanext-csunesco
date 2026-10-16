@@ -75,3 +75,10 @@ def test_translated_core_email_conflict_does_not_echo_the_address(monkeypatch):
 
 def test_legacy_terms_field_uses_the_public_field_contract():
     assert errors.problem('terms_required', 'terms')['fields'] == {'terms_accepted': 'registration_terms_required'}
+
+
+def test_resend_recovery_normalizes_toolbox_pm_destination():
+    from flask import Flask
+    from ckanext.csunesco.logic import registration
+    with Flask(__name__).test_request_context('/verify/resend?next=%2Fregister-project-manager&lng=fr'):
+        assert registration._registration_next() == '/citizen-science/register/project-manager'

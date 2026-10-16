@@ -85,7 +85,7 @@
           <a class="cs-btn cs-btn-primary cs-confirm-back" href="{{ h.url_for('csunesco.index') }}">{{ _("Back to Citizen Science") }}</a>
           <p class="cs-register-muted">
             {{ _("Didn't receive it? Check your spam or junk folder or") }}
-            <a href="{{ h.url_for('csunesco.resend_verification') }}">{{ _("resend the email") }}</a>.
+            <a href="{{ registration_resend_url }}">{{ _("resend the email") }}</a>.
           </p>
         </div>
       {% else %}

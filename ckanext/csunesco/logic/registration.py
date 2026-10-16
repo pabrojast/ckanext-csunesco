@@ -402,6 +402,8 @@ def _registration_next():
     from flask import has_request_context
     value = request.values.get('next', '') if has_request_context() else ''
     allowed = '/citizen-science/register/project-manager'
+    if value == '/register-project-manager':
+        return allowed
     return value if value in [allowed] + ['/' + lang + allowed for lang in ('en', 'es', 'fr', 'pt', 'ar', 'uk', 'quh')] else None
 
 
