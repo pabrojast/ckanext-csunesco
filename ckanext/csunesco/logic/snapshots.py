@@ -415,8 +415,13 @@ def refresh_all():
 
 def refresh_project_stats(project, defer_commit=False):
     from ckanext.csunesco.logic import portal
-    app_id = portal.metadata(project).get('app_project_id')
-    if not app_id:
+    meta = portal.metadata(project)
+    app_id = meta.get('app_project_id')
+    # An approved project can still have an unpublished Toolbox page. Keep
+    # refreshing the previous public version while a later edit awaits review.
+    if (not app_id or project.status != 'approved' or portal.withdrawn(project)
+            or not portal.complete_revision(meta.get('published_revision'),
+                                            meta.get('published_checksum'))):
         return
     values = app_request('/internal/ckan/projects/%s/stats' % int(app_id))
     updates = {}

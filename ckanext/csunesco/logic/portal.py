@@ -378,10 +378,24 @@ def mark_review(project, page, approved):
     set_metadata(project, meta)
 
 
+def complete_revision(revision, digest):
+    """Whether stored publication metadata identifies a deliverable revision."""
+    return (isinstance(revision, int) and not isinstance(revision, bool)
+            and revision > 0 and isinstance(digest, str) and len(digest) == 64
+            and all(character in '0123456789abcdef' for character in digest))
+
+
 def callback(project):
     from ckanext.csunesco.logic import snapshots
+    decision = status(project)
+    # Intake links a project before its first publication. Draft/pending states
+    # are not review decisions and the app cannot match their missing receipt.
+    if (decision.get('status') not in ('approved', 'rejected', 'withdrawn')
+            or not decision.get('app_project_id')
+            or not complete_revision(decision.get('revision'), decision.get('checksum'))):
+        return
     try:
-        snapshots.app_request('/internal/ckan/project-reviews', status(project))
+        snapshots.app_request('/internal/ckan/project-reviews', decision)
     except Exception:
         # Polling status repairs delivery; never roll back a review on app outage.
         import logging

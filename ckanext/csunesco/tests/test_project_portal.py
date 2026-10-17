@@ -10,6 +10,8 @@ from ckanext.csunesco import db
 from ckanext.csunesco.logic import portal, snapshots, auth, blocks
 from ckanext.csunesco.logic.action import page as page_actions
 
+_review_callback = portal.callback
+
 
 @pytest.fixture
 def store(monkeypatch, tmp_path):
@@ -537,7 +539,8 @@ def test_intake_media_requires_owner_or_service_until_approval(store, monkeypatc
 
 def test_project_stats_refresh_uses_aggregate_contract_without_touching_cms(store, monkeypatch):
     project, _ = store
-    portal.set_metadata(project, {'app_project_id': 42})
+    portal.set_metadata(project, {'app_project_id': 42, 'published_revision': 1,
+                                 'published_checksum': 'a' * 64})
     called = []
     monkeypatch.setattr(snapshots, 'app_request', lambda path: {'observations': 3, 'sites_monitored': 2, 'citizen_scientists': 1, 'member_states': 1})
     monkeypatch.setattr(db, 'stats_set', lambda pid, **kw: called.append((pid, kw)))
@@ -654,3 +657,59 @@ def test_first_app_submission_preserves_old_public_composition_until_approval(st
     approved = db.project_dictize(project)
     assert approved['portal_published']
     assert page_render.project_blocks(approved, candidate['payload']['blocks']) == candidate['payload']['blocks']
+
+
+@pytest.mark.parametrize('status,revision,digest', [
+    ('draft', None, None), ('pending', 1, 'a' * 64),
+    ('approved', None, 'a' * 64), ('approved', 0, 'a' * 64),
+    ('approved', 1, None),
+])
+def test_repair_does_not_deliver_nondecisions_or_incomplete_revisions(store, monkeypatch, status, revision, digest):
+    project, _ = store
+    portal.set_metadata(project, {'app_project_id': 42, 'status': status,
+                                 'revision': revision, 'checksum': digest})
+    calls = []
+    monkeypatch.setattr(snapshots, 'app_request', lambda *args: calls.append(args))
+    _review_callback(project)
+    assert calls == []
+
+
+@pytest.mark.parametrize('status', ['approved', 'rejected', 'withdrawn'])
+def test_repair_delivers_complete_terminal_decisions(store, monkeypatch, status):
+    project, _ = store
+    portal.set_metadata(project, {'app_project_id': 42, 'status': status,
+                                 'revision': 2, 'checksum': 'a' * 64})
+    calls = []
+    monkeypatch.setattr(snapshots, 'app_request', lambda *args: calls.append(args))
+    _review_callback(project)
+    assert len(calls) == 1
+    assert calls[0][0] == '/internal/ckan/project-reviews'
+    assert calls[0][1]['status'] == status
+    assert calls[0][1]['revision'] == 2
+
+
+@pytest.mark.parametrize('state,meta', [
+    ('approved', {'app_project_id': 42, 'status': 'draft'}),
+    ('approved', {'app_project_id': 42, 'status': 'pending', 'revision': 1, 'checksum': 'a' * 64}),
+    ('archived', {'app_project_id': 42, 'status': 'approved', 'published_revision': 1, 'published_checksum': 'a' * 64}),
+    ('approved', {'app_project_id': 42, 'status': 'withdrawn', 'published_revision': 1, 'published_checksum': 'a' * 64}),
+])
+def test_stats_refresh_skips_unpublished_or_inactive_projects(store, monkeypatch, state, meta):
+    project, _ = store
+    project.status = state
+    portal.set_metadata(project, meta)
+    calls = []
+    monkeypatch.setattr(snapshots, 'app_request', lambda *args: calls.append(args) or {})
+    snapshots.refresh_project_stats(project)
+    assert calls == []
+
+
+def test_stats_refresh_keeps_previous_publication_during_pending_edit(store, monkeypatch):
+    project, _ = store
+    portal.set_metadata(project, {'app_project_id': 42, 'status': 'pending',
+                                 'revision': 2, 'checksum': 'b' * 64,
+                                 'published_revision': 1, 'published_checksum': 'a' * 64})
+    calls = []
+    monkeypatch.setattr(snapshots, 'app_request', lambda path: calls.append(path) or {'observations': 0, 'sites_monitored': 2, 'citizen_scientists': 3})
+    snapshots.refresh_project_stats(project)
+    assert calls == ['/internal/ckan/projects/42/stats']
