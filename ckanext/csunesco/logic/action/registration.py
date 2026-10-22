@@ -224,11 +224,18 @@ def csunesco_manager_approve(context, data_dict):
             })
         org_id = org['id']
     if org_id:
-        tk.get_action('organization_member_create')(dict(context, defer_commit=True), {
-            'id': org_id,
-            'username': user.name,
-            'role': capacity,
-        })
+        current = model.Session.query(model.Member).filter(
+            model.Member.group_id == org_id, model.Member.table_name == 'user',
+            model.Member.table_id == user.id, model.Member.state == 'active').first()
+        ranks = {'member': 1, 'editor': 2, 'admin': 3}
+        if current is not None and ranks.get(current.capacity, 0) >= ranks[capacity]:
+            capacity = current.capacity
+        else:
+            tk.get_action('organization_member_create')(dict(context, defer_commit=True), {
+                'id': org_id,
+                'username': user.name,
+                'role': capacity,
+            })
 
     if not existing_account:
         user.activate()

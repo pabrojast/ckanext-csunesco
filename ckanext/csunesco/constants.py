@@ -48,7 +48,7 @@ PROJECT_FORM_STEPS = [
      'hint': u'Where the project happens: extent, countries and the region '
              u'shown on the map.',
      'fields': ('geographic_extent', 'countries', 'locality',
-                'biosphere_reserve', 'region_geojson', 'point_lat',
+                'biosphere_reserve', 'region_geojson', 'show_project_boundary', 'point_lat',
                 'point_lng', 'point_radius_km')},
     {'step': 4, 'key': 'participation', 'title': u'Participation',
      'hint': u'Who can take part, when the project runs and who benefits.',

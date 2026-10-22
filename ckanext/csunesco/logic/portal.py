@@ -24,7 +24,7 @@ PROJECT_FIELDS = tuple(dict.fromkeys(
      'landing_content', 'initiative', 'logo_focal_x', 'logo_focal_y', 'logo_zoom', 'heading_zoom'] + list(schema.PROJECT_EXTRA_FIELDS)))
 # Public content cannot opt into a private audience via a block selector.
 FACT_FIELDS = tuple(k for k in PROJECT_FIELDS if k not in constants.FIELD_AUDIENCE
-                    and k not in ('editors', 'title', 'region_geojson', 'logo_url',
+                    and k not in ('show_project_boundary', 'editors', 'title', 'region_geojson', 'logo_url',
                                   'heading_image_url', 'landing_content', 'logo_focal_x',
                                   'logo_focal_y', 'logo_zoom', 'heading_zoom',
                                   'heading_focal_x', 'heading_focal_y',
@@ -244,6 +244,9 @@ def validate_payload(raw):
                 raise tk.ValidationError({key: ['Invalid image position']})
         elif key in ('short_description', 'landing_content'):
             value = sanitize.sanitize_html(value or '')
+        elif key == 'show_project_boundary':
+            if not isinstance(value, bool):
+                raise tk.ValidationError({key: ['Expected a boolean']})
         elif key == 'region_geojson' and value:
             try:
                 value = json.loads(value) if isinstance(value, str) else value
@@ -695,7 +698,7 @@ def preview_view(ticket):
         public['portal_published'] = True  # Render the authorized candidate, not the old page.
         preview_blocks = page_render.group_about_sections(candidate['blocks'])
         ctx = page_render.build_context({'user': None}, public, preview_blocks,
-                                       has_region=bool(public.get('region_geojson')), can_manage=False, preview=True)
+                                       has_region=bool(public.get('region_geojson')) and public.get('show_project_boundary') is not False, can_manage=False, preview=True)
         ctx['contacts'] = {k: candidate.get('project', {}).get(k) for k in ('contact_person', 'contact_email')}
         ctx['region_url'] = '/citizen-science/portal/preview-region/' + ticket
         ctx['news_events'] = candidate.get('contents', [])

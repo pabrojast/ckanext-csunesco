@@ -17,6 +17,7 @@ from ckanext.csunesco.logic import validators as v
 # action has one authoritative list to iterate rather than a second hand-written
 # copy that drifts. ``project_dictize`` merges extras back in on read.
 PROJECT_EXTRA_FIELDS = (
+    'show_project_boundary',
     'external_initiative_name',
     'data_access',
     'data_access_justification',
@@ -120,6 +121,7 @@ def project_request_schema():
             ignore_missing, v.csunesco_valid_iso_date,
             v.csunesco_end_after('start_date', allow_equal=True)],
         'open_participation': [ignore_missing, boolean_validator],
+        'show_project_boundary': [ignore_missing, boolean_validator],
         'data_access': [ignore_missing, unicode_safe, v.csunesco_choice(('public', 'private', 'confidential'))],
         'data_access_justification': [ignore_missing, unicode_safe],
         'target_group': [ignore_missing, unicode_safe],

@@ -249,6 +249,57 @@ def _resolve_membership_keys(data_dict):
     return project.id, user_id
 
 
+def _ensure_project_organization_member(context, project, user):
+    """Called only after project-management authorization; never downgrade roles.
+
+    The organization is derived from the stored project, never a client choice.
+    Core CKAN and project changes share the caller's deferred transaction.
+    """
+    if not project.organization_id:
+        return None
+    org = model.Group.get(project.organization_id)
+    if not org or not org.is_organization or org.state != 'active':
+        raise tk.ValidationError({'organization': ['The project organization is unavailable.']})
+    membership = model.Session.query(model.Member).filter(
+        model.Member.group_id == org.id, model.Member.table_name == 'user',
+        model.Member.table_id == user.id, model.Member.state == 'active').first()
+    if membership is None:
+        tk.get_action('organization_member_create')(
+            dict(context, ignore_auth=True, defer_commit=True),
+            {'id': org.id, 'username': user.name, 'role': 'member'})
+        model.Session.flush()
+        membership = model.Session.query(model.Member).filter(
+            model.Member.group_id == org.id, model.Member.table_name == 'user',
+            model.Member.table_id == user.id, model.Member.state == 'active').first()
+        if membership is None:
+            raise tk.ValidationError({'organization': ['Organization membership was not confirmed.']})
+    return org.id
+
+
+def _manager_candidate(data_dict):
+    username = str((data_dict or {}).get('username') or '').strip()
+    user = model.User.get(username) if username else None
+    if user is None or user.state != 'active':
+        raise tk.ValidationError({'username': ['An active IHP-WINS account is required.']})
+    profile = db.get_citizen_scientist(user.id)
+    # Verification is separate from the institutional PM application decision.
+    verified = bool(profile and profile.email_verified)
+    if not verified:
+        raise tk.ValidationError({'email_verified': ['Verify the IHP-WINS email address first.']})
+    return user
+
+
+@tk.side_effect_free
+def csunesco_project_manager_lookup(context, data_dict):
+    tk.check_access('csunesco_project_manager_lookup', context, data_dict)
+    project = _resolve_project(data_dict)
+    if project is None:
+        raise tk.ObjectNotFound(tk._('Project not found'))
+    user = _manager_candidate(data_dict)
+    return {'id': user.id, 'name': user.name, 'fullname': user.fullname,
+            'state': user.state, 'email_verified': True, 'project_id': project.id}
+
+
 def csunesco_join_approve(context, data_dict):
     """Approve a pending join-request; bump ``citizen_scientists`` once.
 
@@ -269,12 +320,25 @@ def csunesco_join_approve(context, data_dict):
     member = db.project_member(project_id, user_id)
     if member is None:
         raise tk.ObjectNotFound(tk._('Membership not found'))
-    # GUARD: only the pending -> active transition should increment the counter.
+    member = model.Session.query(db.CsProjectMember).filter(
+        db.CsProjectMember.id == member.id).populate_existing().with_for_update().one()
+    project = db.get_project(project_id)
+    applicant = model.User.get(user_id)
+    if applicant is None or applicant.state != 'active':
+        raise tk.ValidationError({'user_id': ['The applicant account is not active.']})
+    if member.status == C.MEMBER_STATUS_ACTIVE:
+        _ensure_project_organization_member(context, project, applicant)
+        stats = db.ensure_stats(project_id)
+        model.Session.commit()
+        return {'membership': db.member_dictize(member),
+                'citizen_scientists': stats.citizen_scientists, 'existed': True}
+    # Only pending -> active increments the counter and sends a notification.
     if member.status != 'pending':
         raise tk.ValidationError({'status': [tk._(
             'Only pending memberships can be approved (current status: %s)'
         ) % member.status]})
 
+    _ensure_project_organization_member(context, project, applicant)
     reviewer_id, role, via, actor_name = _resolve_decider(
         context, project_id, data_dict)
     member = db.set_member_status(
@@ -352,16 +416,15 @@ def csunesco_project_manager_set(context, data_dict):
     if project is None:
         raise tk.ObjectNotFound(tk._('Project not found'))
 
-    username = (data_dict.get('username') or '').strip()
-    if not username:
-        raise tk.ValidationError({'username': [tk._('Missing value')]})
-    user = model.User.get(username)
-    if user is None:
-        raise tk.ValidationError({'username': [tk._(
-            'Unknown user: %s') % username]})
+    user = _manager_candidate(data_dict)
+    model.Session.query(db.CsProject).filter(db.CsProject.id == project.id).populate_existing().with_for_update().one()
+    _ensure_project_organization_member(context, project, user)
 
     now = _utcnow()
     member = db.project_member(project.id, user.id)
+    if member is not None and member.status == C.MEMBER_STATUS_ACTIVE and member.role == C.MEMBER_ROLE_PM and not tk.asbool(data_dict.get('replace', False)):
+        model.Session.commit()
+        return db.member_dictize(member)
     if member is None:
         member = db.CsProjectMember()
         member.project_id = project.id
@@ -410,6 +473,7 @@ def get_actions():
         'csunesco_join_approve': csunesco_join_approve,
         'csunesco_join_reject': csunesco_join_reject,
         'csunesco_project_manager_set': csunesco_project_manager_set,
+        'csunesco_project_manager_lookup': csunesco_project_manager_lookup,
     }
 
 
@@ -435,7 +499,7 @@ def csunesco_project_member_remove(context, data_dict):
     if data.get('actor_id') == user.id:
         raise tk.ValidationError({'self_account': ['You cannot remove yourself']})
     # Serializes competing removals so two admins cannot remove the last two PMs.
-    model.Session.query(db.CsProject).filter(db.CsProject.id == project.id).with_for_update().one()
+    model.Session.query(db.CsProject).filter(db.CsProject.id == project.id).populate_existing().with_for_update().one()
     member = db.project_member(project.id, user.id)
     if member and member.status == C.MEMBER_STATUS_ACTIVE:
         if role != 'platform_admin' and (member.role != C.MEMBER_ROLE_CS or user.sysadmin):

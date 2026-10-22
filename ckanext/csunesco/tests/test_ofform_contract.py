@@ -244,6 +244,11 @@ def test_project_manager_set_records_who_assigned_and_when(
     import ckan.model as model
     monkeypatch.setattr(model.User, 'get',
                         staticmethod(lambda name: _ckan_user(session, name)))
+    profile = db.CsCitizenScientist()
+    profile.user_id = 'user-pedro'
+    profile.email_verified = True
+    session.add(profile)
+    session.commit()
     out = members_action.csunesco_project_manager_set(
         _service_ctx(), {'project_slug': 'douro-basin', 'username': 'pedro'})
     assert out['role'] == 'admin' and out['status'] == 'active'
@@ -428,7 +433,7 @@ def test_an_unknown_app_decider_falls_back_to_the_token_but_keeps_the_name(
                         staticmethod(lambda name: _ckan_user(session, name)))
     members_action.csunesco_join_request_create(
         _service_ctx(), _join_payload())
-    monkeypatch.setattr(model.User, 'get', staticmethod(lambda name: None))
+    monkeypatch.setattr(model.User, 'get', staticmethod(lambda name: _User('user-maria') if name == 'user-maria' else None))
     out = members_action.csunesco_join_approve(_service_ctx(), {
         'project_slug': 'douro-basin', 'user_id': 'user-maria',
         'decided_by_username': 'csmanager', 'decided_by_role': 'bogus',

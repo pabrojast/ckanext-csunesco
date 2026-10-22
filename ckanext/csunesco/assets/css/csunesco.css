@@ -4891,3 +4891,5 @@
 .cs-profile-next summary { color: #21485f; font-size: 15px; font-weight: 700; cursor: pointer; }
 .cs-profile-next[open] summary { margin-bottom: 10px; }
 .cs-profile-section legend { margin-bottom: 10px; }
+
+.cs-project-logo-frame { max-width: 100%; background: rgba(255,255,255,.95); border-radius: 8px; padding: 6px; box-sizing: border-box; }

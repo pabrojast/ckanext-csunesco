@@ -969,6 +969,7 @@ def get_auth_functions():
         'csunesco_join_approve': csunesco_join_approve,
         'csunesco_join_reject': csunesco_join_reject,
         'csunesco_project_manager_set': csunesco_project_manager_set,
+        'csunesco_project_manager_lookup': csunesco_project_manager_set,
         'csunesco_project_member_remove': lambda c, d: {'success': _is_sysadmin(c)},
         'csunesco_project_trusted_set': csunesco_project_trusted_set,
         'csunesco_project_request_create': csunesco_project_request_create,

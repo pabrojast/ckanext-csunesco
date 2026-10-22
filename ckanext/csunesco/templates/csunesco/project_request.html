@@ -365,6 +365,11 @@
           </div>
 
           <div class="cs-field">
+            <label for="cs-f-show-boundary">{{ _("Show project boundaries") }}</label>
+            <select id="cs-f-show-boundary" name="show_project_boundary">
+              <option value="true" {% if data.get("show_project_boundary") is not sameas false %}selected{% endif %}>{{ _("Yes") }}</option>
+              <option value="false" {% if data.get("show_project_boundary") is sameas false %}selected{% endif %}>{{ _("No") }}</option>
+            </select>
             <label for="cs-f-region_geojson">{{ _("Project area (optional GeoJSON)") }}</label>
             <textarea id="cs-f-region_geojson" name="region_geojson" rows="5"
                       {% if errors.region_geojson %}aria-invalid="true"{% endif %}

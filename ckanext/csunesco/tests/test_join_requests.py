@@ -46,6 +46,8 @@ class _User(object):
 
     def __init__(self, user_id):
         self.id = user_id
+        self.name = user_id
+        self.state = "active"
 
 
 def _ctx(user_id='citizen-1'):
@@ -75,6 +77,7 @@ def actions(session, monkeypatch):
     monkeypatch.setattr(registration_profile, 'require_registered', lambda user: None)
     monkeypatch.setattr(tk, 'check_access', lambda *a, **k: True)
     monkeypatch.setattr(cs_auth, '_is_sysadmin', lambda context: False)
+    monkeypatch.setattr(members_action.model.User, "get", staticmethod(lambda key: _User(key)))
     return members_action
 
 

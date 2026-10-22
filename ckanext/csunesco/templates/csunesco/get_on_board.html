@@ -15,7 +15,7 @@
     <div class="cs-onboarding-start">
       {% if registration_stage == 'register' %}
         <a class="cs-btn cs-btn-primary" href="{{ registration_url }}">{{ _("Register as a Citizen Scientist") }} {{ h.csunesco_icon('arrow-right', 16) }}</a>
-        <p class="cs-roles-signin">{{ _("Already have an account?") }} <a href="{{ login_url }}">{{ _("Sign in") }}</a></p>
+        <p class="cs-roles-signin">{{ _("I already have an IHP-WINS account") }} <a href="{{ login_url }}">{{ _("Sign in") }}</a></p>
       {% elif registration_stage == 'complete' %}
         <p>{{ _("Complete your Citizen Scientist registration before joining or proposing a project.") }}</p>
         <a class="cs-btn cs-btn-primary" href="{{ completion_url }}">{{ _("Complete my registration") }}</a>

@@ -1868,7 +1868,7 @@ def pending_joins(project_ids=None, limit=20, offset=0):
     import ckan.model as model
 
     query = (
-        Session.query(CsProjectMember, CsProject.title, CsProject.slug)
+        Session.query(CsProjectMember, CsProject.title, CsProject.slug, CsProject.organization_id)
         .join(CsProject, CsProject.id == CsProjectMember.project_id)
         .filter(CsProjectMember.status == 'pending')
     )
@@ -1888,7 +1888,9 @@ def pending_joins(project_ids=None, limit=20, offset=0):
     # A reviewer used to get a bare username and nothing else to judge, so the
     # rows now carry the identity we already hold. Two queries for the whole
     # page, not two per row.
-    user_ids = [member.user_id for (member, _t, _s) in rows]
+    user_ids = [member.user_id for (member, _t, _s, _org) in rows]
+    org_ids = {org_id for _, _, _, org_id in rows if org_id}
+    organizations = {org.id: org for org in Session.query(model.Group).filter(model.Group.id.in_(org_ids)).all()} if org_ids else {}
     people = {}
     profiles = {}
     if user_ids:
@@ -1922,10 +1924,13 @@ def pending_joins(project_ids=None, limit=20, offset=0):
             log.warning('csunesco: join requesters could not be resolved')
 
     results = []
-    for member, title, slug in rows:
+    for member, title, slug, org_id in rows:
         item = member_dictize(member)
         item['project_title'] = title
         item['project_slug'] = slug
+        item['organization_id'] = org_id
+        org = organizations.get(org_id)
+        item['organization_title'] = (org.title or org.name) if org else None
         user = people.get(member.user_id)
         profile = profiles.get(member.user_id)
         item['user_name'] = ((user.display_name or user.name) if user

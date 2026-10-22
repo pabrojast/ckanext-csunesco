@@ -298,7 +298,7 @@ def project_landing(slug):
     # Advisor refinement: DO NOT embed the (potentially large) GeoJSON in the
     # HTML. Keep only a boolean so the template can render its skeleton/fallback;
     # the map JS fetches the payload asynchronously from the /geojson endpoint.
-    has_region = bool(project.get('region_geojson'))
+    has_region = bool(project.get('region_geojson')) and project.get('show_project_boundary') is not False
     project.pop('region_geojson', None)
     project['initiative_title'] = _INITIATIVE_TITLES.get(
         project.get('initiative_group'), project.get('initiative_group'))
@@ -495,6 +495,7 @@ def _read_project_form():
                                      if form.get('initiative') == '__external__' else ''),
         'biosphere_reserve': (form.get('biosphere_reserve') or '').strip(),
         'region_geojson': (form.get('region_geojson') or '').strip(),
+        'show_project_boundary': form.get('show_project_boundary', 'true') == 'true',
         'short_description': (form.get('short_description') or '').strip(),
         'project_document_url':
             (form.get('project_document_url') or '').strip(),
@@ -626,6 +627,7 @@ def _project_to_form(project):
         'start_date': (project.get('start_date') or '')[:10],
         'end_date': (project.get('end_date') or '')[:10],
         'open_participation': bool(project.get('open_participation')),
+        'show_project_boundary': project.get('show_project_boundary') is not False,
         'participation_mode': participation_mode,
         'data_access': project.get('data_access') or '',
         'data_access_justification': project.get('data_access_justification') or '',
