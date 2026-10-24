@@ -5,7 +5,7 @@ water-family pattern from `ckanext-pages` (initiative + project landings,
 news/events, approval dashboard) into a self-contained plugin, plus
 Citizen-Scientist self-registration (no organization) inspired by
 `ckanext-colab`. It is the IHP-WINS side of the **CS Toolbox** (`ofform`)
-workflow — see [`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
+workflow — see [ofform integration](#ofform-integration).
 
 ## Features
 
@@ -211,8 +211,8 @@ enumerate accounts.
 | `csunesco_project_trusted_set` | sysadmin — toggles unreviewed news/events for one project |
 | `csunesco_register_citizen_scientist` | **sysadmin token only** — server-to-server (ofform); idempotent |
 
-The full ofform endpoint→action mapping and identity model live in
-[`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
+How ofform drives these actions (trusted proxy, outbox kinds, identity
+model) is described under [ofform integration](#ofform-integration).
 
 ### Registration validation
 
@@ -534,10 +534,9 @@ safe inside CSS `url('…')`), shown on cards and as the landing hero.
 
 ### Ask the data
 
-The *"Knowledge generation"* step of the Citizen Science workflow
-(`docs/OFFORM_INTEGRATION.md` §6): a reader who can see the observation map but
-cannot open a spreadsheet still gets to ask "in which months did conductivity
-rise at Río Claro?".
+The *"Knowledge generation"* step of the Citizen Science workflow: a reader who
+can see the observation map but cannot open a spreadsheet still gets to ask "in
+which months did conductivity rise at Río Claro?".
 
 It is a page-builder block (`data_chat`, one per page). A signed-in visitor
 types a question; the answer arrives as a **computed result plus a sentence
@@ -638,11 +637,56 @@ projects. Outages keep the last stored values (never zeroed).
 
 ## ofform integration
 
-The CS Toolbox PWA (`ofform`) proxies all Citizen Science mutations to this
-plugin's `csunesco_*` actions using a server-side `CKAN_API_TOKEN` /
-`CKAN_WRITE_BASE_URL`. The browser never holds the token. Full endpoint→action
-mapping, identity model and workflow table:
-**[`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md)**.
+The CS Toolbox PWA (`ofform`, FastAPI backend + React frontend) is the
+operational client; IHP-WINS (CKAN running this plugin) stays the source of
+truth for initiatives, projects, roles, content and counters. The two are wired
+exclusively through the `csunesco_*` actions listed under
+[API actions](#api-actions-api3actionname).
+
+**Trusted proxy.** ofform's backend holds a sysadmin CKAN API token
+(`CKAN_API_TOKEN`, pointed at `CKAN_WRITE_BASE_URL` = `.../api/3/action`) and is
+the only party that calls CKAN's write API; the browser never sees the token.
+The token is sent as the raw `Authorization` header value (no `Bearer ` prefix)
+and is redacted from every error ofform records. Token-less public reads
+(`csunesco_project_show`, `csunesco_project_list`, `csunesco_content_list`, …)
+go through a separate read client, so the write token is never spent on reads.
+
+**Async outbox.** Every app-originated mutation is queued in ofform's
+`cs_sync_outbox` table and pushed by a single worker with idempotency keys,
+atomic row claims and bounded retries, so the user response never waits on
+CKAN. Without a token the worker logs once and stays idle. Outbox kinds map
+onto plugin actions as follows:
+
+| Outbox kind | CKAN action |
+| --- | --- |
+| `project_request` | `csunesco_project_request_create` |
+| `project_update` | `csunesco_project_update` |
+| `join_request` / `join_approve` / `join_reject` | `csunesco_join_request_create` / `_approve` / `_reject` |
+| `member_remove` | `csunesco_project_member_remove` |
+| `content` | `csunesco_content_create` |
+| `dataset_publish` | `csunesco_data_source_create` |
+| `initiative_page_update` / `initiative_page_publish` | `csunesco_initiative_page_update` / `_publish` |
+| `project_portal` | `csunesco_project_portal_apply` |
+| `project_content` | `csunesco_project_content_apply` |
+| `portal_page` | `csunesco_editorial_page_apply` |
+| `project_structure` | `csunesco_project_structure_upsert` (queued only with ofform's `CS_STRUCTURE_SYNC_ENABLED`; deploy the portal action first) |
+
+App payloads carry `source: 'app'`, so app-originated content and data sources
+always land `pending` despite the sysadmin token (news/events on a *trusted*
+project excepted).
+
+**Synchronous exceptions.** Citizen-Scientist registration
+(`csunesco_register_citizen_scientist`) and Project-Manager applications
+(`csunesco_manager_application_submit`) are not queued: ofform calls CKAN first
+and only creates its local shadow record once the portal account exists, so
+CKAN's validation and conflict errors reach the user directly.
+
+**Identity.** CKAN is the identity authority. Portal logins and password resets
+inside ofform rely on CKAN core (`user_show`, `user_list`, `user_patch`) plus
+`user_login` from `ckanext-auth`; this plugin adds no auth actions. CS projects
+are mirrored as ofform `Programme` rows, and ofform's reconciler sweeps
+`csunesco_project_list` (approved projects only) to create mirrors for
+portal-born projects.
 
 ## Design
 

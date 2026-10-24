@@ -193,8 +193,8 @@ bash .mix/verify.sh
   context to use the camera.
 - Persist `ckan.storage_path` across deploys if page image uploads are enabled;
   an ephemeral container filesystem will lose uploaded images on restart.
-- To connect the **CS Toolbox (ofform)** PWA to this plugin, see
-  [`docs/OFFORM_INTEGRATION.md`](docs/OFFORM_INTEGRATION.md).
+- To connect the **CS Toolbox (ofform)** PWA to this plugin, see the
+  [ofform integration](README.md#ofform-integration) section of the README.
 
 ## License
 
