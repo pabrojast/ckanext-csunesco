@@ -11,6 +11,7 @@ import ckan.plugins.toolkit as tk
 from ckanext.csunesco import db
 from ckanext.csunesco.logic import auth
 from ckanext.csunesco.logic.registration_errors import problem
+from ckanext.csunesco import constants
 
 FIELDS = ('fullname', 'date_of_birth', 'nationality', 'gender', 'language',
           'language_other', 'motivation')
@@ -77,7 +78,7 @@ def csunesco_registration_profile_update(context, data_dict):
         raise tk.ValidationError(problem('required', *missing))
     if not 20 <= len(values['motivation']) <= 500 or len(values['fullname']) > 200:
         raise tk.ValidationError(problem('motivation_invalid', 'motivation'))
-    if values['language'] not in ('en', 'es', 'fr', 'pt', 'ar', 'uk', 'quh') or len(values['language_other']) > 64:
+    if values['language'] not in constants.LANGUAGES or len(values['language_other']) > 64:
         raise tk.ValidationError(problem('language_invalid', 'language', 'language_other'))
     dob, nationality, gender = registration._parse_optional_profile(values)
     try:
@@ -119,7 +120,7 @@ def safe_next(value):
     value = str(value or '')
     parsed = urlsplit(value)
     path = parsed.path
-    for locale in ('en', 'es', 'fr', 'pt', 'ar', 'uk', 'quh'):
+    for locale in constants.LANGUAGES:
         if path.startswith('/' + locale + '/'):
             path = path[len(locale) + 1:]
             break

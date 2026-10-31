@@ -125,7 +125,7 @@ def test_new_join_without_profile_is_blocked(session,identity):
     assert session.query(db.CsProjectMember).count()==0
 
 
-@pytest.mark.parametrize('path',['/citizen-science/project/new','/fr/citizen-science/project/river','/quh/citizen-science/project/river?tab=data'])
+@pytest.mark.parametrize('path',['/citizen-science/project/new','/fr/citizen-science/project/river','/quh/citizen-science/project/river?tab=data','/ay/citizen-science/project/river?tab=data'])
 def test_completion_returns_to_same_local_context(monkeypatch,path):
     monkeypatch.setattr(tk,'url_for',lambda *a,**kw:'/citizen-science/')
     assert profiles.safe_next(path)==path

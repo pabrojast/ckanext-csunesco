@@ -32,7 +32,7 @@ def send_kind(kind, *, reason='Try again', project='River'):
     return action._send_decision_email(model.User.get('u1'), approved, reason=reason)
 
 
-@pytest.mark.parametrize('language', ['en', 'fr', 'es', 'pt', 'uk', 'ar', 'quh'])
+@pytest.mark.parametrize('language', ['en', 'fr', 'es', 'pt', 'uk', 'ar', 'quh', 'ay'])
 def test_verification_language_overrides_request_for_all_parts(mail, language):
     from ckanext.csunesco.logic.verification_copy import COPY
     assert registration._send_verification_email('Person', 'person@example.org', 'localized', language=language)
@@ -179,7 +179,7 @@ def test_legacy_approval_without_slug_has_no_broken_button(mail):
 
 
 def test_decision_catalog_has_complete_translations_and_matching_placeholders():
-    assert set(DECISION_COPY) == {'en', 'es', 'fr', 'pt', 'uk', 'ar', 'quh'}
+    assert set(DECISION_COPY) == {'en', 'es', 'fr', 'pt', 'uk', 'ar', 'quh', 'ay'}
     reference = DECISION_COPY['en']
     def fields(value):
         return {name for _, name, _, _ in Formatter().parse(value) if name}
@@ -259,7 +259,7 @@ def test_reason_is_plain_text_and_preserves_line_breaks(mail, kind):
 
 
 @pytest.mark.parametrize('profile_language,user_language,expected', [
-    (' FR_fr ', 'es', 'fr'), ('pt-BR', 'en', 'pt'), ('quh', 'en', 'quh'),
+    (' FR_fr ', 'es', 'fr'), ('pt-BR', 'en', 'pt'), ('quh', 'en', 'quh'), ('ay-BO', 'en', 'ay'),
     (None, 'uk', 'uk'), ('', 'es', 'es'), (None, None, 'en'), ('unknown', 'fr', 'en'),
 ])
 def test_decision_language_normalization_and_fallback(mail, monkeypatch,

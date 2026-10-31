@@ -354,3 +354,8 @@ APPROVER_ROLE_PROJECT_MANAGER = 'project_manager'
 APPROVER_ROLE_INITIATIVE_ADMIN = 'initiative_admin'
 APPROVER_ROLES = (APPROVER_ROLE_PLATFORM_ADMIN, APPROVER_ROLE_PROJECT_MANAGER,
                   APPROVER_ROLE_INITIATIVE_ADMIN)
+
+# Preferred-language codes accepted for Citizen Science profiles. Must match
+# Ofform's KNOWN_LANGS (backend/app/config.py): a code missing here makes the
+# registration contract reject that person's preference.
+LANGUAGES = ('en', 'es', 'fr', 'pt', 'ar', 'uk', 'quh', 'ay')

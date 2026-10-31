@@ -58,7 +58,7 @@ def test_verified_pm_continuation_uses_stored_path_not_query(app,monkeypatch):
         assert parse_qs(urlsplit(values['toolbox_login_url']).query)=={'resume':['ihpwins'],'lng':['es']}
 
 
-@pytest.mark.parametrize('language', ['en', 'es', 'fr', 'pt', 'uk', 'ar', 'quh'])
+@pytest.mark.parametrize('language', ['en', 'es', 'fr', 'pt', 'uk', 'ar', 'quh', 'ay'])
 def test_existing_portal_session_has_explicit_handoff(app, monkeypatch, language):
     monkeypatch.setattr(tk, 'render', lambda template, extra_vars: (template, extra_vars))
     # Portuguese, Ukrainian and Qhichwa share the supported English URL locale.
@@ -72,7 +72,7 @@ def test_existing_portal_session_has_explicit_handoff(app, monkeypatch, language
         assert values['copy']['signed_in']
 
 
-@pytest.mark.parametrize('language', ['pt', 'uk', 'quh'])
+@pytest.mark.parametrize('language', ['pt', 'uk', 'quh', 'ay'])
 def test_verification_continuation_keeps_profile_language(app, monkeypatch, language):
     monkeypatch.setattr(tk, 'render', lambda template, extra_vars: extra_vars)
     with app.test_request_context('/citizen-science/verify/used', environ_overrides={'CKAN_LANG': 'en'}):

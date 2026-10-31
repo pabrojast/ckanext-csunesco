@@ -14,10 +14,12 @@ workflow — see [ofform integration](#ofform-integration).
   **no organization** and flags a CS profile; optional reCAPTCHA v3. Also exposed
   server-to-server as `csunesco_register_citizen_scientist` for ofform, including
   email verification before activation.
-  Preferred languages include `quh` (**Qhichwa (Bolivia)**), matching Ofform's
-  South Bolivian Quechua translation. Deploy this registration compatibility
-  before enabling `quh` in Ofform. The preference is stored in the CS profile;
-  it does not install a Quechua translation of the CKAN portal itself.
+  Preferred languages include `quh` (**Qhichwa (Bolivia)**) and `ay`
+  (**Aymar aru**), matching Ofform's South Bolivian Quechua and Bolivian
+  Aymara translations (`constants.LANGUAGES`). Deploy this registration
+  compatibility before enabling either code in Ofform. The preference is
+  stored in the CS profile; it does not install a Quechua or Aymara
+  translation of the CKAN portal itself.
 - **Initiatives & projects** — the four initiatives (Be Resilient, Island Watch,
   River Watch, C4Water) are CKAN groups; CS projects are first-class rows with a
   request → approve/reject lifecycle (`csunesco_project_*`). Join requests use

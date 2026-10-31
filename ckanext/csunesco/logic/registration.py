@@ -404,7 +404,7 @@ def _registration_next():
     allowed = '/citizen-science/register/project-manager'
     if value == '/register-project-manager':
         return allowed
-    return value if value in [allowed] + ['/' + lang + allowed for lang in ('en', 'es', 'fr', 'pt', 'ar', 'uk', 'quh')] else None
+    return value if value in [allowed] + ['/' + lang + allowed for lang in constants.LANGUAGES] else None
 
 
 def _render(extra_vars):
@@ -500,7 +500,7 @@ def create_citizen_scientist(context, data, verification_token=None):
     language_other = str(data.get('language_other') or '').strip()
     if motivation and not 20 <= len(motivation) <= 500:
         raise ValidationError(problem('motivation_invalid', 'motivation'))
-    if language and language not in ('en', 'es', 'fr', 'ar', 'pt', 'uk', 'quh') or len(language_other) > 64:
+    if language and language not in constants.LANGUAGES or len(language_other) > 64:
         raise ValidationError(problem('language_invalid', 'language', 'language_other'))
     project_slug = data.get('registration_project_slug')
     if project_slug:
@@ -679,7 +679,7 @@ def register_citizen(ihpwins=False):
     if request.method == 'GET':
         return _render({
             'data': {'project': request.args.get('project', '').strip(),
-                     'language': request.args.get('lng', '') if request.args.get('lng') in ('en', 'es', 'fr', 'pt', 'ar', 'uk', 'quh') else ''},
+                     'language': request.args.get('lng', '') if request.args.get('lng') in constants.LANGUAGES else ''},
             'errors': {},
         })
 

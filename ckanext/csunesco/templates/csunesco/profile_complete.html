@@ -101,7 +101,7 @@
             {{ field_label('language', _('Preferred language')) }}
             <select id="profile-language" name="language" required {{ error_attrs('language') }}>
               <option value="">{{ _("Select an option") }}</option>
-              {% for code, name in [('en','English'),('es','Español'),('fr','Français'),('pt','Português'),('uk','Українська'),('ar','العربية'),('quh','Qhichwa (Bolivia)')] %}<option value="{{ code }}" {% if data.language == code %}selected{% endif %}>{{ name }}</option>{% endfor %}
+              {% for code, name in [('en','English'),('es','Español'),('fr','Français'),('pt','Português'),('uk','Українська'),('ar','العربية'),('quh','Qhichwa (Bolivia)'),('ay','Aymar aru')] %}<option value="{{ code }}" {% if data.language == code %}selected{% endif %}>{{ name }}</option>{% endfor %}
             </select>
             {{ field_error('language', _('Select an option.')) }}
           </div>

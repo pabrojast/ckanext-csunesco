@@ -57,6 +57,14 @@ COPY = {
         'brand': 'Llaqta Runa Yachay',
         'support': 'Tapuykunayki kanchu? Kayman qillqawayku',
     },
+    'ay': {
+        'subject': 'UNESCO Citizen Science cuenta-mar yatiqañataki',
+        'body': 'UNESCO Citizen Science markar jutapxata!\n\nAka link uñstayañamawa, correo electrónico sutim chiqapchayañataki, cuenta-mar apnaqañataki:\n\n{url}\n\nAka link ukan {hours} hora qhiparu tukusini. Jïkisi aka cuenta-mar jani luraspa, aka mensaje uñakipañamawa.',
+        'cta': 'Cuenta-mar chiqapchayaña',
+        'footer': 'Aka correo electrónico apayatarakiwa, cuenta-mar luratam layku.',
+        'brand': 'Marka Yatxatawi',
+        'support': 'Jiskt’awinakamax? Aka chiqaruw jutapxasma',
+    },
 }
 
 

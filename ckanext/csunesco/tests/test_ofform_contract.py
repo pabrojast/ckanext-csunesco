@@ -599,7 +599,7 @@ def test_registration_accepts_the_minimal_payload(service, session,
     assert profile.profile_type in (None, 'citizen')
 
 
-@pytest.mark.parametrize('language', ['en', 'quh'])
+@pytest.mark.parametrize('language', ['en', 'quh', 'ay'])
 def test_registration_stores_the_reporting_fields(service, session,
                                                   monkeypatch, language):
     """The app's CURRENT payload, verbatim, incl. the 2026 reporting fields.
