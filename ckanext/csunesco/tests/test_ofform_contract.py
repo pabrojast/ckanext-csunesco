@@ -247,6 +247,9 @@ def test_project_manager_set_records_who_assigned_and_when(
     profile = db.CsCitizenScientist()
     profile.user_id = 'user-pedro'
     profile.email_verified = True
+    profile.profile_type = "manager"
+    profile.manager_decision = "approved"
+    profile.org_id = "institution"
     session.add(profile)
     session.commit()
     out = members_action.csunesco_project_manager_set(

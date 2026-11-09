@@ -24,7 +24,7 @@ def csunesco_manager_application_submit(context, data_dict):
     user = acting_user(context, data_dict)
     require_registered(user)
     profile = db.get_citizen_scientist(user.id)
-    if profile.profile_type == 'manager':
+    if profile.profile_type == 'manager' and profile.manager_decision != 'rejected':
         return csunesco_manager_application_show(context, data_dict)
     data = data_dict
     fields = {key: str(data.get(key) or '').strip() for key in

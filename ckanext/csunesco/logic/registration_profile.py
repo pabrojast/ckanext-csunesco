@@ -16,7 +16,7 @@ from ckanext.csunesco import constants
 FIELDS = ('fullname', 'date_of_birth', 'nationality', 'gender', 'language',
           'language_other', 'motivation')
 REQUIRED = ('fullname', 'date_of_birth', 'nationality', 'gender', 'language',
-            'motivation', 'terms_accepted_at')
+            'terms_accepted_at')
 
 
 def completeness(user, profile=None):
@@ -76,7 +76,7 @@ def csunesco_registration_profile_update(context, data_dict):
     missing = [key for key in REQUIRED if key != 'terms_accepted_at' and not values.get(key)]
     if missing:
         raise tk.ValidationError(problem('required', *missing))
-    if not 20 <= len(values['motivation']) <= 500 or len(values['fullname']) > 200:
+    if (values['motivation'] and not 20 <= len(values['motivation']) <= 500) or len(values['fullname']) > 200:
         raise tk.ValidationError(problem('motivation_invalid', 'motivation'))
     if values['language'] not in constants.LANGUAGES or len(values['language_other']) > 64:
         raise tk.ValidationError(problem('language_invalid', 'language', 'language_other'))

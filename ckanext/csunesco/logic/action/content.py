@@ -25,6 +25,7 @@ import ckan.plugins.toolkit as tk
 import ckan.model as model
 
 from ckanext.csunesco import db
+from ckanext.csunesco.logic import pathways
 from ckanext.csunesco.logic import auth
 from ckanext.csunesco.logic import schema as cs_schema
 from ckanext.csunesco.logic.sanitize import sanitize_html
@@ -838,7 +839,7 @@ def csunesco_content_show(context, data_dict):
     from ckanext.csunesco.logic import portal
     if content.project_id:
         parent = db.get_project(content.project_id)
-        if (parent is None or parent.status != 'approved' or portal.withdrawn(parent)) and not _can_view_unapproved(context, content):
+        if (parent is None or parent.status != 'approved' or portal.withdrawn(parent) or not pathways.visible(context, parent)) and not _can_view_unapproved(context, content):
             raise tk.ObjectNotFound(tk._('Content not found'))
     if (content.status != 'approved'
             and not _can_view_unapproved(context, content)):

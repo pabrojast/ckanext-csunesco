@@ -40,7 +40,7 @@ def review(session, project, monkeypatch):
     return user, org, request, profile, calls, emails, context
 
 
-def test_join_grants_organization_membership_once_and_retries_without_duplicate_history(session, project, review):
+def test_join_grants_project_only_and_retries_without_duplicate_history(session, project, review):
     user, org, request, _, calls, emails, context = review
     payload = {'project_id': project.id, 'user_id': user.id}
     first = members.csunesco_join_approve(context, payload)
@@ -48,8 +48,8 @@ def test_join_grants_organization_membership_once_and_retries_without_duplicate_
     assert first['membership']['status'] == again['membership']['status'] == 'active'
     assert first['membership']['history'] == again['membership']['history']
     assert again['citizen_scientists'] == 1
-    assert len(calls) == len(emails) == 1
-    assert session.query(model.Member).filter_by(group_id=org.id, table_id=user.id).one().capacity == 'member'
+    assert not calls and len(emails) == 1
+    assert not session.query(model.Member).filter_by(group_id=org.id, table_id=user.id).first()
 
 
 def test_join_preserves_existing_organization_admin(session, project, review):
@@ -60,23 +60,24 @@ def test_join_preserves_existing_organization_admin(session, project, review):
     assert session.query(model.Member).filter_by(group_id=org.id, table_id=user.id).one().capacity == 'admin'
 
 
-def test_failed_organization_grant_leaves_join_pending(session, project, review, monkeypatch):
+def test_cs_approval_does_not_depend_on_organization_writes(session, project, review, monkeypatch):
     user, org, request, _, _, emails, context = review
-    monkeypatch.setattr(tk, 'get_action', lambda name: lambda *a: None)  # malformed success
-    with pytest.raises(tk.ValidationError, match='not confirmed'):
-        members.csunesco_join_approve(context, {'project_id': project.id, 'user_id': user.id})
-    session.rollback()
-    assert db.project_member(project.id, user.id).status == 'pending'
+    monkeypatch.setattr(tk, 'get_action', lambda name: lambda *a: (_ for _ in ()).throw(AssertionError('No organization grant')))
+    members.csunesco_join_approve(context, {'project_id': project.id, 'user_id': user.id})
+    assert db.project_member(project.id, user.id).status == 'active'
     assert not session.query(model.Member).filter_by(group_id=org.id, table_id=user.id).first()
-    assert not emails
+    assert len(emails) == 1
 
 
-def test_verified_citizen_can_be_assigned_pm_without_global_pm_approval(session, project, review):
+def test_pm_assignment_requires_global_approval_and_preserves_other_managers(session, project, review):
     user, _, _, profile, _, _, context = review
     assert profile.manager_decision is None
     existing = db.CsProjectMember(); existing.project_id = project.id; existing.user_id = 'original-manager'; existing.role = 'admin'; existing.status = 'active'
     session.add(existing); session.commit()
     payload = {'project_slug': project.slug, 'username': user.name, 'replace': False}
+    with pytest.raises(tk.ValidationError, match='Approve the Project Manager'):
+        members.csunesco_project_manager_lookup(context, payload)
+    profile.profile_type = 'manager'; profile.manager_decision = 'approved'; profile.org_id = 'institution'; session.commit()
     candidate = members.csunesco_project_manager_lookup(context, payload)
     assert candidate['project_id'] == project.id and candidate['email_verified'] is True
     first = members.csunesco_project_manager_set(context, payload)

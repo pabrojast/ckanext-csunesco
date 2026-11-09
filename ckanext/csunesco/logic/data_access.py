@@ -48,6 +48,10 @@ def capabilities(context, source):
     """Resolve the viewer's metadata, chart and download rights together."""
     denied = dict(can_read_metadata=False, can_view_resources=False, can_download=False)
     source = as_dict(source)
+    from ckanext.csunesco.logic.pathways import visible
+    project = db.get_project(source.get("project_id")) if source.get("project_id") else None
+    if project and not visible(context, project):
+        return denied
     if not published(source):
         return denied
     package_id = source.get('ckan_package_id')

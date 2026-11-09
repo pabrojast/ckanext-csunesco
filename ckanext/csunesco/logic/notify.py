@@ -112,3 +112,23 @@ def notify_project_decision(user_id, project_title, approved, reason=None,
 
 def notify_manager_decision(user_id, approved, reason=None):
     return _notify_decision(user_id, 'manager', approved, reason=reason)
+
+
+def notify_verified(user_id, next_path):
+    """One activation consumes one token; retries cannot send a second welcome."""
+    try:
+        from urllib.parse import urlencode
+        from ckanext.csunesco.logic.welcome_copy import COPY
+        from ckanext.csunesco.logic.verification_copy import COPY as verification
+        from ckanext.csunesco.logic.email_templates import render_notification
+        from ckanext.csunesco.logic.registration import toolbox_url
+        language = _recipient_language(user_id)
+        copy, shared = COPY[language], verification[language]
+        url = toolbox_url('/login?' + urlencode({'next': next_path, 'lng': language}))
+        html = render_notification(subject=copy['subject'], message=copy['body'],
+            cta_label=copy['cta'], cta_url=url, footer_note=shared['footer'],
+            language=language, brand_name=shared['brand'], support_label=shared['support'])
+        return notify_user(user_id, copy['subject'], copy['body'] + '\n\n' + url, html)
+    except Exception as exc:
+        log.warning('csunesco: welcome notification failed: %s', type(exc).__name__)
+        return False

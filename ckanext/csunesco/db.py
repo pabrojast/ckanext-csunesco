@@ -79,6 +79,8 @@ cs_project_table = Table(
     # Trusted projects publish their news/events WITHOUT review (policy toggle,
     # sysadmin-only; publications/maps/data always queue).
     Column('trusted', types.Boolean, default=False),
+    Column('discovery_visibility', types.UnicodeText, default='public'),
+    Column('join_policy', types.UnicodeText),
     Column('created_by', types.UnicodeText, index=True),
     Column('reviewed_by', types.UnicodeText),
     Column('reviewed_at', types.DateTime),
@@ -318,10 +320,37 @@ cs_delivery_table = Table(
     Column('created', types.DateTime, default=_utcnow),
 )
 
+# Requests are independent of active memberships: a scientist can request a PM
+# role without losing access, and rejection never revokes an existing role.
+cs_join_request_table = Table(
+    'cs_join_request', metadata,
+    Column('id', types.UnicodeText, primary_key=True, default=make_uuid),
+    Column('project_id', types.UnicodeText, nullable=False, index=True),
+    Column('user_id', types.UnicodeText, nullable=False, index=True),
+    Column('requested_role', types.UnicodeText, nullable=False, default='citizen'),
+    Column('status', types.UnicodeText, nullable=False, default='pending', index=True),
+    Column('note', types.Text),
+    Column('reason', types.Text),
+    Column('reviewed_by', types.UnicodeText),
+    Column('created', types.DateTime, default=_utcnow),
+    Column('modified', types.DateTime, default=_utcnow),
+    Column('history', types.Text, default='[]'),
+    UniqueConstraint('project_id', 'user_id', 'requested_role', name='uq_cs_join_request_role'),
+)
+cs_invitation_table = Table(
+    'cs_project_invitation', metadata,
+    Column('project_id', types.UnicodeText, primary_key=True),
+    Column('token', types.UnicodeText, nullable=False, unique=True),
+    Column('created_by', types.UnicodeText),
+    Column('created', types.DateTime, default=_utcnow),
+)
+
 # All tables this plugin owns; ``ensure_tables`` only ever touches these so we
 # never accidentally reach for core CKAN tables.
 _ALL_TABLES = [
     cs_delivery_table,
+    cs_join_request_table,
+    cs_invitation_table,
     cs_project_table,
     cs_project_member_table,
     cs_content_table,
@@ -336,6 +365,14 @@ _ALL_TABLES = [
 # ---------------------------------------------------------------------------
 # Domain objects (classic mapper style)
 # ---------------------------------------------------------------------------
+
+class CsJoinRequest(DomainObject):
+    pass
+
+
+class CsInvitation(DomainObject):
+    pass
+
 
 class CsProject(DomainObject):
     pass
@@ -377,6 +414,8 @@ def _ensure_mappers():
     global _mapped
     if _mapped:
         return
+    mapper(CsJoinRequest, cs_join_request_table)
+    mapper(CsInvitation, cs_invitation_table)
     mapper(CsProject, cs_project_table)
     mapper(CsProjectMember, cs_project_member_table)
     mapper(CsContent, cs_content_table)
@@ -408,6 +447,8 @@ def ensure_mappers():
 #
 # Tuples are (table_name, column_name, column_sql_type).
 _AUTO_HEAL_COLUMNS = [
+    ('cs_project', 'discovery_visibility', "TEXT DEFAULT 'public'"),
+    ('cs_project', 'join_policy', 'TEXT'),
     ('cs_data_source', 'access_level', "TEXT NOT NULL DEFAULT 'legacy'"),
     ('cs_project', 'biosphere_reserve', 'TEXT'),
     ('cs_project', 'image_url', 'TEXT'),
@@ -583,6 +624,7 @@ def get_citizen_scientist_by_token(token):
     return (
         Session.query(CsCitizenScientist)
         .filter(CsCitizenScientist.verification_token == token)
+        .populate_existing().with_for_update()
         .first()
     )
 
@@ -1043,7 +1085,8 @@ def stats_set(project_id, observations=None, sites_monitored=None,
 def public_project_clause():
     """Approved projects whose public page has not been withdrawn."""
     extras = sa.func.replace(CsProject.extras, ' ', '')
-    return sa.and_(CsProject.status == 'approved', sa.or_(
+    return sa.and_(CsProject.status == 'approved',
+        sa.or_(CsProject.discovery_visibility.is_(None), CsProject.discovery_visibility == 'public'), sa.or_(
         CsProject.extras.is_(None), sa.and_(
             ~extras.like('%"_portal_withdrawn":true%'),
             ~extras.like('%"status":"withdrawn"%'))))
@@ -1138,6 +1181,8 @@ def project_dictize(project):
         'organization_id': project.organization_id,
         'status': project.status,
         'trusted': bool(getattr(project, 'trusted', False)),
+        'discovery_visibility': getattr(project, 'discovery_visibility', None) or 'public',
+        'join_policy': getattr(project, 'join_policy', None),
         'created_by': project.created_by,
         'reviewed_by': project.reviewed_by,
         'reviewed_at': (project.reviewed_at.isoformat()

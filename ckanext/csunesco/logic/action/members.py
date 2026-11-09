@@ -155,6 +155,11 @@ def csunesco_join_request_create(context, data_dict):
     if _participation_closed(project) and not cs_auth._is_sysadmin(context):
         raise tk.ValidationError({'project_id': [tk._(
             'Project not found or not open for join requests')]})
+    # Legacy service/outbox contracts retain their historical optional note.
+    # New app journeys use the validated canonical pathway action.
+    from ckanext.csunesco.logic.pathways import public
+    if not public(project):
+        raise tk.NotAuthorized('Use a valid project invitation to request access')
     note = _clean_note(data_dict.get('note'))
     # Provenance is DERIVED, never taken from the payload. It is rendered to a
     # reviewer as "via the CS Toolbox app", so letting a caller assert it would
@@ -286,6 +291,9 @@ def _manager_candidate(data_dict):
     verified = bool(profile and profile.email_verified)
     if not verified:
         raise tk.ValidationError({'email_verified': ['Verify the IHP-WINS email address first.']})
+    from ckanext.csunesco.logic.pathways import manager_approved
+    if not manager_approved(user.id):
+        raise tk.ValidationError({'manager_approval_required': ['Approve the Project Manager account first.']})
     return user
 
 
@@ -296,8 +304,10 @@ def csunesco_project_manager_lookup(context, data_dict):
     if project is None:
         raise tk.ObjectNotFound(tk._('Project not found'))
     user = _manager_candidate(data_dict)
+    member = db.project_member(project.id, user.id)
     return {'id': user.id, 'name': user.name, 'fullname': user.fullname,
-            'state': user.state, 'email_verified': True, 'project_id': project.id}
+            'state': user.state, 'email_verified': True, 'project_id': project.id,
+            'project_role': member.role if member and member.status == 'active' else None}
 
 
 def csunesco_join_approve(context, data_dict):
@@ -312,6 +322,13 @@ def csunesco_join_approve(context, data_dict):
     tk.check_access('csunesco_join_approve', context, data_dict)
     data_dict = data_dict or {}
     project_id, user_id = _resolve_membership_keys(data_dict)
+    canonical = model.Session.query(db.CsJoinRequest).filter_by(project_id=project_id, user_id=user_id, requested_role='citizen', status='pending').first()
+    if canonical is not None:
+        from ckanext.csunesco.logic.pathways import csunesco_pathway_decide
+        csunesco_pathway_decide(context, dict(data_dict, id=canonical.id, decision='approve'))
+        member = db.member_dictize(db.project_member(project_id, user_id))
+        return {'membership': member} if 'approve' == 'approve' else member
+
 
     profile = db.get_citizen_scientist(user_id)
     if profile and getattr(profile, 'verification_token', None) and not profile.email_verified:
@@ -327,7 +344,6 @@ def csunesco_join_approve(context, data_dict):
     if applicant is None or applicant.state != 'active':
         raise tk.ValidationError({'user_id': ['The applicant account is not active.']})
     if member.status == C.MEMBER_STATUS_ACTIVE:
-        _ensure_project_organization_member(context, project, applicant)
         stats = db.ensure_stats(project_id)
         model.Session.commit()
         return {'membership': db.member_dictize(member),
@@ -338,7 +354,6 @@ def csunesco_join_approve(context, data_dict):
             'Only pending memberships can be approved (current status: %s)'
         ) % member.status]})
 
-    _ensure_project_organization_member(context, project, applicant)
     reviewer_id, role, via, actor_name = _resolve_decider(
         context, project_id, data_dict)
     member = db.set_member_status(
@@ -373,6 +388,13 @@ def csunesco_join_reject(context, data_dict):
     tk.check_access('csunesco_join_reject', context, data_dict)
     data_dict = data_dict or {}
     project_id, user_id = _resolve_membership_keys(data_dict)
+    canonical = model.Session.query(db.CsJoinRequest).filter_by(project_id=project_id, user_id=user_id, requested_role='citizen', status='pending').first()
+    if canonical is not None:
+        from ckanext.csunesco.logic.pathways import csunesco_pathway_decide
+        csunesco_pathway_decide(context, dict(data_dict, id=canonical.id, decision='reject'))
+        member = db.member_dictize(db.project_member(project_id, user_id))
+        return {'membership': member} if 'reject' == 'approve' else member
+
 
     member = db.project_member(project_id, user_id)
     if member is None:
@@ -410,6 +432,8 @@ def csunesco_project_manager_set(context, data_dict):
     ``replace: true`` additionally demotes every other current admin to
     editor, which is the actual hand-over gesture.
     """
+    from ckanext.csunesco.logic.onboarding import review_context
+    context = review_context(context, data_dict or {})
     tk.check_access('csunesco_project_manager_set', context, data_dict)
     data_dict = data_dict or {}
     project = _resolve_project(data_dict)

@@ -887,7 +887,7 @@ def _request_manager_access(user_id, data, manager):
     profile = (model.Session.query(db.CsCitizenScientist)
                .filter(db.CsCitizenScientist.user_id == user.id)
                .populate_existing().first())
-    if profile and profile.profile_type == 'manager':
+    if profile and profile.profile_type == 'manager' and profile.manager_decision != 'rejected':
         return False
     from ckanext.csunesco.logic.registration_profile import require_registered
     require_registered(user)
@@ -896,6 +896,8 @@ def _request_manager_access(user_id, data, manager):
     # PM is an application attached to the existing Citizen Scientist dossier.
     # Identity, consent, demographics and verification remain authoritative.
     profile.profile_type = 'manager'
+    profile.manager_decision = None
+    profile.manager_review_reason = None
     profile.manager_application_origin = 'existing_account'
     profile.responsibilities_accepted_at = datetime.datetime.utcnow()
     model.Session.commit()
@@ -940,7 +942,7 @@ def register_manager():
 
     if auth.can_propose_project(context):
         return tk.redirect_to('csunesco.project_new')
-    if profile.profile_type == 'manager':
+    if profile.profile_type == 'manager' and profile.manager_decision != 'rejected':
         return render({'data': _manager_account_data(user, profile), 'errors': {},
                        'application_status': profile.manager_decision or 'pending',
                        'review_reason': profile.manager_review_reason})
@@ -1031,6 +1033,9 @@ def _render_verify(state, project_slug=None, next_path=None, language=None):
     from urllib.parse import urlencode
     language = selected_language(language)
     destination = '/register-project-manager' if (next_path == '/register-project-manager' or _registration_next()) else '/'
+    if next_path and next_path.startswith(('/join-project', '/manager-actions', '/upgrade-account')):
+        from ckanext.csunesco.logic.action.registration import safe_return
+        destination = safe_return(next_path)
     if project_slug and destination == '/':
         # Toolbox accepts canonical Portal slugs in onboarding invitations.
         destination = '/get-on-board?' + urlencode({'project': project_slug})
@@ -1074,16 +1079,18 @@ def verify_citizen(token):
 
     try:
         user_obj = model.User.get(profile.user_id)
-        if user_obj is not None and user_obj.state == 'pending' and getattr(profile, 'manager_decision', None) != 'rejected':
+        if user_obj is not None and user_obj.state == 'pending':
             user_obj.activate()
-            model.Session.commit()
         db.verify_citizen_scientist(profile)
     except Exception as exc:
         model.Session.rollback()
         record_failure('verification', exc)
         return _render_verify('error', next_path=getattr(profile, 'registration_return_path', None), language=getattr(profile, 'language', None))
 
-    return _render_verify('manager_pending' if is_manager else 'ok', getattr(profile, 'registration_project_slug', None), getattr(profile, 'registration_return_path', None), getattr(profile, 'language', None))
+    if str(getattr(profile, 'registration_return_path', '') or '').startswith(('/join-project', '/manager-actions', '/upgrade-account')):
+        from ckanext.csunesco.logic.notify import notify_verified
+        notify_verified(profile.user_id, profile.registration_return_path)
+    return _render_verify('manager_pending' if is_manager and getattr(profile, 'manager_decision', None) != 'rejected' else 'ok', getattr(profile, 'registration_project_slug', None), getattr(profile, 'registration_return_path', None), getattr(profile, 'language', None))
 
 
 def resend_verification():

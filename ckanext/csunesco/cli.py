@@ -20,7 +20,11 @@ def init_db():
     """Create the ckanext-csunesco database tables."""
     from ckanext.csunesco import db
     db.ensure_tables()
-    click.echo('ckanext-csunesco: database tables ensured.')
+    from ckanext.csunesco.logic.pathways import adopt_legacy
+    import ckan.model as model
+    adopt_legacy()
+    model.Session.commit()
+    click.echo('ckanext-csunesco: database tables and legacy request migration ensured.')
 
 
 @csunesco.command('stats-refresh')

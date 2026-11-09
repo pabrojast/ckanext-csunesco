@@ -42,9 +42,10 @@ def csunesco_register_citizen_scientist(context, data_dict):
     """Register a Citizen Scientist account (server-to-server, idempotent)."""
     tk.check_access('csunesco_register_citizen_scientist', context, data_dict)
     data_dict = data_dict or {}
-    verification_required = tk.asbool(data_dict.get('require_email_verification', False))
+    v10 = data_dict.get('registration_version') == 10
+    verification_required = v10 or tk.asbool(data_dict.get('require_email_verification', False))
     motivation = str(data_dict.get('motivation') or '').strip()
-    if verification_required and not 20 <= len(motivation) <= 500:
+    if verification_required and not v10 and not 20 <= len(motivation) <= 500:
         raise tk.ValidationError(problem('motivation_invalid', 'motivation'))
 
     email = (data_dict.get('email') or '').strip()
@@ -72,7 +73,7 @@ def csunesco_register_citizen_scientist(context, data_dict):
         )
         if profile is not None:
             if ((existing_user.state != 'active' and not (existing_user.state == 'pending'
-                    and profile.profile_type == 'citizen' and profile.verification_token and not profile.email_verified))
+                    and profile.verification_token and not profile.email_verified))
                     or str(existing_user.email or '').lower() != email.lower()
                     or not existing_user.validate_password(password)):
                 raise tk.ValidationError(problem('username_taken', 'username'))
@@ -84,6 +85,12 @@ def csunesco_register_citizen_scientist(context, data_dict):
                 'verification_pending': not profile.email_verified,
             }
 
+    manager = None
+    if v10 and data_dict.get('profile_type') == 'manager':
+        from ckanext.csunesco.logic.pathways import organization_intent
+        manager = organization_intent(data_dict.get('organization') or {})
+    if v10 and (not fullname or not date_of_birth or not nationality or not gender or not terms_accepted):
+        raise tk.ValidationError(problem('required', 'fullname', 'date_of_birth', 'nationality', 'gender', 'terms_accepted'))
     verification_token = secrets.token_urlsafe(32) if verification_required else None
     try:
         new_user = create_citizen_scientist(context, {
@@ -93,7 +100,9 @@ def csunesco_register_citizen_scientist(context, data_dict):
             'password': password,
             'country': country,
             'motivation': motivation,
-            'registration_project_slug': data_dict.get('project_slug'),
+            'registration_project_slug': None if v10 else data_dict.get('project_slug'),
+            'registration_return_path': ('/manager-actions' if manager else safe_return(data_dict.get('next_path'))) if v10 else data_dict.get('next_path'),
+            'manager': manager,
             'language': str(data_dict.get('language') or ''),
             'language_other': str(data_dict.get('language_other') or ''),
             'date_of_birth': date_of_birth,
@@ -277,6 +286,8 @@ def csunesco_manager_reject(context, data_dict):
     profile.manager_review_reason = reason
     profile.manager_reviewed_by = current_user_id(context)
     profile.manager_reviewed_at = datetime.datetime.utcnow()
+    from ckanext.csunesco.logic.pathways import cancel_manager_work
+    cancel_manager_work(user.id, reason, current_user_id(context))
     model.Session.commit()
 
     _send_decision_email(user, approved=False,
@@ -301,3 +312,16 @@ def get_actions():
         'csunesco_manager_approve': csunesco_manager_approve,
         'csunesco_manager_reject': csunesco_manager_reject,
     }
+
+
+def safe_return(value):
+    from urllib.parse import unquote, urlsplit
+    value = str(value or '/join-project')
+    decoded = value
+    for _ in range(3): decoded = unquote(decoded)
+    if (not decoded.startswith('/') or decoded.startswith('//') or len(value) > 2000
+            or any(ord(c) < 32 or c == chr(92) for c in decoded)):
+        return '/join-project'
+    if urlsplit(decoded).path not in ('/join-project', '/manager-actions', '/upgrade-account'):
+        return '/join-project'
+    return value

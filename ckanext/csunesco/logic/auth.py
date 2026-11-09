@@ -432,17 +432,8 @@ def csunesco_join_reject(context, data_dict):
 
 
 def csunesco_project_manager_set(context, data_dict):
-    # Handing over (or sharing) the manager role is a management act: the
-    # current PM, the initiative admin or a sysadmin -- same circle that
-    # approves joins.
-    project_id = _join_scope_id(data_dict)
-    if (_is_sysadmin(context)
-            or _is_project_admin(context, project_id)
-            or _is_project_initiative_admin(context, project_id)):
-        return {'success': True}
-    return {'success': False,
-            'msg': tk._('Only sysadmins, the project admin or the initiative '
-                        'admin can reassign the project manager')}
+    return {'success': _is_sysadmin(context),
+            'msg': tk._('Only administrators can approve a Project Manager assignment')}
 
 
 def csunesco_project_trusted_set(context, data_dict):
@@ -1042,4 +1033,6 @@ def get_auth_functions():
     from ckanext.csunesco.logic import portal
     registered = _legacy_get_auth_functions()
     registered.update({name: portal.service_auth for name in portal.get_actions()})
+    from ckanext.csunesco.logic import pathways
+    registered.update({name: pathways.entry_auth for name in pathways.get_actions()})
     return registered

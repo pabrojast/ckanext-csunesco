@@ -100,7 +100,10 @@ def test_pending_duplicate_and_rejection_keep_account_active(app, existing, sess
     assert profile.responsibilities_accepted_at == stamp
     decisions.csunesco_manager_reject(_ctx(), {'username': user.name, 'reason': 'Confirm affiliation'})
     out = post(app, user)
-    assert out['application_status'] == 'rejected' and out['review_reason'] == 'Confirm affiliation'
+    # A rejected application requires a complete, explicit resubmission.
+    assert profile.manager_decision is None
+    assert profile.manager_review_reason is None
+    assert profile.responsibilities_accepted_at >= stamp
     assert user.state == 'active' and not user.activated
     assert session.query(db.CsCitizenScientist).count() == 1
 

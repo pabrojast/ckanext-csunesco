@@ -989,6 +989,9 @@ def csunesco_project_show(context, data_dict):
     project = db.get_project(id_or_slug)
     if project is None:
         raise tk.ObjectNotFound(tk._('Project not found'))
+    from ckanext.csunesco.logic.pathways import visible
+    if not visible(context, project):
+        raise tk.ObjectNotFound(tk._('Project not found'))
     if project.status != 'approved' and not _can_view_unapproved(context, project):
         raise tk.NotAuthorized(tk._('Not authorized to view this project'))
     from ckanext.csunesco.logic import portal
