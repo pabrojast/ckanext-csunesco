@@ -58,6 +58,12 @@ def test_real_core_deferred_registration_duplicate_email_rolls_back(monkeypatch)
         assert profile.registration_return_path=='/join-project?invitation=example'
         assert model.Session.query(db.CsJoinRequest).count()==0
         assert model.Session.query(db.CsProjectMember).count()==0
+        with pytest.raises(tk.ValidationError):
+            action.csunesco_register_citizen_scientist({'model':model,'session':model.Session,'user':None}, {
+                'registration_version':10,'profile_type':'manager','username':'canonical-pg-test',
+                'email':'canonical@example.invalid','password':'disposable-password'})
+        assert db.get_citizen_scientist(user.id).profile_type=='citizen'
+
 
     finally:
         model.Session.remove()

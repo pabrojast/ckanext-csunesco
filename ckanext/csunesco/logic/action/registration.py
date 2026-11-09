@@ -72,6 +72,8 @@ def csunesco_register_citizen_scientist(context, data_dict):
             .first()
         )
         if profile is not None:
+            if v10 and data_dict.get('profile_type', 'citizen') != profile.profile_type:
+                raise tk.ValidationError(problem('username_taken', 'username'))
             if ((existing_user.state != 'active' and not (existing_user.state == 'pending'
                     and profile.verification_token and not profile.email_verified))
                     or str(existing_user.email or '').lower() != email.lower()

@@ -1041,6 +1041,8 @@ def _render_verify(state, project_slug=None, next_path=None, language=None):
         destination = '/get-on-board?' + urlencode({'project': project_slug})
     login_params = {'next': destination}
     login_params['lng'] = language
+    if state in ('ok', 'manager_pending') and destination.startswith(('/join-project', '/manager-actions', '/upgrade-account')) and _ofform_register_url():
+        return tk.redirect_to(toolbox_url('/registration-welcome?' + urlencode(login_params)))
     return tk.render('csunesco/verify_result.html', extra_vars={
         **form_error_context(language, destination),
         'state': state, 'project_slug': project_slug, 'next_path': destination if destination == '/register-project-manager' else _registration_next(),
