@@ -337,6 +337,15 @@ MEMBER_ROLE_EDITOR = 'editor'
 MEMBER_ROLE_CS = 'scientist'
 MEMBER_ROLES = (MEMBER_ROLE_PM, MEMBER_ROLE_EDITOR, MEMBER_ROLE_CS)
 
+# Organization capacity a Project Manager applicant may request in an EXISTING
+# organization (CKAN capacities). The Toolbox offers Editor / Admin (designer
+# mock-ups, Nov 2026): a manager uploads data on behalf of the organization,
+# which is what ``editor`` grants. ``member`` stays valid for the portal's own
+# form and for applications submitted before that change. Requesting a NEW
+# organization always makes its creator ``admin``; a reviewer still approves
+# every application before any capacity is granted.
+MANAGER_ORG_ROLES = ('member', 'editor', 'admin')
+
 MEMBER_STATUS_PENDING = 'pending'
 MEMBER_STATUS_ACTIVE = 'active'
 MEMBER_STATUS_REJECTED = 'rejected'

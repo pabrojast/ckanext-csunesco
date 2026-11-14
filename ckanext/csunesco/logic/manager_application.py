@@ -38,7 +38,7 @@ def csunesco_manager_application_submit(context, data_dict):
     creating = fields['org_name'] == '__new__'
     if (fields['org_type'] not in {row['name'] for row in constants.ORG_TYPES}
             or not fields['org_title'] or len(fields['org_title']) > 200
-            or fields['org_role'] not in ('member', 'admin')
+            or fields['org_role'] not in constants.MANAGER_ORG_ROLES
             or len(fields['org_description']) > 5000
             or (creating and (not fields['new_org_name'] or len(fields['new_org_name']) > 200
                               or exact_org_match(fields['new_org_name'])))

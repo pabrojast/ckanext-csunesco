@@ -93,6 +93,18 @@ def test_manager_submission_is_self_service_and_idempotent(session,identity,monk
     assert profile.manager_decision is None and profile.email_verified
 
 
+@pytest.mark.parametrize('role',['member','editor','admin'])
+def test_manager_submission_keeps_the_requested_organization_role(session,identity,monkeypatch,role):
+    # The Toolbox form offers Editor / Admin; Member remains valid for the
+    # portal's own form. The capacity is only granted when a reviewer approves.
+    user,ctx=identity
+    profiles.csunesco_registration_profile_update(ctx,BODY)
+    monkeypatch.setattr(registration,'_organization_options',lambda:[{'name':'org','title':'Organization'}])
+    managers.csunesco_manager_application_submit(ctx,{'org_type':'ngo','org_name':'org','org_title':'Coordinator','org_role':role,'responsibilities':True})
+    profile=db.get_citizen_scientist(user.id)
+    assert profile.org_role==role and profile.manager_decision is None
+
+
 @pytest.mark.parametrize('extra',[{'responsibilities':False},{'org_type':'invented'},{'org_name':'missing'},{'org_role':'sysadmin'}])
 def test_manager_rejects_invalid_fields_without_promoting(session,identity,monkeypatch,extra):
     user,ctx=identity

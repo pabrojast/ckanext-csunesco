@@ -92,3 +92,21 @@ def test_legacy_adoption_is_idempotent(session,setup):
     p.adopt_legacy();session.commit();p.adopt_legacy();session.commit()
     assert session.query(db.CsJoinRequest).count()==1
     assert session.query(db.CsJoinRequest).one().note=='Original legacy note'
+
+
+@pytest.mark.parametrize('role,accepted',[('member',True),('editor',True),('admin',True),('sysadmin',False),('',False)])
+def test_organization_intent_accepts_only_ckan_capacities(monkeypatch,role,accepted):
+    # The Toolbox registration form offers Editor / Admin for an existing
+    # organization; whatever is requested is only granted on approval.
+    from types import SimpleNamespace
+    import ckan.model as ckan_model
+    from ckanext.csunesco.logic import pathways as intake, registration
+    monkeypatch.setattr(registration,'_organization_options',lambda:[{'name':'org','title':'Organization'}])
+    monkeypatch.setattr(ckan_model.Group,'get',lambda key:SimpleNamespace(id='org-id'))
+    data={'org_name':'org','org_type':'ngo','org_title':'Coordinator','org_role':role,'responsibilities':True}
+    if accepted:
+        assert intake.organization_intent(data)['org_role']==role
+    else:
+        with pytest.raises(tk.ValidationError):
+            intake.organization_intent(data)
+

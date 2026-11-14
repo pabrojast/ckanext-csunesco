@@ -28,7 +28,7 @@ import secrets
 import ckan.plugins.toolkit as tk
 import ckan.model as model
 
-from ckanext.csunesco import db
+from ckanext.csunesco import constants as C, db
 from ckanext.csunesco.logic.action import current_user_id
 from ckanext.csunesco.logic.registration_errors import problem, from_validation
 from ckanext.csunesco.logic.registration import (
@@ -207,13 +207,13 @@ def csunesco_manager_approve(context, data_dict):
     if resolved:
         org = model.Group.get(resolved)
         capacity = (data_dict or {}).get('organization_role')
-        if not org or not org.is_organization or org.state != 'active' or capacity not in ('member', 'admin'):
-            raise tk.ValidationError({'organization': ['Select an active organization and Member or Admin.']})
+        if not org or not org.is_organization or org.state != 'active' or capacity not in C.MANAGER_ORG_ROLES:
+            raise tk.ValidationError({'organization': ['Select an active organization and Member, Editor or Admin.']})
         org_id = org.id
     capacity = 'admin' if profile.org_name_requested else (profile.org_role or 'member')
     if resolved:
         capacity = data_dict['organization_role']
-    if capacity not in ('member', 'admin', 'editor'):
+    if capacity not in C.MANAGER_ORG_ROLES:
         raise tk.ValidationError({'org_role': ['Invalid organization role']})
     # Materialize the organization intent BEFORE activating so a failure here
     # leaves the account pending and the action safely retryable.

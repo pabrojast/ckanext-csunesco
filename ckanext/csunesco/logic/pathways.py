@@ -66,7 +66,7 @@ def organization_intent(data):
     if (not tk.asbool(data.get('responsibilities', False))
             or fields['org_type'] not in {o['name'] for o in C.ORG_TYPES}
             or not 1 <= len(fields['org_title']) <= 200
-            or fields['org_role'] not in ('member', 'admin')
+            or fields['org_role'] not in C.MANAGER_ORG_ROLES
             or len(fields['org_description']) > 5000
             or creating and (not 1 <= len(fields['new_org_name']) <= 200 or exact_org_match(fields['new_org_name']))
             or not creating and fields['org_name'] not in {o['name'] for o in _organization_options()}):

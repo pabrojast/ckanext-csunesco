@@ -66,7 +66,7 @@ def test_member_can_only_propose_after_pm_approval(monkeypatch, decision, verifi
     assert not auth.can_manage_content_scope({'user':'member'}, None, 'org')
 
 
-@pytest.mark.parametrize('role', ['member','admin'])
+@pytest.mark.parametrize('role', ['member','editor','admin'])
 def test_existing_org_approval_preserves_selected_role(harness, session, role):
     _, calls = harness
     profile = _manager_profile(session, org_id='existing-org')
@@ -86,6 +86,21 @@ def test_new_org_resolution_never_implicitly_grants_admin(harness, session, monk
     result = registration.csunesco_manager_approve(_ctx(), {'username':'paula','organization_id':'existing-lab','organization_role':'member'})
     assert result['org_id'] == 'org-existing' and result['org_role'] == 'member'
     assert 'organization_create' not in dict(calls)
+
+
+def test_new_org_resolution_accepts_editor_but_no_invented_capacity(harness, session, monkeypatch):
+    # The reviewer may place the applicant as Editor of an existing
+    # organization (the capacity the Toolbox form offers), never as anything
+    # CKAN does not know.
+    _, calls = harness
+    _manager_profile(session, org_name_requested='Existing Lab')
+    org = NS(id='org-existing', name='existing-lab', title='Existing Lab', state='active', is_organization=True)
+    monkeypatch.setattr(model.Group, 'get', lambda key: org)
+    with pytest.raises(tk.ValidationError):
+        registration.csunesco_manager_approve(_ctx(), {'username':'paula','organization_id':'existing-lab','organization_role':'sysadmin'})
+    result = registration.csunesco_manager_approve(_ctx(), {'username':'paula','organization_id':'existing-lab','organization_role':'editor'})
+    assert result['org_id'] == 'org-existing' and result['org_role'] == 'editor'
+    assert dict(calls)['organization_member_create']['role'] == 'editor'
 
 
 def test_duplicate_organization_blocks_approval(harness, session, monkeypatch):

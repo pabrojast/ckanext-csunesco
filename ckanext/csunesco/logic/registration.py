@@ -975,7 +975,7 @@ def register_manager():
     if not org_title:
         return _fail(errors=problem('organization_invalid', 'org_name', 'org_title', 'org_type', 'new_org_name'))
 
-    if org_role not in ('member', 'admin') or len(org_description) > 5000:
+    if org_role not in constants.MANAGER_ORG_ROLES or len(org_description) > 5000:
         return _fail(errors=problem('organization_invalid', 'org_role', 'org_description'))
 
     # A new organization makes the applicant its admin after review.
