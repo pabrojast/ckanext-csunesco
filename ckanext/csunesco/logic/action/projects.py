@@ -643,6 +643,15 @@ def csunesco_project_resubmit(context, data_dict):
     ``reviewed_by`` / ``reviewed_at`` behind would show the pending queue a
     row that claims it was already reviewed, by someone who has not yet seen
     this version of it.
+
+    ``details`` (optional, trusted Toolbox service only) carries the answers
+    the author corrected before sending the proposal again. When the Toolbox
+    is the editorial owner this is the ONLY way they reach the reviewer:
+    ``csunesco_project_update`` refuses every other caller, so a resubmission
+    used to put the very text that was declined back in the queue. They are
+    applied through that same action (same schema, same validation) before
+    the status changes; a project whose publication the Toolbox manages keeps
+    receiving its information through the publication instead.
     """
     data_dict = data_dict or {}
     project = db.get_project(data_dict.get('id') or data_dict.get('slug'))
@@ -664,6 +673,19 @@ def csunesco_project_resubmit(context, data_dict):
         raise tk.ValidationError({'status': [tk._(
             'Only rejected or draft projects can be submitted for review '
             '(current status: %s)') % project.status]})
+
+    details = data_dict.get('details')
+    if details is not None:
+        from ckanext.csunesco.logic import portal
+        if not isinstance(details, dict):
+            raise tk.ValidationError({'details': [tk._('Must be an object')]})
+        if not portal.service_auth(context)['success']:
+            raise tk.NotAuthorized('Edit this information in the Citizen Science app')
+        if details and not portal.managed(project):
+            csunesco_project_update(
+                dict(context, csunesco_portal_sync=True),
+                dict(details, id=project.id))
+            project = db.get_project(project.id)
 
     now = _utcnow()
     project.status = 'pending'

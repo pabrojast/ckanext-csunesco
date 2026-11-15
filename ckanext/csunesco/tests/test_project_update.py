@@ -425,6 +425,43 @@ def test_resubmit_works_for_the_author_without_a_membership_row(as_author,
     assert out['status'] == 'pending'
 
 
+def test_resubmit_applies_the_answers_the_toolbox_sends(actions, session, monkeypatch):
+    """The reviewer must read the corrected proposal, not the declined one."""
+    from ckanext.csunesco.logic import editorial_owner, portal
+    created = _create(actions)
+    _reject(session, created['id'])
+    # The Toolbox owns the answers: a plain update is refused for everyone...
+    monkeypatch.setattr(editorial_owner, 'enabled', lambda: True)
+    with pytest.raises(tk.NotAuthorized):
+        actions.csunesco_project_update(
+            _ctx(), {'id': created['id'], 'short_description': 'Edited in the portal'})
+    # ...and the trusted service delivers them with the resubmission.
+    monkeypatch.setattr(portal, 'service_auth', lambda context, data_dict=None: {'success': True})
+    out = actions.csunesco_project_resubmit(_ctx(), {
+        'id': created['id'],
+        'details': {'short_description': 'Monthly sampling at three sites.',
+                    'programme_id': 7, 'updated_by': 'amina'}})
+    assert out['status'] == 'pending'
+    assert out['short_description'] == 'Monthly sampling at three sites.'
+    assert _row(created['id']).rejection_reason is None
+
+
+def test_resubmit_takes_answers_only_from_the_trusted_service(actions, session, monkeypatch):
+    from ckanext.csunesco.logic import portal
+    created = _create(actions)
+    _reject(session, created['id'])
+    monkeypatch.setattr(portal, 'service_auth', lambda context, data_dict=None: {'success': False})
+    with pytest.raises(tk.NotAuthorized):
+        actions.csunesco_project_resubmit(_ctx(), {
+            'id': created['id'], 'details': {'short_description': 'Sneaked in'}})
+    after = _row(created['id'])
+    assert after.status == 'rejected'
+    assert db.project_dictize(after)['short_description'] != 'Sneaked in'
+    with pytest.raises(tk.ValidationError):
+        monkeypatch.setattr(portal, 'service_auth', lambda context, data_dict=None: {'success': True})
+        actions.csunesco_project_resubmit(_ctx(), {'id': created['id'], 'details': 'not an object'})
+
+
 def test_resubmit_refuses_a_stranger(as_author, session):
     created = _create(as_author)
     _reject(session, created['id'])
