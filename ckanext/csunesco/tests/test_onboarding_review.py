@@ -183,6 +183,28 @@ def test_join_bridge_rechecks_actor_and_terminal_state(monkeypatch, state, decis
     assert checks == ['csunesco_join_' + decision]
 
 
+def test_join_bridge_forwards_the_rejection_reason(monkeypatch):
+    # The Toolbox requires a reason to reject a join request and the applicant
+    # reads it in the portal's decision e-mail.
+    user = NS(id='reviewer-id', name='reviewer', state='active')
+    monkeypatch.setattr(model.User, 'get', lambda key: user)
+    monkeypatch.setattr(auth, '_is_sysadmin', lambda ctx: ctx.get('user') == 'service')
+    monkeypatch.setattr(db, 'get_project', lambda key: NS(id='project'))
+    monkeypatch.setattr(db, 'project_member', lambda *a: NS(status='pending'))
+    monkeypatch.setattr(tk, 'check_access', lambda *a: None)
+    sent = {}
+    monkeypatch.setattr(tk, 'get_action', lambda action: lambda ctx, data: sent.update(action=action, **data) or {'membership': {}})
+    base = {'actor_username':'reviewer','actor_id':'reviewer-id','project_slug':'project','user_id':'applicant'}
+    onboarding.csunesco_registration_join_decide({'user':'service','ignore_auth':True},
+        dict(base, decision='reject', reason='The project is full for this season.'))
+    assert sent['action'] == 'csunesco_join_reject'
+    assert sent['reason'] == 'The project is full for this season.'
+    sent.clear()
+    onboarding.csunesco_registration_join_decide({'user':'service','ignore_auth':True},
+        dict(base, decision='approve', reason='ignored'))
+    assert sent['action'] == 'csunesco_join_approve' and 'reason' not in sent
+
+
 def test_join_bridge_permission_checked_even_for_an_existing_decision(monkeypatch):
     monkeypatch.setattr(db, 'get_project', lambda key: NS(id='project'))
     def denied(*args):

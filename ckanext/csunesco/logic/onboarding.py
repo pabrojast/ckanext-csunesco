@@ -129,6 +129,10 @@ def csunesco_registration_join_decide(context, data_dict):
         return {'membership': db.member_dictize(member)}
     if member.status != 'pending':
         raise tk.ValidationError({'status': ['This request has already been decided.']})
+    if decision == 'reject':
+        # The reviewer's reason is what the applicant reads in the decision
+        # e-mail; the bridge used to drop it.
+        payload['reason'] = data_dict.get('reason')
     return tk.get_action(action)(context, payload)
 
 
