@@ -35,6 +35,24 @@ def test_cs_approval_does_not_grant_organization(session,setup):
     assert session.query(model.Member).count()==0
     assert p.csunesco_pathway_decide({'user':'pm'},{'id':row['id'],'decision':'approve'})['status']=='approved'
 
+def test_cs_rejection_records_who_declined_and_where(session,setup):
+    # The Toolbox must be able to tell that the applicant was already told.
+    row=request()
+    out=p.csunesco_pathway_decide({'user':'pm'},{'id':row['id'],'decision':'reject','reason':'The project is full for this season.','actor_id':'pm'})
+    assert out['status']=='rejected' and out['reason']=='The project is full for this season.'
+    member=db.project_member('project','citizen')
+    assert member.status=='rejected'
+    assert member.reviewed_by=='pm' and member.reviewed_via=='app' and member.reviewed_at is not None
+    assert db.member_dictize(member)['reviewed_via']=='app'
+
+
+def test_cs_withdrawal_is_not_recorded_as_a_review(session,setup):
+    row=request()
+    p.csunesco_pathway_decide({'user':'citizen'},{'id':row['id'],'decision':'cancel'})
+    member=db.project_member('project','citizen')
+    assert member.status=='rejected' and member.reviewed_by is None and member.reviewed_via is None
+
+
 def test_pm_request_preserves_cs_and_requires_global_approval(session,setup):
     profile=db.get_citizen_scientist('citizen');profile.profile_type='manager';session.add(db.CsProjectMember(project_id='project',user_id='citizen',role='scientist',status='active'));session.commit()
     row=request('project_manager')

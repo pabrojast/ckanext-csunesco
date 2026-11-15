@@ -276,6 +276,19 @@ def csunesco_pathway_decide(context, data):
             db.stats_increment(row.project_id, 'citizen_scientists', 1)
     elif row.requested_role == 'citizen' and member and member.status == 'pending':
         member.status = 'rejected'
+        if decision == 'reject':
+            # Record who declined and where, as an approval does. The Toolbox
+            # reads ``reviewed_via`` to know the applicant was already told by
+            # the side that made the decision, so its periodic reconcile does
+            # not e-mail them a second time. A withdrawal by the applicant is
+            # not a review and is left unstamped.
+            member.reviewed_by, member.reviewed_at = user.id, datetime.datetime.utcnow()
+            member.reviewed_role = auth.decider_role(ctx, row.project_id)
+            member.reviewed_via = 'app' if data.get('actor_id') else 'ckan'
+            db.append_member_event(
+                member, 'rejected', actor_id=user.id, actor_name=user.name,
+                actor_role=member.reviewed_role, via=member.reviewed_via,
+                note=str(data.get('reason') or '').strip()[:1000])
     row.status, row.reason, row.reviewed_by = desired, str(data.get('reason') or '').strip()[:1000], user.id
     event(row, desired, user.id, row.reason)
     model.Session.commit()
