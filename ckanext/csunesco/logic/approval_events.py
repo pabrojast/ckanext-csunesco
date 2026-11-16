@@ -47,3 +47,25 @@ def flush(project):
         extras[KEY] = [e for e in extras.get(KEY, []) if e['event_id'] != event['event_id']]
         project.extras = portal.canonical(extras)
         model.Session.commit()
+
+
+def project_changed(project, data=None):
+    """Tell the app a decision on this project was just saved, so it reflects
+    it now instead of on its next reconcile sweep (up to five minutes, while
+    the person already read "Approved" and still had no access).
+
+    Best effort and after the commit: the sweep stays the guarantee, so a
+    failure is only logged. Decisions the app itself made through the portal
+    (``actor_id`` or ``decided_by_username``) are not echoed back: the app
+    already holds them, and the call would race its own open transaction.
+    """
+    data = data or {}
+    if project is None or data.get('actor_id') or data.get('decided_by_username'):
+        return
+    if not tk.config.get('ckanext.csunesco.ofform_callback_token'):
+        return
+    from ckanext.csunesco.logic import snapshots
+    try:
+        snapshots.app_request('/internal/ckan/project-changed', {'project_slug': project.slug}, timeout=5)
+    except Exception as exc:
+        log.info('App not told about project %s yet (%s); its sweep will catch up', project.id, type(exc).__name__)

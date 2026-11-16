@@ -92,3 +92,43 @@ def test_legacy_adoption_is_idempotent(session,setup):
     p.adopt_legacy();session.commit();p.adopt_legacy();session.commit()
     assert session.query(db.CsJoinRequest).count()==1
     assert session.query(db.CsJoinRequest).one().note=='Original legacy note'
+
+
+def _app_calls(monkeypatch, fail=False):
+    from ckanext.csunesco.logic import snapshots
+    calls = []
+    def app_request(path, payload=None, timeout=15):
+        if path == '/internal/ckan/project-changed':
+            calls.append((payload, timeout))
+            if fail:
+                raise OSError('app unavailable')
+        return {'received': True}
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.ofform_callback_token', 'callback-fixture')
+    monkeypatch.setattr(snapshots, 'app_request', app_request)
+    return calls
+
+
+def test_portal_decision_tells_the_app_right_away(session, setup, monkeypatch):
+    # Without this the app only learnt of a Colab approval on its next sweep,
+    # and the person read "Approved" with no access for up to five minutes.
+    calls = _app_calls(monkeypatch)
+    row = request()
+    assert calls == []
+    p.csunesco_pathway_decide({'user': 'pm'}, {'id': row['id'], 'decision': 'approve'})
+    assert calls == [({'project_slug': 'river'}, 5)]
+
+
+def test_app_decisions_are_not_echoed_back_to_the_app(session, setup, monkeypatch):
+    calls = _app_calls(monkeypatch)
+    row = request()
+    p.csunesco_pathway_decide({'user': 'pm'}, {'id': row['id'], 'decision': 'reject',
+        'reason': 'The project is full for this season.', 'actor_id': 'pm'})
+    assert calls == []
+
+
+def test_an_unreachable_app_never_undoes_the_decision(session, setup, monkeypatch):
+    calls = _app_calls(monkeypatch, fail=True)
+    row = request()
+    out = p.csunesco_pathway_decide({'user': 'pm'}, {'id': row['id'], 'decision': 'approve'})
+    assert out['status'] == 'approved' and len(calls) == 1
+    assert db.project_member('project', 'citizen').status == 'active'

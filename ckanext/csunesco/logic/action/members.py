@@ -370,6 +370,8 @@ def csunesco_join_approve(context, data_dict):
     project = db.get_project(project_id)
     notify.notify_join_decision(
         user_id, project.title if project else '', approved=True)
+    from ckanext.csunesco.logic import approval_events
+    approval_events.project_changed(project, data_dict)
 
     return {
         'membership': db.member_dictize(db.project_member(project_id, user_id)),
@@ -420,6 +422,8 @@ def csunesco_join_reject(context, data_dict):
     project = db.get_project(project_id)
     notify.notify_join_decision(
         user_id, project.title if project else '', approved=False, reason=reason)
+    from ckanext.csunesco.logic import approval_events
+    approval_events.project_changed(project, data_dict)
 
     return db.member_dictize(db.project_member(project_id, user_id))
 
@@ -487,6 +491,8 @@ def csunesco_project_manager_set(context, data_dict):
                 other, 'manager_demoted', actor_id=reviewer_id,
                 actor_name=actor_name, actor_role=role, via=via)
     model.Session.commit()
+    from ckanext.csunesco.logic import approval_events
+    approval_events.project_changed(project, data_dict)
     return db.member_dictize(member)
 
 

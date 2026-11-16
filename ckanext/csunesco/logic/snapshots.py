@@ -71,7 +71,7 @@ def read_private(kind, key):
         return None
 
 
-def app_request(path, payload=None):
+def app_request(path, payload=None, timeout=15):
     from ckanext.csunesco.logic.ofform import get_base_url
     base = get_base_url()
     token = tk.config.get('ckanext.csunesco.ofform_callback_token')
@@ -80,7 +80,7 @@ def app_request(path, payload=None):
     request = urllib.request.Request(base + path,
         data=json.dumps(payload).encode('utf-8') if payload is not None else None,
         headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
-    with urllib.request.build_opener(_NoRedirect()).open(request, timeout=15) as response:
+    with urllib.request.build_opener(_NoRedirect()).open(request, timeout=timeout) as response:
         raw = response.read(MAX_BYTES + 1)
     if len(raw) > MAX_BYTES:
         raise ValueError('App response too large')
