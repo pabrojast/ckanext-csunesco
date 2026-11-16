@@ -837,6 +837,8 @@ def csunesco_project_approve(context, data_dict):
     from ckanext.csunesco.logic import notify
     notify.notify_project_decision(project.created_by, project.title,
                                    approved=True, project_slug=project.slug)
+    from ckanext.csunesco.logic import approval_events
+    approval_events.project_changed(project, data_dict)
     return db.project_dictize(project)
 
 
@@ -863,6 +865,8 @@ def csunesco_project_reject(context, data_dict):
     notify.notify_project_decision(project.created_by, project.title,
                                    approved=False,
                                    reason=project.rejection_reason)
+    from ckanext.csunesco.logic import approval_events
+    approval_events.project_changed(project, data_dict)
     return db.project_dictize(project)
 
 

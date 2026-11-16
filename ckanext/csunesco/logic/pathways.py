@@ -296,6 +296,8 @@ def csunesco_pathway_decide(context, data):
     project = db.get_project(row.project_id)
     if decision != 'cancel':
         notify.notify_join_decision(row.user_id, project.title, approved=decision == 'approve', reason=row.reason)
+    from ckanext.csunesco.logic import approval_events
+    approval_events.project_changed(project, data)
     return request_out(row)
 
 
