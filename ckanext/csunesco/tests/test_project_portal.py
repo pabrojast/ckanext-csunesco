@@ -11,6 +11,7 @@ from ckanext.csunesco.logic import portal, snapshots, auth, blocks
 from ckanext.csunesco.logic.action import page as page_actions
 
 _review_callback = portal.callback
+_project_management_permission = auth.can_manage_project
 
 
 @pytest.fixture
@@ -72,6 +73,53 @@ def test_transport_never_autoapproves(store):
     assert page.published_json is None
     assert 'Candidate title' not in json.dumps(db.project_dictize(project))
     assert 'private field' not in json.dumps(db.page_dictize(page))
+
+
+@pytest.mark.parametrize('username', ['outsider', 'transport'])
+def test_current_app_admin_can_author_without_a_portal_project_membership(store, monkeypatch, username):
+    project, users = store
+    checks = []
+    def verified(path, payload):
+        checks.append((path, payload))
+        return {'is_admin': True, 'app_project_id': 42, 'project_slug': project.slug,
+                'ckan_id': username, 'username': username}
+    monkeypatch.setattr(snapshots, 'app_request', verified)
+    effective = portal.actor_context(ctx(), {'actor': {'username': username, 'ckan_id': username}}, project)
+    assert effective['csunesco_app_admin_project_id'] == project.id
+    assert effective['user'] == username and effective['auth_user_obj'] is users[username]
+    assert checks == [('/internal/ckan/project-author-access', {
+        'actor': {'ckan_id': username, 'username': username}, 'project_slug': project.slug})]
+
+
+@pytest.mark.parametrize('wrong', [
+    {'is_admin': False}, {'username': 'someone-else'}, {'ckan_id': 'different-id'},
+    {'project_slug': 'another-project'}, {'app_project_id': 999},
+])
+def test_app_admin_delegation_is_bound_to_the_live_identity_and_project(store, monkeypatch, wrong):
+    project, _ = store
+    portal.set_metadata(project, {'app_project_id': 42})
+    result = {'is_admin': True, 'app_project_id': 42, 'project_slug': project.slug,
+              'ckan_id': 'outsider', 'username': 'outsider', **wrong}
+    monkeypatch.setattr(snapshots, 'app_request', lambda *a: result)
+    with pytest.raises(tk.NotAuthorized):
+        portal.actor_context(ctx(), {'actor': {'username': 'outsider', 'is_admin': True}}, project)
+
+
+def test_app_admin_proof_cannot_be_supplied_by_an_ordinary_portal_caller(store, monkeypatch):
+    project, _ = store
+    def unexpected(*a): raise AssertionError('An ordinary portal caller cannot delegate app authority')
+    monkeypatch.setattr(snapshots, 'app_request', unexpected)
+    with pytest.raises(tk.NotAuthorized):
+        portal.actor_context(ctx('outsider'), {'actor': {'username': 'outsider', 'is_admin': True}}, project)
+
+
+def test_verified_app_admin_context_grants_only_the_verified_project(monkeypatch):
+    for name in ('_is_sysadmin', '_is_project_admin', '_is_project_initiative_admin'):
+        monkeypatch.setattr(auth, name, lambda *args: False)
+    context = {'user': 'app-admin', 'csunesco_app_admin_project_id': 'project-a'}
+    assert _project_management_permission(context, 'project-a')
+    assert not _project_management_permission(context, 'project-b')
+    assert not _project_management_permission({}, None)
 
 
 def test_external_initiative_survives_review_and_export_without_group_permissions(store):

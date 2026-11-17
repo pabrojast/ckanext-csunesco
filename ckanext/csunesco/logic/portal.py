@@ -1,5 +1,5 @@
 # encoding: utf-8
-"""Versioned project publications. The transport account never acts as author."""
+"""Versioned publications with author permissions verified separately from transport."""
 import copy
 import datetime
 import hashlib
@@ -63,7 +63,8 @@ def can_edit_standard_sections(context):
 
 def validate_standard_sections(context, project, candidate_blocks):
     if can_edit_standard_sections(context) or (project and auth.can_manage_project(context, project.id)
-                                              and context.get('user') != tk.config.get('ckanext.csunesco.portal_service_user')):
+                                              and (context.get('user') != tk.config.get('ckanext.csunesco.portal_service_user')
+                                                   or context.get('csunesco_app_admin_project_id') == project.id)):
         return
     standards = {item['type']: item for item in standard_sections(project)}
     for candidate in candidate_blocks:
@@ -142,22 +143,46 @@ def resolve_project(data):
     return project
 
 
+def _verified_app_admin(context, user, project):
+    """Only the authenticated bridge can delegate a current app admin's action."""
+    if not service_auth(context)['success']:
+        return False
+    from ckanext.csunesco.logic import snapshots
+    try:
+        result = snapshots.app_request('/internal/ckan/project-author-access', {
+            'actor': {'ckan_id': user.id, 'username': user.name},
+            'project_slug': project.slug,
+        })
+        linked = (metadata(project).get('app_project_id')
+                  or db._load_json(project.extras, {}).get('_editor_app_project_id'))
+        return (result.get('is_admin') is True
+                and result.get('ckan_id') == user.id and result.get('username') == user.name
+                and result.get('project_slug') == project.slug
+                and bool(result.get('app_project_id'))
+                and (not linked or str(linked) == str(result['app_project_id'])))
+    except Exception:
+        return False
+
+
 def actor_context(context, data, project):
     actor = data.get('actor') or {}
     user = model.User.get(actor.get('ckan_id') or actor.get('username'))
     if user is None or getattr(user, 'state', None) != 'active':
         raise tk.NotAuthorized('An active CKAN author is required')
-    if user.name == context.get('user') or user.name == tk.config.get('ckanext.csunesco.portal_service_user'):
-        raise tk.NotAuthorized('The transport service cannot be a publication author')
     if actor.get('username') and actor['username'] != user.name:
         raise tk.NotAuthorized('Author identity mismatch')
     # Start a new context: never inherit ignore_auth/auth_user_obj from service.
     effective = {'model': model, 'session': model.Session,
                  'user': user.name, 'auth_user_obj': user,
                  'csunesco_portal_sync': True}
-    if not (auth.can_manage_project(effective, project.id)
+    transport_actor = user.name == context.get('user') or user.name == tk.config.get('ckanext.csunesco.portal_service_user')
+    allowed = not transport_actor and (auth.can_manage_project(effective, project.id)
             or project.status in ('draft', 'pending', 'rejected')
-            and project.created_by == user.id):
+            and project.created_by == user.id)
+    if not allowed and _verified_app_admin(context, user, project):
+        effective['csunesco_app_admin_project_id'] = project.id
+        allowed = True
+    if not allowed:
         raise tk.NotAuthorized('The author cannot edit this project')
     return effective
 

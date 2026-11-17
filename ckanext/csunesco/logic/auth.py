@@ -299,6 +299,10 @@ def can_manage_project(context, project_id):
     docstring and the ``csunesco_data_source_create`` auth function; pinned now
     by ``test_initiative_admin.py``.)
     """
+    # Set only after the authenticated Toolbox callback verifies a real,
+    # active app administrator for this exact project; never from request data.
+    if project_id and context.get('csunesco_app_admin_project_id') == project_id:
+        return True
     if context.get('csunesco_portal_sync'):
         from ckanext.csunesco import db
         project = db.get_project(project_id)
