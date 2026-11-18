@@ -590,11 +590,11 @@ def test_project_stats_refresh_uses_aggregate_contract_without_touching_cms(stor
     portal.set_metadata(project, {'app_project_id': 42, 'published_revision': 1,
                                  'published_checksum': 'a' * 64})
     called = []
-    monkeypatch.setattr(snapshots, 'app_request', lambda path: {'observations': 3, 'sites_monitored': 2, 'citizen_scientists': 1, 'member_states': 1})
+    monkeypatch.setattr(snapshots, 'app_request', lambda path: {'app_project_id': 42, 'project_slug': project.slug, 'observations': 6485, 'sites_monitored': 49, 'citizen_scientists': 13, 'member_states': 1})
+    monkeypatch.setattr(snapshots, 'saved_form', lambda *a: pytest.fail('Activity counts must not fetch private observations'))
     monkeypatch.setattr(db, 'stats_set', lambda pid, **kw: called.append((pid, kw)))
     snapshots.refresh_project_stats(project)
-    # App observations are not public without a CKAN-approved source snapshot.
-    assert called == [(project.id, {'observations': 0, 'sites_monitored': 2, 'citizen_scientists': 1})]
+    assert called == [(project.id, {'observations': 6485, 'sites_monitored': 49, 'citizen_scientists': 13})]
     assert project.title == 'Published title'
     assert db.get_project_page(project.id) is None
 
@@ -737,12 +737,11 @@ def test_repair_delivers_complete_terminal_decisions(store, monkeypatch, status)
 
 
 @pytest.mark.parametrize('state,meta', [
-    ('approved', {'app_project_id': 42, 'status': 'draft'}),
-    ('approved', {'app_project_id': 42, 'status': 'pending', 'revision': 1, 'checksum': 'a' * 64}),
+    ('pending', {'app_project_id': 42, 'status': 'draft'}),
     ('archived', {'app_project_id': 42, 'status': 'approved', 'published_revision': 1, 'published_checksum': 'a' * 64}),
     ('approved', {'app_project_id': 42, 'status': 'withdrawn', 'published_revision': 1, 'published_checksum': 'a' * 64}),
 ])
-def test_stats_refresh_skips_unpublished_or_inactive_projects(store, monkeypatch, state, meta):
+def test_stats_refresh_skips_inactive_projects(store, monkeypatch, state, meta):
     project, _ = store
     project.status = state
     portal.set_metadata(project, meta)
@@ -758,6 +757,60 @@ def test_stats_refresh_keeps_previous_publication_during_pending_edit(store, mon
                                  'revision': 2, 'checksum': 'b' * 64,
                                  'published_revision': 1, 'published_checksum': 'a' * 64})
     calls = []
-    monkeypatch.setattr(snapshots, 'app_request', lambda path: calls.append(path) or {'observations': 0, 'sites_monitored': 2, 'citizen_scientists': 3})
+    monkeypatch.setattr(snapshots, 'app_request', lambda path: calls.append(path) or {'app_project_id': 42, 'project_slug': project.slug, 'observations': 0, 'sites_monitored': 2, 'citizen_scientists': 3})
     snapshots.refresh_project_stats(project)
     assert calls == ['/internal/ckan/projects/42/stats']
+
+
+@pytest.mark.parametrize('meta', [{}, {'app_project_id': 42, 'status': 'draft'},
+                                  {'app_project_id': 42, 'status': 'pending'}])
+def test_activity_stats_cover_legacy_projects_and_unpublished_editor_pages(store, monkeypatch, meta):
+    project, _ = store
+    portal.set_metadata(project, meta)
+    calls = []
+    monkeypatch.setattr(snapshots, 'app_request', lambda path: calls.append(path) or {
+        'app_project_id': 42, 'project_slug': project.slug,
+        'observations': 94, 'sites_monitored': 8, 'citizen_scientists': 5})
+    before = project.extras
+    result = snapshots.refresh_project_stats(project)
+    assert result == {'observations': 94, 'sites_monitored': 8, 'citizen_scientists': 5}
+    assert db.get_stats(project.id).observations == 94
+    identity = '42' if meta.get('app_project_id') else 'by-slug/river'
+    assert calls == ['/internal/ckan/projects/' + identity + '/stats']
+    assert project.extras == before and db.get_project_page(project.id) is None
+
+
+@pytest.mark.parametrize('invalid', [
+    {'project_slug': 'different-project'}, {'app_project_id': 99},
+    {'observations': -1}, {'observations': True}, {'observations': '6485'},
+    {'sites_monitored': None},
+])
+def test_activity_stats_keep_previous_totals_on_invalid_or_mismatched_response(store, monkeypatch, invalid):
+    project, _ = store
+    portal.set_metadata(project, {'app_project_id': 42})
+    db.stats_set(project.id, observations=6485, sites_monitored=49)
+    db.Session.commit()
+    response = {'app_project_id': 42, 'project_slug': project.slug,
+                'observations': 0, 'sites_monitored': 0, 'citizen_scientists': 0}
+    response.update(invalid)
+    monkeypatch.setattr(snapshots, 'app_request', lambda *a: response)
+    with pytest.raises(ValueError):
+        snapshots.refresh_project_stats(project)
+    assert db.get_stats(project.id).observations == 6485
+    assert db.get_stats(project.id).sites_monitored == 49
+
+
+def test_periodic_activity_refresh_includes_legacy_and_keeps_totals_during_outage(store, monkeypatch):
+    project, _ = store
+    db.stats_set(project.id, observations=6485, sites_monitored=49)
+    db.Session.commit()
+    calls = []
+    def unavailable(path):
+        calls.append(path)
+        raise OSError('upstream unavailable')
+    monkeypatch.setattr(snapshots, 'app_request', unavailable)
+    result = snapshots.refresh_all()
+    assert calls == ['/internal/ckan/projects/by-slug/river/stats']
+    assert result['failed'] == 1
+    assert db.get_stats(project.id).observations == 6485
+    assert db.get_stats(project.id).sites_monitored == 49

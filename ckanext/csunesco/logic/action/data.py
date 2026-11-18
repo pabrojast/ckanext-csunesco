@@ -291,43 +291,10 @@ def csunesco_data_source_reject(context, data_dict):
 
 
 def refresh_project_stats(project_id):
-    """Recompute observations/sites for a project from its APPROVED sources.
-
-    Fetches each connected form's public dashboard data (TTL-cached), sums the
-    observation totals and unions the distinct site coordinates across
-    sources. Fail-soft by design: an unreachable source contributes nothing,
-    and when EVERY upstream is down the last stored values are kept (never
-    zeroed by an outage). Commits on success; returns the stored dict or
-    ``None`` when nothing was refreshed.
-    """
-    from ckanext.csunesco.logic import ofform
-    _total, sources = db.list_data_sources(
-        project_id=project_id, status='approved', limit=100)
-    if not sources:
-        return None
-    observations = 0
-    sites = set()
-    fetched = 0
-    for source in sources:
-        try:
-            if not data_access.permitted({}, source, "can_download"):
-                continue
-            data = data_access.dashboard(source)
-        except ofform.OfformError:
-            continue
-        observations += ofform.observation_stats(data)['observations']
-        sites |= ofform.observation_site_keys(data)
-        fetched += 1
-    if not fetched:
-        return None
-    # The per-project people counter tracks ACTIVE members (the join counter
-    # drifts: project approval seeds the creator without incrementing it).
-    members = db.count_active_members(project_id)
-    db.stats_set(project_id, observations=observations,
-                 sites_monitored=len(sites), citizen_scientists=members)
-    model.Session.commit()
-    return {'observations': observations, 'sites_monitored': len(sites),
-            'citizen_scientists': members}
+    """Usar el mismo agregado de actividad que el refresco periódico."""
+    from ckanext.csunesco.logic import snapshots
+    project = db.get_project(project_id)
+    return snapshots.refresh_project_stats(project) if project else None
 
 
 def _can_view_unapproved(context, data_source):

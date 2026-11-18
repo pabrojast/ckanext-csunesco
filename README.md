@@ -624,18 +624,21 @@ ckan -c /etc/ckan/default/ckan.ini csunesco seed-legacy-projects  # the 7 legacy
 ckan -c /etc/ckan/default/ckan.ini csunesco stats-refresh    # observation counters (cron-able)
 ```
 
-**"Sampling points"** counts DISTINCT GPS locations rounded to ~11 m, not named
-sites: a form whose site column holds 26 names can easily have 450 coordinates.
-It is labelled that way so the counter cannot contradict a chart legend on the
-same page.
+**At-a-Glance counters.** The project band shows activity totals from the
+authenticated Toolbox aggregate endpoint: synchronized observations excluding
+deleted, excluded or QC-held rows, registered sites outside the trash, and
+active citizen-scientist memberships. These totals include historical and
+non-public forms; they do not grant access to measurements. Charts, maps and
+downloads retain their independent publication and privacy checks.
 
-**At-a-Glance counters.** Observations and monitored sites are recomputed
-from the connected (approved) app data sources: automatically on data-source
-approval and on every landing-page map view, and in bulk via `csunesco
-stats-refresh` (schedule it if you want them fresh without traffic). Citizen
+The publication worker refreshes all approved projects, including legacy pages
+without an app editor revision. Legacy identities resolve by the app's explicit
+`ckan_slug`; an editor-managed page additionally checks its `app_project_id`.
+The same refresh runs on data-source approval and through `csunesco stats-refresh`.
+Unavailable or invalid responses retain the last counters. Portal-wide citizen
 scientists = distinct registered profiles ∪ active members of approved
 projects; member states = distinct countries declared across approved
-projects. Outages keep the last stored values (never zeroed).
+projects. "Sampling points" counts registered, non-deleted project sites.
 
 ## ofform integration
 

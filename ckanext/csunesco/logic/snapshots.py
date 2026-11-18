@@ -21,7 +21,7 @@ import time
 from types import SimpleNamespace
 import urllib.request
 import urllib.error
-from urllib.parse import urlsplit, urljoin, unquote
+from urllib.parse import urlsplit, urljoin, unquote, quote
 
 import ckan.plugins.toolkit as tk
 from ckanext.csunesco import db
@@ -404,7 +404,7 @@ def refresh_all():
             log.warning('Keeping last data publication for source %s', source.id)
     from ckanext.csunesco.logic import portal
     for project in db.Session.query(db.CsProject).filter(db.CsProject.status == 'approved').all():
-        if portal.managed(project) and not portal.withdrawn(project):
+        if not portal.withdrawn(project):
             try:
                 refresh_project_stats(project)
             except Exception:
@@ -414,36 +414,32 @@ def refresh_all():
 
 
 def refresh_project_stats(project, defer_commit=False):
+    """Actualizar actividad agregada sin publicar mediciones ni modificar el CMS."""
     from ckanext.csunesco.logic import portal
     meta = portal.metadata(project)
     app_id = meta.get('app_project_id')
-    # An approved project can still have an unpublished Toolbox page. Keep
-    # refreshing the previous public version while a later edit awaits review.
-    if (not app_id or project.status != 'approved' or portal.withdrawn(project)
-            or not portal.complete_revision(meta.get('published_revision'),
-                                            meta.get('published_checksum'))):
+    if (project.status != 'approved' or portal.withdrawn(project)
+            or getattr(project, 'discovery_visibility', 'public') == 'unlisted'):
         return
-    values = app_request('/internal/ckan/projects/%s/stats' % int(app_id))
+    # Las páginas antiguas no tienen revisión del editor ni app_project_id.
+    # La app resuelve su vínculo explícito ckan_slug, nunca un título parecido.
+    identity = str(int(app_id)) if app_id else 'by-slug/' + quote(project.slug, safe='')
+    values = app_request('/internal/ckan/projects/%s/stats' % identity)
+    if (values.get('project_slug') != project.slug
+            or (app_id and values.get('app_project_id') != int(app_id))):
+        raise ValueError('Project statistics identity mismatch')
     updates = {}
     for key in ('observations', 'sites_monitored', 'citizen_scientists'):
         value = values.get(key)
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise ValueError('Invalid public project statistics')
         updates[key] = value
-    # The public count must match the same CKAN-approved row snapshots used
-    # by charts/CSV, even if the app has another form awaiting local approval.
-    observation_ids = set()
-    sources = db.Session.query(db.CsDataSource).filter(
-        db.CsDataSource.project_id == project.id, db.CsDataSource.status == 'approved').all()
-    for source in sources:
-        saved = saved_form(source.form_id)
-        if saved:
-            for row in saved.get('dashboard', {}).get('rows', []):
-                observation_ids.add((source.form_id, str(row.get('id'))))
-    updates['observations'] = len(observation_ids)
+    # "At a Glance" resume actividad, no el subconjunto descargable. Obtener
+    # sólo enteros evita cargar/publicar filas y duplicar fuentes o particiones.
     db.stats_set(project.id, **updates)
     if not defer_commit:
         db.Session.commit()
+    return updates
 
 
 _worker_started = False
