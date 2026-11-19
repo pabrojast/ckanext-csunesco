@@ -128,6 +128,10 @@ def series(raw, payload, today=None):
             return '' if v is None else str(v)
         if search and search not in (day or '') and not any(search in text(v).lower() for v in a.values()):
             continue
+        # A selected site/group restricts every mode, including category and
+        # total-count charts. Keep the count series label independent of it.
+        if c['sites'] and _category(a.get(group)) not in c['sites']:
+            continue
         filtered.append((row, a, date))
     out = dict(mode=c['mode'], chart=c['chart'], title=c['title'], axes=c['axes'],
                total_rows=payload.get('total', len(rows)), used_rows=len(filtered),
@@ -152,9 +156,7 @@ def series(raw, payload, today=None):
             except ValueError: continue
         if type(value) not in (int, float) or not math.isfinite(value):
             continue
-        name = answers.get(group) if group and isinstance(answers.get(group), str) and c['mode'] != 'count' else 'Observations' if c['mode'] == 'count' else ''
-        if c['sites'] and name not in c['sites']:
-            continue
+        name = 'Observations' if c['mode'] == 'count' else (_category(answers.get(group)) or '')
         groups[name].append((date, value))
     names = sorted(groups, key=lambda name: -len(groups[name]))
     if not c['sites']:
