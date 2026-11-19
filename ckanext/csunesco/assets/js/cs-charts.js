@@ -183,7 +183,7 @@
       var color = seriesColor(index);
       return {
         label: entry.name || payload.field_label || "",
-        data: entry.points,
+        data: entry.xy ? entry.xy.map(function (p) { return { x: Date.parse(p.x), y: p.y }; }) : entry.points,
         borderColor: color,
         backgroundColor: type === "bar" ? color : hexToRgba(color, 0.15),
         // A gap is a real hole in the record: never bridge it with a straight
@@ -198,6 +198,8 @@
       };
     });
 
+    var temporal = series.some(function (s) { return !!s.xy; });
+    var axes = payload.axes || {};
     return {
       type: type === "bar" ? "bar" : "line",
       data: { labels: labels, datasets: datasets },
@@ -219,10 +221,12 @@
         },
         scales: {
           x: {
+            type: temporal ? "linear" : "category",
+            min: axes.xMin, max: axes.xMax,
             grid: { display: false },
             border: { color: INK.axis },
             ticks: { color: INK.muted, maxTicksLimit: 8, autoSkip: true,
-                     maxRotation: 0 }
+                     maxRotation: 0, callback: temporal ? function(v) { return new Date(v).toLocaleDateString(); } : undefined }
           },
           y: {
             title: payload.field_label
@@ -233,8 +237,8 @@
             ticks: { color: INK.muted, maxTicksLimit: 6 },
             // Present only when the data actually crossed a Tukey fence, so a
             // single bad reading cannot flatten the real signal.
-            min: payload.y_min,
-            max: payload.y_max,
+            min: axes.yMin !== undefined ? axes.yMin : payload.y_min,
+            max: axes.yMax !== undefined ? axes.yMax : payload.y_max,
             beginAtZero: payload.mode === "count"
           }
         }
@@ -244,7 +248,7 @@
 
   function hasData(payload) {
     return (payload.series || []).some(function (entry) {
-      return (entry.points || []).some(function (point) {
+      return (entry.xy || entry.points || []).some(function (point) {
         return point !== null && point !== undefined;
       });
     });
@@ -294,11 +298,27 @@
     container.setAttribute("aria-busy", "true");
     message(container, container.getAttribute("data-label-loading") || "");
 
-    fetch(url, { credentials: "same-origin" })
+    var definition = container.getAttribute("data-definition");
+    var options = { credentials: "same-origin" };
+    if (definition) {
+      url = container.getAttribute("data-series-url");
+      options.method = "POST";
+      options.headers = { "Content-Type": "application/json" };
+      options.body = JSON.stringify({ definition: JSON.parse(definition),
+        history_sources: JSON.parse(container.getAttribute("data-history-sources") || "[]") });
+    }
+    fetch(url, options)
       .then(function (response) {
         return response.ok ? response.json() : failure(response);
       })
       .then(function (payload) {
+        if (payload.truncated) {
+          var warning = document.createElement("p");
+          warning.className = "cs-empty";
+          warning.setAttribute("role", "status");
+          warning.textContent = container.getAttribute("data-label-truncated");
+          container.parentNode.appendChild(warning);
+        }
         if (!paint(container, payload)) {
           message(container, container.getAttribute("data-label-empty") || "");
         }

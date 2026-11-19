@@ -31,6 +31,7 @@
     <figure class="cs-chart-card">
       <div class="cs-chart" style="height: {{ block.height }}px;"
            data-series-url="{{ h.url_for('csunesco.data_source_series', id=source.id) }}"
+           {% if block.definition is defined %}data-definition="{{ block.definition | tojson | forceescape }}" data-history-sources="{{ block.history_sources | tojson | forceescape }}"{% endif %}
            data-mode="{{ block.mode }}" data-field="{{ block.field }}"
            data-agg="{{ block.agg }}" data-group-by="{{ block.group_by }}"
            data-bucket="{{ block.bucket }}" data-range="{{ block.range }}"
@@ -38,6 +39,7 @@
            data-label-chart="{{ block.title or block.caption }}"
            data-label-other="{{ _('Other') }}"
            data-label-loading="{{ _('Loading chart…') }}"
+           data-label-truncated="{{ _('Only part of the data is available. This chart is incomplete.') }}"
            data-label-empty="{{ _('No observations to chart yet.') }}"
            {# Two different failures, two different sentences: the source being
               away is temporary and not the reader's problem, so say so and

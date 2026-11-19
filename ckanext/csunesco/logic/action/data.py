@@ -468,6 +468,54 @@ def csunesco_data_source_series(context, data_dict):
     schema = payload.get('schema') or {}
     total_rows = payload.get('total', len(rows))
 
+    if data_dict.get('definition') is not None:
+        from ckanext.csunesco.logic.chart_definition import normalize, series
+        try:
+            raw = data_dict['definition']
+            if isinstance(raw, str):
+                if len(raw) > 32768: raise ValueError('Chart settings too large')
+                raw = json.loads(raw)
+            definition = normalize(raw)
+            history = data_dict.get('history_sources') or []
+            if isinstance(history, str):
+                if len(history) > 32768: raise ValueError('History settings too large')
+                history = json.loads(history)
+            if not isinstance(history, list) or len(history) > 30:
+                raise ValueError('Invalid history sources')
+            if history and not definition['include_history']:
+                raise ValueError('History is not enabled for this chart')
+            merged = dict(payload, rows=list(rows))
+            seen = {data_source.id}
+            for item in history:
+                if not isinstance(item, dict) or item.get('id') in seen or not isinstance(item.get('mappings'), dict) or not isinstance(item.get('source_fingerprints'), dict) or not isinstance(item.get('target_fingerprints'), dict):
+                    raise ValueError('Invalid history source')
+                if not isinstance(item.get('id'), str) or len(item['mappings']) > 200 or any(not isinstance(k, str) or not isinstance(v, str) for k, v in item['mappings'].items()):
+                    raise ValueError('Invalid history mapping')
+                seen.add(item['id'])
+                source = _approved_source_or_404({'id': item['id'], 'project_id': data_source.project_id}, context)
+                older = data_access.dashboard(source)
+                for origin, target in item['mappings'].items():
+                    if (not item.get('source_fingerprints', {}).get(origin)
+                            or not item.get('target_fingerprints', {}).get(target)
+                            or (older.get('field_fingerprints') or {}).get(origin) != item['source_fingerprints'][origin]
+                            or (payload.get('field_fingerprints') or {}).get(target) != item['target_fingerprints'][target]):
+                        raise ValueError('Historical field definitions changed; review the chart')
+                mapped = set(item['mappings'].values())
+                target_fields = {f['name'] for f in schema.get('fields', [])}
+                if not mapped.issubset(target_fields):
+                    raise ValueError('Invalid historical field mapping')
+                for row in older.get('rows') or []:
+                    projected = dict(row, answers={target: (row.get('answers') or {}).get(origin)
+                                     for origin, target in item['mappings'].items()})
+                    merged['rows'].append(projected)
+                merged['total'] = merged.get('total', len(rows)) + older.get('total', len(older.get('rows') or []))
+                merged['truncated'] = bool(merged.get('truncated') or older.get('truncated'))
+            result = series(definition, merged)
+            result['data_source_id'] = data_source.id
+            return result
+        except (ValueError, TypeError, KeyError) as exc:
+            raise tk.ValidationError({'definition': [str(exc)]})
+
     mode = data_dict.get('mode')
     if mode not in ('numeric', 'category', 'count'):
         mode = 'count'

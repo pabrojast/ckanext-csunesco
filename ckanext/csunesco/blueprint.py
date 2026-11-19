@@ -627,7 +627,7 @@ csunesco_bp.add_url_rule(
 # the dot forms match a different pattern, so there is no collision.
 csunesco_bp.add_url_rule(
     '/data/<id>/series', 'data_source_series', data_source_series,
-    methods=['GET'])
+    methods=['GET', 'POST'])
 csunesco_bp.add_url_rule(
     '/data/<id>/fields', 'data_source_fields', data_source_fields,
     methods=['GET'])

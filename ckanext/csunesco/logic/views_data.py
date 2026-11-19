@@ -158,9 +158,14 @@ def _json_action(action_name, data_dict):
 def data_source_series(id):
     """Aggregated chart series for an approved data source (live, TTL-cached)."""
     data_dict = {'id': id}
+    if request.content_length and request.content_length > 131072:
+        return tk.abort(413, 'Chart settings too large')
+    params = request.get_json(silent=True) if request.method == 'POST' else request.args
+    if not isinstance(params, dict) and request.method == 'POST':
+        return tk.abort(400, 'Invalid chart settings')
     for key in ('mode', 'field', 'agg', 'group_by', 'bucket', 'range',
-                'start', 'end', 'project_id', 'max_series', 'max_categories'):
-        value = request.args.get(key)
+                'start', 'end', 'project_id', 'max_series', 'max_categories', 'definition', 'history_sources'):
+        value = params.get(key)
         if value is not None:
             data_dict[key] = value
     return _json_action('csunesco_data_source_series', data_dict)

@@ -324,7 +324,7 @@ def _n_rich_text(raw, report=None):
 
 
 def _n_chart(raw, report=None):
-    return {
+    result = {
         # Re-checked against THIS project's approved sources at render time --
         # an id in stored JSON proves nothing (the source may since have been
         # rejected, or the JSON copied from another project).
@@ -346,6 +346,24 @@ def _n_chart(raw, report=None):
         'caption': _plain(raw.get('caption'), MAX_CAPTION),
         'height': _int(raw.get('height'), 320, 200, 600),
     }
+
+    if raw.get('saved_chart_id') is not None:
+        result['saved_chart_id'] = _int(raw.get('saved_chart_id'), 0, 0, 2147483647)
+        result['saved_chart_revision'] = _int(raw.get('saved_chart_revision'), 0, 0, 2147483647)
+    if 'definition' in raw:
+        from ckanext.csunesco.logic.chart_definition import normalize
+        try:
+            result['definition'] = normalize(raw['definition'])
+        except (ValueError, TypeError):
+            if report is not None: report.note('definition', 'invalid_chart')
+        result['history_sources'] = [dict(id=_ref(item.get('id')),
+            source_fingerprints={_field_name(k): _plain(v, 64) for k, v in (item.get('source_fingerprints') or {}).items()} if isinstance(item.get('source_fingerprints'), dict) else {},
+            target_fingerprints={_field_name(k): _plain(v, 64) for k, v in (item.get('target_fingerprints') or {}).items()} if isinstance(item.get('target_fingerprints'), dict) else {}, mappings={
+            _field_name(k): _field_name(v) for k, v in item.get('mappings', {}).items()
+            if _field_name(k) and _field_name(v)})
+            for item in _items(raw.get('history_sources'), 30)
+            if isinstance(item.get('mappings'), dict) and len(item['mappings']) <= 200]
+    return result
 
 
 MAX_CHAT_INTRO = 300

@@ -786,3 +786,15 @@ identificada por un hash de los proyectos y cuentas del ámbito. Los agregados n
 hacen llamadas a la app durante la carga de páginas. Ante una caída conservan el
 último total durante hasta 15 minutos; si falta o caduca, muestran `—`, nunca un
 cero inventado. Las mediciones y los permisos de descarga no cambian.
+
+
+### Reusable app charts (capability `saved_charts_version: 1`)
+
+The app owns saved charts and publishes a revision-pinned `definition` in each
+chart block. The portal renders that configuration against live, currently
+approved sources. `logic/chart_definition.py` is kept byte-identical to Ofform's
+`app/services/chart_definition.py`; compare SHA-256 before releasing either.
+Legacy blocks remain supported. The read-only series route accepts JSON POST for
+large filter definitions as well as its existing GET parameters. Linked history
+requires approved sources in the same project and matching field fingerprints;
+missing access or changed field semantics fails the entire chart visibly.

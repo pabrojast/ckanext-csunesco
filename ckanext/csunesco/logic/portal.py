@@ -548,7 +548,7 @@ def capabilities(context, data):
             'can_edit_standard_sections': bool(not effective or can_edit_standard_sections(effective) or project and auth.can_manage_project(effective, project.id)),
             'standard_sections': standards,
             'blocks': registry, 'data_sources': sources, 'datasets': datasets,
-            'data_editor_version': 2, 'data_catalog': data_catalog,
+            'saved_charts_version': 1, 'data_editor_version': 2, 'data_catalog': data_catalog,
             'project_fields': [{'key': k, 'label': k.replace('_', ' ').capitalize()} for k in FACT_FIELDS],
             'structure_fields': [{'key': k, 'label': k.replace('_', ' ').capitalize()} for k in STRUCTURE_FIELDS],
             'fixed_hero': True, 'snapshot_interval_seconds': 300}
