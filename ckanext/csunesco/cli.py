@@ -56,6 +56,10 @@ def stats_refresh():
                 project_id, result['observations'],
                 result['sites_monitored']))
 
+    from ckanext.csunesco.logic import participation
+    failed = participation.refresh_all()
+    click.echo('participation scopes: %s' % ('updated' if not failed else '%s failed' % failed))
+
 
 @csunesco.command('backfill-stats')
 def backfill_stats():

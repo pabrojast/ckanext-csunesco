@@ -55,8 +55,9 @@ def session():
     engine = sa.create_engine('sqlite://')
     db.ensure_mappers()
     from ckan.model.group import group_table, member_table
+    from ckan.model.user import user_table
     db.metadata.create_all(
-        bind=engine, tables=list(db._ALL_TABLES) + [group_table, member_table])
+        bind=engine, tables=list(db._ALL_TABLES) + [group_table, member_table, user_table])
     db.Session.remove()
     db.Session.configure(bind=engine)
     try:

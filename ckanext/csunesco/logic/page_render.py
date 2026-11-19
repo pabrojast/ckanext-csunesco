@@ -339,7 +339,7 @@ def _edit_url(project, initiative=None):
 
 
 def _aggregate_stats(context, initiative=None):
-    """Portal-wide counters for the hub (fail-soft to zeros)."""
+    """Portal-wide counters for the hub (unknown on failure)."""
     try:
         data_dict = {'initiative': initiative['name']} if initiative else {}
         return tk.get_action('csunesco_aggregate_stats')(

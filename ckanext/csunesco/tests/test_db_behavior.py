@@ -45,8 +45,9 @@ def session():
     # pending_counts resolves the initiative-admin (ADM) role from CKAN's own
     # group/member tables (shared metadata), so they must exist here too.
     from ckan.model.group import group_table, member_table
+    from ckan.model.user import user_table
     db.metadata.create_all(
-        bind=engine, tables=list(db._ALL_TABLES) + [group_table, member_table])
+        bind=engine, tables=list(db._ALL_TABLES) + [group_table, member_table, user_table])
     db.Session.remove()
     db.Session.configure(bind=engine)
     try:
@@ -529,7 +530,11 @@ def test_stats_increment_rejects_unknown_field(session):
 # aggregate_stats: single JOIN'd SELECT restricted to approved projects
 # ---------------------------------------------------------------------------
 
-def test_aggregate_stats_only_counts_approved(session):
+def test_aggregate_stats_only_counts_approved(session, monkeypatch):
+    from ckan.model import User
+    from ckanext.csunesco.logic import participation
+    monkeypatch.setattr(participation, "cached_count", lambda body: len(body["ckan_user_ids"]))
+    session.add_all([User(id=uid, name=uid, state="active") for uid in ("u1", "u2", "u3")])
     approved = db.CsProject()
     approved.slug = 'a'
     approved.title = 'A'
@@ -605,7 +610,11 @@ def test_aggregate_stats_zero_when_empty(session):
     }
 
 
-def test_aggregate_stats_can_be_scoped_to_one_initiative(session):
+def test_aggregate_stats_can_be_scoped_to_one_initiative(session, monkeypatch):
+    from ckan.model import User
+    from ckanext.csunesco.logic import participation
+    monkeypatch.setattr(participation, "cached_count", lambda body: len(body["ckan_user_ids"]))
+    session.add_all([User(id=uid, name=uid, state="active") for uid in ("member-river", "member-island", "registered-only")])
     projects = []
     for slug, initiative, country, observations in (
             ('river', 'riverwatch', 'Chile', 7),

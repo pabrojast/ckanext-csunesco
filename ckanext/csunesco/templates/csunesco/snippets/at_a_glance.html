@@ -1,5 +1,5 @@
 {#
-  "At a Glance" counter band. Renders four stat-items and shows 0 gracefully.
+  "At a Glance" counter band. Renders four stat-items and shows unavailable values as —.
 
   "Sampling points" counts DISTINCT GPS locations (rounded to ~11 m), not named
   sites: a form whose site column has 26 names can easily have 450 coordinates,
@@ -8,7 +8,7 @@
 
   Vars:
     stats -- dict with keys citizen_scientists / observations / sites_monitored
-             / member_states (each an int; missing keys default to 0).
+             / member_states (each an int; missing keys remain unknown).
     title -- optional heading override (block title; empty keeps the default).
     intro -- optional author intro paragraph under the heading.
 #}
@@ -17,19 +17,19 @@
   {% if intro %}<p class="cs-section-intro">{{ intro }}</p>{% endif %}
   <div class="cs-stats-band">
     <div class="stat-item">
-      <div class="stat-number">{{ h.csunesco_format_number(stats.get('citizen_scientists', 0)) }}</div>
+      <div class="stat-number">{{ h.csunesco_format_number(stats.get('citizen_scientists')) }}</div>
       <div class="stat-label">{{ _("Citizen Scientists") }}</div>
     </div>
     <div class="stat-item">
-      <div class="stat-number">{{ h.csunesco_format_number(stats.get('observations', 0)) }}</div>
+      <div class="stat-number">{{ h.csunesco_format_number(stats.get('observations')) }}</div>
       <div class="stat-label">{{ _("Observations") }}</div>
     </div>
     <div class="stat-item">
-      <div class="stat-number">{{ h.csunesco_format_number(stats.get('sites_monitored', 0)) }}</div>
+      <div class="stat-number">{{ h.csunesco_format_number(stats.get('sites_monitored')) }}</div>
       <div class="stat-label">{{ _("Sampling points") }}</div>
     </div>
     <div class="stat-item">
-      <div class="stat-number">{{ h.csunesco_format_number(stats.get('member_states', 0)) }}</div>
+      <div class="stat-number">{{ h.csunesco_format_number(stats.get('member_states')) }}</div>
       <div class="stat-label">{{ _("Member States") }}</div>
     </div>
   </div>

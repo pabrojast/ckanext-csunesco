@@ -1,0 +1,83 @@
+"""Unión privada, estado de cuentas, aislamiento de ámbitos y fallos de caché."""
+import time
+
+import pytest
+from ckan.model import User
+from ckanext.csunesco import db
+from ckanext.csunesco.logic import helpers, participation, snapshots
+from ckanext.csunesco.tests.test_db_behavior import session
+
+
+def test_inputs_filter_inactive_members_and_profiles_and_scope(session):
+    for uid, state in [('active', 'active'), ('inactive', 'deleted'), ('manager', 'active'), ('only-profile', 'active')]:
+        session.add(User(id=uid, name=uid, state=state))
+        profile = db.CsCitizenScientist(); profile.user_id = uid; session.add(profile)
+    for slug, visibility in [('public', 'public'), ('hidden', 'unlisted')]:
+        p = db.CsProject(); p.slug = slug; p.title = slug; p.status = 'approved'
+        p.initiative_group = 'riverwatch'; p.discovery_visibility = visibility
+        session.add(p); session.flush()
+        for uid, role in [('active', 'scientist'), ('inactive', 'scientist'), ('manager', 'admin')]:
+            m = db.CsProjectMember(); m.project_id = p.id; m.user_id = uid; m.role = role; m.status = 'active'; session.add(m)
+    session.commit()
+    scoped = db.participation_inputs('riverwatch')
+    assert scoped == {'project_slugs': ['public'], 'ckan_user_ids': ['active'], 'excluded_ckan_user_ids': ['inactive']}
+    assert db.participation_inputs()['ckan_user_ids'] == ['active', 'manager', 'only-profile']
+    assert db.participation_inputs('islandwatch')['project_slugs'] == []
+
+
+def test_cache_union_outage_expiry_and_scope_changes(monkeypatch, tmp_path):
+    monkeypatch.setattr(snapshots, 'root', lambda: tmp_path)
+    payload = dict(project_slugs=['p'], ckan_user_ids=['one'], excluded_ckan_user_ids=[])
+    monkeypatch.setattr(db, 'participation_inputs', lambda *args, **kwargs: payload)
+    calls = []
+    def app(path, body):
+        calls.append((path, body))
+        return {'citizen_scientists': 7}
+    monkeypatch.setattr(snapshots, 'app_request', app)
+    assert participation.cached_count(payload) is None
+    assert participation.refresh() == 7
+    assert calls == [('/internal/ckan/participation-summary', payload)]
+    assert participation.cached_count(payload) == 7
+    assert participation.cached_count(dict(payload, project_slugs=['other'])) is None
+    assert participation.cached_count(dict(payload, excluded_ckan_user_ids=['one'])) is None
+    def unavailable(*args):
+        raise OSError('outage')
+    monkeypatch.setattr(snapshots, 'app_request', unavailable)
+    with pytest.raises(OSError): participation.refresh()
+    assert participation.cached_count(payload) == 7
+    now = time.time()
+    monkeypatch.setattr(participation.time, 'time', lambda: now + participation.MAX_AGE + 1)
+    assert participation.cached_count(payload) is None
+    # La caché contiene sólo fecha y total, no identificadores de personas.
+    record = snapshots.read_private('participation', participation._key(payload))
+    assert set(record) == {'created_at', 'citizen_scientists'}
+
+
+@pytest.mark.parametrize('value', [None, True, -1, '7'])
+def test_invalid_upstream_is_never_cached(monkeypatch, tmp_path, value):
+    monkeypatch.setattr(snapshots, 'root', lambda: tmp_path)
+    payload = dict(project_slugs=['p'], ckan_user_ids=[], excluded_ckan_user_ids=[])
+    monkeypatch.setattr(db, 'participation_inputs', lambda *args, **kwargs: payload)
+    monkeypatch.setattr(snapshots, 'app_request', lambda *args: {'citizen_scientists': value})
+    with pytest.raises(ValueError): participation.refresh()
+    assert participation.cached_count(payload) is None
+
+
+def test_unknown_values_render_as_unavailable_not_zero(monkeypatch):
+    def unavailable(*args): raise RuntimeError('database unavailable')
+    monkeypatch.setattr(helpers.tk, 'get_action', unavailable)
+    assert set(helpers.csunesco_aggregate_stats().values()) == {None}
+    assert helpers.csunesco_format_number(None) == '—'
+    assert str(helpers.csunesco_format_number(0)) == '0'
+
+
+def test_project_refresh_persists_union_without_changing_measurements(session, monkeypatch, tmp_path):
+    monkeypatch.setattr(snapshots, 'root', lambda: tmp_path)
+    project = db.CsProject(); project.slug = 'p'; project.title = 'P'; project.status = 'approved'
+    session.add(project); session.commit()
+    db.stats_set(project.id, observations=6485, sites_monitored=49, citizen_scientists=1)
+    session.commit()
+    monkeypatch.setattr(snapshots, 'app_request', lambda *args: {'citizen_scientists': 14})
+    assert participation.refresh(project_id=project.id) == 14
+    stats = db.get_stats(project.id)
+    assert (stats.citizen_scientists, stats.observations, stats.sites_monitored) == (14, 6485, 49)

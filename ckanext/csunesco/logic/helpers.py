@@ -20,13 +20,12 @@ log = logging.getLogger(__name__)
 # The parent group whose active children are the valid member states.
 MEMBER_STATES_GROUP = constants.MEMBER_STATES_GROUP
 
-# Neutral zeros returned whenever the aggregate stats cannot be computed, so the
-# "At a Glance" band always renders (shows 0 gracefully).
-_ZERO_STATS = {
-    'citizen_scientists': 0,
-    'observations': 0,
-    'sites_monitored': 0,
-    'member_states': 0,
+# Un fallo no equivale a cero actividad: mostrar un estado desconocido.
+_UNKNOWN_STATS = {
+    'citizen_scientists': None,
+    'observations': None,
+    'sites_monitored': None,
+    'member_states': None,
 }
 
 
@@ -39,14 +38,14 @@ def csunesco_aggregate_stats():
     """At-a-glance totals across approved projects (via the domain action).
 
     Delegates to the ``csunesco_aggregate_stats`` action so the helper never
-    queries the DB directly. Returns zeros on ANY error so the band still
+    queries the DB directly. Returns unknown values on errors so the band still
     renders rather than breaking the page.
     """
     try:
         return tk.get_action('csunesco_aggregate_stats')({}, {})
     except Exception:
         log.warning('csunesco: aggregate stats could not be computed')
-        return dict(_ZERO_STATS)
+        return dict(_UNKNOWN_STATS)
 
 
 def csunesco_recent_news(limit=3):
@@ -429,6 +428,8 @@ def csunesco_format_number(value):
     CKAN ships a localised formatter; fall back to the raw value rather than
     letting a display detail break a counter.
     """
+    if value is None:
+        return '—'
     try:
         return tk.h.localised_number(int(value))
     except Exception:

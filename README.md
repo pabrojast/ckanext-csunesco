@@ -769,3 +769,20 @@ pública del proyecto y el de verificación conserva el token y su vencimiento.
 El idioma sigue el contexto de traducción de CKAN, con soporte RTL. Si falla
 el renderizado, se conserva el envío de texto plano; un fallo del transporte
 no revierte el registro ni la aprobación.
+
+### Consistencia de estadísticas de participación
+
+Los proyectos y las iniciativas cuentan miembros científicos activos de CKAN y
+Toolbox, deduplicados por la identidad CKAN vinculada; las cuentas locales sin
+vínculo permanecen distintas. El total del hub incluye además perfiles Citizen
+Scientist activos que todavía no se han unido a un proyecto. Se excluyen cuentas
+CKAN inactivas y usuarios Toolbox inactivos o fusionados. No se suman los totales
+de proyectos para contar personas.
+
+`csunesco stats-refresh` y el trabajador periódico actualizan también esta unión
+mediante el endpoint interno autenticado `/internal/ckan/participation-summary`.
+La respuesta contiene sólo un entero. La caché privada guarda fecha y total,
+identificada por un hash de los proyectos y cuentas del ámbito. Los agregados no
+hacen llamadas a la app durante la carga de páginas. Ante una caída conservan el
+último total durante hasta 15 minutos; si falta o caduca, muestran `—`, nunca un
+cero inventado. Las mediciones y los permisos de descarga no cambian.

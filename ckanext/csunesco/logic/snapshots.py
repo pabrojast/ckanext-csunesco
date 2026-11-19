@@ -410,6 +410,8 @@ def refresh_all():
             except Exception:
                 result['failed'] += 1
                 log.warning('Keeping last public statistics for project %s', project.id)
+    from ckanext.csunesco.logic import participation
+    result['failed'] += participation.refresh_all()
     return result
 
 
@@ -429,7 +431,7 @@ def refresh_project_stats(project, defer_commit=False):
             or (app_id and values.get('app_project_id') != int(app_id))):
         raise ValueError('Project statistics identity mismatch')
     updates = {}
-    for key in ('observations', 'sites_monitored', 'citizen_scientists'):
+    for key in ('observations', 'sites_monitored'):
         value = values.get(key)
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise ValueError('Invalid public project statistics')

@@ -19,7 +19,8 @@ def store(monkeypatch, tmp_path):
     engine = sa.create_engine('sqlite://')
     db.ensure_mappers()
     from ckan.model.group import group_table, member_table
-    db.metadata.create_all(bind=engine, tables=list(db._ALL_TABLES) + [group_table, member_table])
+    from ckan.model.user import user_table
+    db.metadata.create_all(bind=engine, tables=list(db._ALL_TABLES) + [group_table, member_table, user_table])
     db.Session.remove()
     db.Session.configure(bind=engine)
     monkeypatch.setattr(tk, 'check_access', lambda *a, **k: True)
@@ -594,7 +595,7 @@ def test_project_stats_refresh_uses_aggregate_contract_without_touching_cms(stor
     monkeypatch.setattr(snapshots, 'saved_form', lambda *a: pytest.fail('Activity counts must not fetch private observations'))
     monkeypatch.setattr(db, 'stats_set', lambda pid, **kw: called.append((pid, kw)))
     snapshots.refresh_project_stats(project)
-    assert called == [(project.id, {'observations': 6485, 'sites_monitored': 49, 'citizen_scientists': 13})]
+    assert called == [(project.id, {'observations': 6485, 'sites_monitored': 49})]
     assert project.title == 'Published title'
     assert db.get_project_page(project.id) is None
 
@@ -773,7 +774,7 @@ def test_activity_stats_cover_legacy_projects_and_unpublished_editor_pages(store
         'observations': 94, 'sites_monitored': 8, 'citizen_scientists': 5})
     before = project.extras
     result = snapshots.refresh_project_stats(project)
-    assert result == {'observations': 94, 'sites_monitored': 8, 'citizen_scientists': 5}
+    assert result == {'observations': 94, 'sites_monitored': 8}
     assert db.get_stats(project.id).observations == 94
     identity = '42' if meta.get('app_project_id') else 'by-slug/river'
     assert calls == ['/internal/ckan/projects/' + identity + '/stats']
@@ -805,12 +806,13 @@ def test_periodic_activity_refresh_includes_legacy_and_keeps_totals_during_outag
     db.stats_set(project.id, observations=6485, sites_monitored=49)
     db.Session.commit()
     calls = []
-    def unavailable(path):
+    def unavailable(path, payload=None):
         calls.append(path)
         raise OSError('upstream unavailable')
     monkeypatch.setattr(snapshots, 'app_request', unavailable)
     result = snapshots.refresh_all()
-    assert calls == ['/internal/ckan/projects/by-slug/river/stats']
-    assert result['failed'] == 1
+    assert calls[0] == '/internal/ckan/projects/by-slug/river/stats'
+    assert calls[1:] == ['/internal/ckan/participation-summary'] * 2
+    assert result['failed'] == 3
     assert db.get_stats(project.id).observations == 6485
     assert db.get_stats(project.id).sites_monitored == 49

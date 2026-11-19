@@ -1092,6 +1092,33 @@ def public_project_clause():
             ~extras.like('%"status":"withdrawn"%'))))
 
 
+def participation_inputs(initiative_group=None, project_id=None):
+    """Identidades activas del portal y proyectos públicos para la unión privada."""
+    import ckan.model as model
+    from ckanext.csunesco.constants import MEMBER_ROLE_CS
+    _ensure_mappers()
+    projects = Session.query(CsProject).filter(public_project_clause())
+    if initiative_group:
+        projects = projects.filter(CsProject.initiative_group == initiative_group)
+    if project_id:
+        projects = projects.filter(CsProject.id == project_id)
+    projects = projects.all()
+    members = Session.query(CsProjectMember.user_id).join(
+        model.User, model.User.id == CsProjectMember.user_id).filter(
+        CsProjectMember.project_id.in_([p.id for p in projects]),
+        CsProjectMember.status == 'active', CsProjectMember.role == MEMBER_ROLE_CS,
+        model.User.state == 'active')
+    user_ids = {user_id for (user_id,) in members.all() if user_id}
+    if not initiative_group and not project_id:
+        user_ids.update(user_id for (user_id,) in Session.query(CsCitizenScientist.user_id)
+                        .join(model.User, model.User.id == CsCitizenScientist.user_id)
+                        .filter(model.User.state == 'active').all() if user_id)
+    excluded = {user_id for (user_id,) in Session.query(model.User.id)
+                .filter(sa.or_(model.User.state != 'active', model.User.state.is_(None))).all()}
+    return {'project_slugs': sorted({p.slug for p in projects}),
+            'ckan_user_ids': sorted(user_ids), 'excluded_ckan_user_ids': sorted(excluded)}
+
+
 def aggregate_stats(initiative_group=None):
     """At-a-glance totals across APPROVED projects (hub band).
 
@@ -1099,7 +1126,8 @@ def aggregate_stats(initiative_group=None):
       counter rows (kept fresh from the connected data sources by
       ``stats_set`` refreshes).
     * ``citizen_scientists``: DISTINCT people -- registered Citizen Scientist
-      profiles UNION active members of approved projects -- so migrated or
+      active profiles UNION active scientist members of approved projects in
+      CKAN and the app (deduplicated by linked identity) -- so migrated or
       web-registered scientists count even before they join a project.
     * ``member_states``: DISTINCT countries declared across approved projects
       (the per-project integer counter was never fed by anything).
@@ -1117,25 +1145,8 @@ def aggregate_stats(initiative_group=None):
     observations = int(row[0] or 0) if row is not None else 0
     sites = int(row[1] or 0) if row is not None else 0
 
-    profile_ids = ({
-        user_id for (user_id,) in
-        Session.query(CsCitizenScientist.user_id).all() if user_id
-    } if not initiative_group else set())
-    member_query = (
-        user_id for (user_id,) in
-        Session.query(CsProjectMember.user_id)
-        .join(CsProject, CsProject.id == CsProjectMember.project_id)
-        .filter(public_project_clause())
-        .filter(CsProjectMember.status == 'active')
-        .filter(CsProject.initiative_group == initiative_group)
-        .all() if user_id
-    ) if initiative_group else (
-        user_id for (user_id,) in
-        Session.query(CsProjectMember.user_id)
-        .join(CsProject, CsProject.id == CsProjectMember.project_id)
-        .filter(public_project_clause())
-        .filter(CsProjectMember.status == 'active').all() if user_id)
-    member_ids = set(member_query)
+    from ckanext.csunesco.logic import participation
+    citizen_scientists = participation.cached_count(participation_inputs(initiative_group))
 
     countries = set()
     country_query = (Session.query(CsProject.countries)
@@ -1149,7 +1160,7 @@ def aggregate_stats(initiative_group=None):
             countries.update(str(c).strip() for c in parsed if str(c).strip())
 
     return {
-        'citizen_scientists': len(profile_ids | member_ids),
+        'citizen_scientists': citizen_scientists,
         'observations': observations,
         'sites_monitored': sites,
         'member_states': len(countries),
