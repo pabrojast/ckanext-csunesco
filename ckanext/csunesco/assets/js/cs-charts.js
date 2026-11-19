@@ -375,7 +375,16 @@
       url = container.getAttribute("data-series-url");
       options.method = "POST";
       options.headers = { "Content-Type": "application/json" };
-      options.body = JSON.stringify({ definition: JSON.parse(definition),
+      // The series endpoint only calculates values. Presentation stays in the
+      // published definition on the element and is applied locally by paint.
+      var calculationDefinition = JSON.parse(definition);
+      if (calculationDefinition.version === 2) {
+        delete calculationDefinition.presentation;
+        delete calculationDefinition.template;
+        delete calculationDefinition.title;
+        delete calculationDefinition.caption;
+      }
+      options.body = JSON.stringify({ definition: calculationDefinition,
         history_sources: JSON.parse(container.getAttribute("data-history-sources") || "[]") });
     }
     fetch(url, options)

@@ -53,4 +53,24 @@ assert.ok(walk(numeric.figure).some(n=>n.className==='cs-chart-range-warning'));
 const details=walk(numeric.figure).find(n=>n.tagName==='details');details.open=true;details.events.toggle();assert.ok(walk(details).some(n=>n.tagName==='td'&&n.textContent==='1000.00'),'alternative table retains clipped observations');
 category.chart='bar';category.axes={};const bars=paint(category,categorical);const catButtons=walk(bars.figure).filter(n=>n.tagName==='button');catButtons[1].events.click();assert.equal(bars.chart.data.datasets[0].data[1],null);catButtons[1].events.click();assert.equal(bars.chart.data.datasets[0].data[1],8);assert.equal(categorical.series[0].points[1],8,'legend toggles are transient');
 const legacy=structuredClone(def);legacy.version=1;const old=paint(legacy,payload);assert.equal(old.chart.config.options.scales.y.max,10,'v1 rendering is unchanged');
-console.log('Saved chart studio: stable styles, complete ranges, formatting, theme, accessible legend, transient toggles, alternative data and v1 compatibility passed.');
+
+async function testCalculationRequestRetainsLocalPresentation(version) {
+  const saved=structuredClone(def);saved.version=version;saved.title='Date(UTC)';saved.caption='Presentation-only description';saved.axes={yMax:20};saved.start='2026-01-01';saved.filters={sites:['A'],facets:{weather:['dry']},search:'river'};
+  if(version===2){saved.presentation.series[keyA]={color:'#123456',label:'Upstream',lineStyle:'dashed',pointStyle:'triangle'};saved.template={id:'site-comparison',version:1};}
+  else delete saved.presentation;
+  const figure=new Node('figure'),container=new Node('div');figure.appendChild(container);
+  container.setAttribute('data-definition',JSON.stringify(saved));container.setAttribute('data-type','line');container.setAttribute('data-series-url','/citizen-science/data/source/series');
+  const history=[{id:'historical-source',mappings:{old_value:'value'}}];container.setAttribute('data-history-sources',JSON.stringify(history));
+  let sent;const chartCount=charts.length;
+  const responsePayload=structuredClone(payload);if(version===2){responsePayload.series[1].name='';delete responsePayload.title;}
+  const networkSandbox={Chart,CSChartPresentation:core,document:{readyState:'complete',documentElement:{lang:'en'},querySelectorAll:()=>[container],createElement:tag=>new Node(tag)},fetch:(url,options)=>{sent={url,options};return Promise.resolve({ok:true,json:()=>Promise.resolve(responsePayload)});},console};networkSandbox.window=networkSandbox;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../assets/js/cs-charts.js'),'utf8'),networkSandbox);
+  await new Promise(resolve=>setImmediate(resolve));
+  const expected=structuredClone(saved);if(version===2){delete expected.presentation;delete expected.template;delete expected.title;delete expected.caption;}
+  assert.deepEqual(JSON.parse(sent.options.body),{definition:expected,history_sources:history},'v2 sends calculation fields and history only; v1 sends the entire definition');
+  assert.equal(sent.options.method,'POST');assert.equal(charts.length,chartCount+1,'response still renders');
+  assert.deepEqual(JSON.parse(container.getAttribute('data-definition')),saved,'full published definition is not modified');
+  assert.equal(JSON.parse(container.getAttribute('data-definition')).title,'Date(UTC)','chart title remains available for local display');
+  if(version===2){assert.equal(charts.at(-1).data.datasets[1].label,'Date(UTC)','unnamed series use the title retained locally');assert.equal(charts.at(-1).data.datasets[0].borderColor,'#123456');assert.equal(charts.at(-1).data.datasets[0].label,'Upstream');assert.deepEqual(charts.at(-1).data.datasets[0].borderDash,[7,4]);}
+}
+Promise.resolve().then(()=>testCalculationRequestRetainsLocalPresentation(2)).then(()=>testCalculationRequestRetainsLocalPresentation(1)).then(()=>console.log('Saved chart studio: stable styles, complete ranges, formatting, theme, accessible legend, transient toggles, alternative data, calculation-only requests and v1 compatibility passed.')).catch(error=>{console.error(error);process.exitCode=1;});
