@@ -25,22 +25,53 @@
   <p class="cs-empty">{{ _("Measurements from this dataset are restricted. Access depends on the dataset's sharing permissions.") }}</p>
 {% endif %}
 {% if source and source.can_view_resources %}
+  {% set chart_feed = h.csunesco_chart_feed(block, ctx) %}
   <section class="cs-section cs-block{% if block.width == 'narrow' %} cs-block-narrow{% endif %}" id="block-{{ block.id }}"
            aria-labelledby="title-{{ block.id }}">
     {% snippet "csunesco/blocks/_heading.html", block=block %}
     <figure class="cs-chart-card">
       <div class="cs-chart" style="height: {{ block.height }}px;"
+           {% if chart_feed is not none %}
+           data-series-url="{{ chart_feed.url or '' }}" data-server-resolved="true"
+           data-definition="{{ chart_feed.definition | tojson | forceescape }}"
+           {% else %}
            data-series-url="{{ h.url_for('csunesco.data_source_series', id=source.id) }}"
            {% if block.definition is defined %}data-definition="{{ block.definition | tojson | forceescape }}" data-history-sources="{{ block.history_sources | tojson | forceescape }}"{% endif %}
            data-mode="{{ block.mode }}" data-field="{{ block.field }}"
            data-agg="{{ block.agg }}" data-group-by="{{ block.group_by }}"
            data-bucket="{{ block.bucket }}" data-range="{{ block.range }}"
+           {% endif %}
            data-type="{{ block.chart }}"
            data-label-chart="{{ block.title or block.caption }}"
            data-label-other="{{ _('Other') }}"
            data-label-legend="{{ _('Chart legend') }}"
            data-label-clipped="{{ _('{count} plotted values are outside the chosen axis limits. They remain in the data table.') }}"
-           data-label-table="{{ _('View plotted values') }}"
+           data-label-table="{{ _('View published values') }}"
+           data-label-table-hint="{{ _('All published values are included, including hidden series and values outside the displayed range.') }}"
+           data-label-explorer-title="{{ _('Explore this chart') }}"
+           data-label-explorer-hint="{{ _('Changes apply only to your current view. The published chart and values stay unchanged.') }}"
+           data-label-explorer-type="{{ _('Chart type') }}"
+           data-label-explorer-line="{{ _('Lines') }}"
+           data-label-explorer-bar="{{ _('Bars') }}"
+           data-label-explorer-pie="{{ _('Pie') }}"
+           data-label-explorer-palette="{{ _('Color palette') }}"
+           data-label-explorer-published-colors="{{ _('Published colors') }}"
+           data-label-explorer-palette-accessible="{{ _('Accessible contrast') }}"
+           data-label-explorer-palette-institutional="{{ _('Institutional blue') }}"
+           data-label-explorer-palette-mono="{{ _('Monochrome') }}"
+           data-label-explorer-x-min="{{ _('First displayed date (UTC)') }}"
+           data-label-explorer-x-max="{{ _('Last displayed date (UTC)') }}"
+           data-label-explorer-y-min="{{ _('Minimum displayed value') }}"
+           data-label-explorer-y-max="{{ _('Maximum displayed value') }}"
+           data-label-explorer-series="{{ _('Series and categories') }}"
+           data-label-explorer-search="{{ _('Find a series or category') }}"
+           data-label-explorer-show-all="{{ _('Show all') }}"
+           data-label-explorer-hide-all="{{ _('Hide all') }}"
+           data-label-explorer-reset="{{ _('Restore published view') }}"
+           data-label-explorer-invalid-range="{{ _('Enter valid limits, with the minimum before the maximum.') }}"
+           data-label-explorer-status="{{ _('{visible} of {total} series shown.') }}"
+           data-label-explorer-no-matches="{{ _('No series or categories match this search.') }}"
+           data-label-explorer-no-series="{{ _('No series are shown. Select a series, show all or restore the published view.') }}"
            data-label-series="{{ _('Series') }}"
            data-label-category="{{ _('Category') }}"
            data-label-date="{{ _('Date (UTC)') }}"

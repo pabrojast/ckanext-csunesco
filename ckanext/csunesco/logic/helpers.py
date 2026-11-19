@@ -603,3 +603,8 @@ def csunesco_portal_field_value(value):
     if isinstance(value, list):
         return ', '.join(csunesco_portal_field_value(v) for v in value)
     return str(value) if value is not None else ''
+
+
+def csunesco_chart_feed(block, ctx):
+    from ckanext.csunesco.logic.chart_feeds import chart_feed
+    return chart_feed(block, ctx)

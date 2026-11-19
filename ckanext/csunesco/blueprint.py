@@ -365,6 +365,16 @@ def data_source_series(id):
     return views_data.data_source_series(id)
 
 
+def project_chart_series(slug, block_id):
+    from ckanext.csunesco.logic import chart_feeds
+    return chart_feeds.project_chart_series(slug, block_id)
+
+
+def preview_chart_series(ticket, block_id):
+    from ckanext.csunesco.logic import chart_feeds
+    return chart_feeds.preview_chart_series(ticket, block_id)
+
+
 def data_source_fields(id):
     """Chartable field list of an APPROVED data source (public JSON)."""
     from ckanext.csunesco.logic import views_data
@@ -671,6 +681,8 @@ def portal_media(project_id, digest):
 
 
 csunesco_bp.add_url_rule('/portal/preview/<ticket>', 'portal_preview', portal_preview, methods=['GET'])
+csunesco_bp.add_url_rule('/project/<slug>/chart/<block_id>/series', 'project_chart_series', project_chart_series, methods=['GET'])
+csunesco_bp.add_url_rule('/portal/preview/<ticket>/chart/<block_id>/series', 'preview_chart_series', preview_chart_series, methods=['GET'])
 csunesco_bp.add_url_rule('/portal/media/<project_id>/<digest>', 'portal_media', portal_media, methods=['GET'])
 
 

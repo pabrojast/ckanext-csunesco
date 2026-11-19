@@ -4914,7 +4914,38 @@
 .cs-chart-table-scroll { overflow-x: auto; max-height: 30rem; margin-top: .5rem; }
 .cs-chart-data-table table { border-collapse: collapse; width: 100%; }
 .cs-chart-data-table th, .cs-chart-data-table td { text-align: left; padding: .4rem; border-bottom: 1px solid #e2e8f0; }
+/* Visitor changes are temporary. Keep the controls separate from the plot and
+   bound long series names without reducing the available drawing area. */
+.cs-chart-explorer { min-width: 0; max-width: 100%; box-sizing: border-box; margin: 0 0 1rem; padding: .85rem 1rem; border: 1px solid #cbdce6; border-radius: .6rem; background: #f6f9fb; color: #24465c; }
+.cs-chart-explorer > summary { cursor: pointer; min-height: 44px; box-sizing: border-box; padding-block: .45rem; line-height: 1.6; font-weight: 600; color: #005f8f; overflow-wrap: anywhere; }
+.cs-chart-explorer[open] > summary { margin-bottom: .7rem; }
+.cs-chart-explorer-intro, .cs-chart-explorer-status, .cs-chart-explorer-no-matches, .cs-chart-table-hint { margin: .6rem 0; color: #486376; font-size: .9rem; line-height: 1.5; overflow-wrap: anywhere; }
+.cs-chart-explorer-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: .8rem 1rem; }
+.cs-chart-explorer-field { display: flex; flex-direction: column; min-width: 0; margin: 0; gap: .3rem; color: #24465c; font-size: .9rem; line-height: 1.5; }
+.cs-chart-explorer-field > span { overflow-wrap: anywhere; }
+.cs-chart-explorer-field input, .cs-chart-explorer-field select { display: block; min-width: 0; width: 100%; max-width: 100%; min-height: 44px; height: auto; box-sizing: border-box; margin: 0; padding: .55rem .65rem; border: 1px solid #9fb5c4; border-radius: .35rem; background: #fff; color: #173b51; font: inherit; font-size: 16px; line-height: 1.4; }
+.cs-chart-explorer-field select { text-overflow: ellipsis; }
+.cs-chart-series-picker { min-width: 0; max-width: 100%; box-sizing: border-box; margin: 1rem 0 .6rem; padding: .75rem; border: 1px solid #cbdce6; border-radius: .4rem; }
+.cs-chart-series-picker > legend { width: auto; max-width: 100%; margin: 0; padding: 0 .35rem; border: 0; color: #24465c; font: inherit; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.cs-chart-explorer-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin: .65rem 0; }
+.cs-chart-explorer button { display: inline-flex; align-items: center; justify-content: center; min-width: 0; max-width: 100%; min-height: 44px; box-sizing: border-box; padding: .45rem .8rem; border: 1px solid #9fb5c4; border-radius: .35rem; background: #fff; color: #005f8f; font: inherit; font-size: .9rem; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; cursor: pointer; }
+.cs-chart-explorer button:hover { border-color: #0072b2; background: #eaf3f8; }
+.cs-chart-explorer > button { font-weight: 600; }
+.cs-chart-series-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: .25rem .6rem; max-height: 15rem; overflow: auto; padding: .25rem; margin: 0 -.25rem; overscroll-behavior: contain; }
+.cs-chart-series-choices > label { display: flex; align-items: flex-start; gap: .5rem; min-width: 0; min-height: 44px; box-sizing: border-box; margin: 0; padding: .5rem .25rem; border-radius: .25rem; color: #24465c; font-size: .9rem; line-height: 1.5; cursor: pointer; }
+.cs-chart-series-choices > label:hover { background: #eaf3f8; }
+.cs-chart-series-choices input[type="checkbox"] { flex: 0 0 18px; width: 18px; height: 18px; margin: .1rem 0 0; accent-color: #0072b2; }
+.cs-chart-series-choices span { min-width: 0; overflow-wrap: anywhere; }
+.cs-chart-explorer-error, .cs-chart-explorer-empty { margin: .75rem 0; padding: .65rem .8rem; border-radius: .35rem; font-size: .9rem; line-height: 1.5; overflow-wrap: anywhere; }
+.cs-chart-explorer-error { border: 1px solid #e4b3a7; background: #fff4f0; color: #8b2d18; }
+.cs-chart-explorer-empty { border: 1px solid #cbdce6; background: #f6f9fb; color: #24465c; }
+.cs-chart-explorer [hidden], .cs-chart-explorer-empty[hidden] { display: none; }
+.cs-chart-explorer summary:focus-visible, .cs-chart-explorer button:focus-visible, .cs-chart-explorer input:focus-visible, .cs-chart-explorer select:focus-visible { outline: 3px solid #0072b2; outline-offset: 2px; }
 @media (max-width: 600px) {
+  .cs-chart-explorer { padding: .75rem; }
+  .cs-chart-explorer-fields, .cs-chart-series-choices { grid-template-columns: minmax(0, 1fr); }
+  .cs-chart-series-picker { padding: .6rem; }
+  .cs-chart-series-choices { max-height: 15rem; }
   .cs-chart-studio-legend { max-height: 240px; }
   .cs-chart-studio-right { grid-template-columns: minmax(0, 1fr); }
   .cs-chart-studio-right > .cs-chart-studio-legend { flex-direction: row; flex-wrap: wrap; }

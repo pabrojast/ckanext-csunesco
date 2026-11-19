@@ -727,7 +727,8 @@ def preview_view(ticket):
         public['portal_published'] = True  # Render the authorized candidate, not the old page.
         preview_blocks = page_render.group_about_sections(candidate['blocks'])
         ctx = page_render.build_context({'user': None}, public, preview_blocks,
-                                       has_region=bool(public.get('region_geojson')) and public.get('show_project_boundary') is not False, can_manage=False, preview=True)
+                                       has_region=bool(public.get('region_geojson')) and public.get('show_project_boundary') is not False, can_manage=False, preview=True,
+                                       chart_preview_ticket=ticket)
         ctx['contacts'] = {k: candidate.get('project', {}).get(k) for k in ('contact_person', 'contact_email')}
         ctx['region_url'] = '/citizen-science/portal/preview-region/' + ticket
         ctx['news_events'] = candidate.get('contents', [])

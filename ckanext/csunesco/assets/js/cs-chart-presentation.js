@@ -32,8 +32,20 @@
     if (typeof value !== "number" || !isFinite(value)) return "—";
     var f = (definition.presentation || {}).numberFormat || {}, options = { useGrouping: f.useGrouping !== false };
     if (typeof f.decimals === "number") options.minimumFractionDigits = options.maximumFractionDigits = f.decimals;
-    else options.maximumFractionDigits = 6;
+    else if (value !== 0 && Math.abs(value) < 0.0001) {
+      options.notation = "scientific"; options.maximumSignificantDigits = 6;
+    } else options.maximumFractionDigits = 6;
     return new Intl.NumberFormat(locale || undefined, options).format(value);
+  }
+  function formatDate(value, definition, locale) {
+    var date = new Date(typeof value === "number" ? value : Date.parse(value));
+    if (!isFinite(date.getTime())) return "—";
+    if (definition.bucket === "raw") {
+      var iso = date.toISOString(), fraction = typeof value === "string" && value.match(/\.(\d+)(?:Z|[+-]\d{2}:?\d{2})$/);
+      if (fraction && fraction[1].length > 3) iso = iso.replace(/\.\d{3}Z$/, "." + fraction[1] + "Z");
+      return iso.replace("T", " ").replace("Z", " UTC");
+    }
+    return date.toLocaleDateString(locale || undefined, { timeZone: "UTC" });
   }
   function legendEntries(definition, payload) {
     if (payload.mode === "category") return (payload.labels || []).map(function (name, i) {
@@ -116,7 +128,11 @@
         plugins: {
           legend: { display: false }, csReferenceBands: { bands: p.referenceBands || [], textColor: ink.text },
           tooltip: { callbacks: {
-            title: function (items) { var first = items[0]; return first ? category ? first.label : new Date(first.parsed.x).toLocaleDateString(locale || undefined, { timeZone: "UTC" }) : ""; },
+            title: function (items) {
+              var first = items[0]; if (!first) return ""; if (category) return first.label;
+              var series = payload.series[first.datasetIndex], point = series && (series.xy || [])[first.dataIndex];
+              return formatDate(point ? point.x : first.parsed.x, definition, locale);
+            },
             label: function (item) { var value = typeof item.parsed === "number" ? item.parsed : item.parsed.y; return (category ? item.label : item.dataset.label) + ": " + formatNumber(value, definition, locale); }
           } }
         }
@@ -126,7 +142,7 @@
       x: {
         type: category ? "category" : "linear", min: category ? undefined : axes.xMin === undefined ? autoXMin : axes.xMin, max: category ? undefined : axes.xMax === undefined ? autoXMax : axes.xMax,
         title: { display: !!titles.x, text: titles.x, color: ink.text }, grid: { display: false }, border: {color: ink.axis},
-        ticks: { color: ink.text, maxTicksLimit: 6, ...(category ? {} : { callback: function (v) { return new Date(Number(v)).toLocaleDateString(locale || undefined, { timeZone: "UTC" }); } }) }
+        ticks: { color: ink.text, maxTicksLimit: 6, ...(category ? {} : { callback: function (v) { var text = formatDate(Number(v), definition, locale); return definition.bucket === "raw" ? text.replace(" UTC", "").split(" ") : text; } }) }
       },
       y: {
         min: axes.yMin, max: axes.yMax,
@@ -139,7 +155,7 @@
     };
     return config;
   }
-  return { palettes: palettes, resolveStyle: resolveStyle, lineDash: lineDash, formatNumber: formatNumber,
+  return { palettes: palettes, resolveStyle: resolveStyle, lineDash: lineDash, formatNumber: formatNumber, formatDate: formatDate,
     legendEntries: legendEntries, showLegend: showLegend, outOfRangeCount: outOfRangeCount,
     referenceBandsPlugin: referenceBandsPlugin, buildConfig: buildConfig };
 });

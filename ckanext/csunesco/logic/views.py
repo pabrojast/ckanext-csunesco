@@ -307,13 +307,13 @@ def project_landing(slug):
     # manager never published one falls back to the default layout, which is
     # exactly the section order this page had before it became block-driven --
     # so there is one rendering path, not a default template plus a custom one.
-    blocks = _published_blocks(project['id'])
+    blocks, chart_revision = _published_blocks(project['id'], with_revision=True)
     blocks = page_render.project_blocks(project, blocks)
     blocks = page_render.visible_blocks(blocks)
     ctx = page_render.build_context(
         _context(), project, blocks,
         has_region=has_region,
-        can_manage=tk.h.csunesco_can_manage_project(project['id']))
+        can_manage=tk.h.csunesco_can_manage_project(project['id']), chart_revision=chart_revision)
 
     return tk.render('csunesco/project_landing.html', extra_vars={
         'project': project,
@@ -323,7 +323,7 @@ def project_landing(slug):
     })
 
 
-def _published_blocks(project_id):
+def _published_blocks(project_id, with_revision=False):
     """The project's published blocks, or the default layout.
 
     ``published_blocks`` is ``None`` (never published) rather than ``[]``
@@ -337,7 +337,8 @@ def _published_blocks(project_id):
             _context(), {'project_id': project_id})
     except Exception:
         log.warning('csunesco: project page could not be loaded')
-        return blocks_module.default_blocks()
+        defaults = blocks_module.default_blocks()
+        return (defaults, None) if with_revision else defaults
     published = page.get('published_blocks')
     if published is None:
         default = blocks_module.default_blocks()
@@ -346,8 +347,8 @@ def _published_blocks(project_id):
         if portal.managed(db.get_project(project_id)):
             default = [blocks_module.normalize_block({'type': key}) for key in (
                 'project_facts', 'project_structure')] + default
-        return default
-    return published
+        return (default, None) if with_revision else default
+    return (published, page.get('published_revision_hash')) if with_revision else published
 
 
 def project_geojson(slug):

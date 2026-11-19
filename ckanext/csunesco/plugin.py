@@ -98,6 +98,7 @@ class CsunescoPlugin(p.SingletonPlugin):
             'csunesco_version': lambda: __version__,
             'csunesco_portal_public_field': helpers.csunesco_portal_public_field,
             'csunesco_portal_field_value': helpers.csunesco_portal_field_value,
+            'csunesco_chart_feed': helpers.csunesco_chart_feed,
             # Public reCAPTCHA v3 site key (read lazily from config). Returns
             # None when reCAPTCHA is not configured, so templates can render the
             # widget conditionally.

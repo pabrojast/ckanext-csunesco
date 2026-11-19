@@ -183,7 +183,13 @@ def csunesco_project_page_show(context, data_dict):
         if include_draft:
             result['draft_blocks'] = None
         return result
-    return db.page_dictize(page, include_draft=include_draft)
+    result = db.page_dictize(page, include_draft=include_draft)
+    from ckanext.csunesco.logic import chart_feeds
+    if page.published_json is not None:
+        result['published_revision_hash'] = chart_feeds.revision(page.published_json)
+    if not _can_view_draft(context, project.id):
+        result['published_blocks'] = chart_feeds.public_blocks(result['published_blocks'])
+    return result
 
 
 def csunesco_project_page_update(context, data_dict):

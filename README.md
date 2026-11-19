@@ -798,3 +798,28 @@ Legacy blocks remain supported. The read-only series route accepts JSON POST for
 large filter definitions as well as its existing GET parameters. Linked history
 requires approved sources in the same project and matching field fingerprints;
 missing access or changed field semantics fails the entire chart visibly.
+
+
+V2 chart blocks offer a collapsed visitor explorer for chart type, palette, axis
+windows and series/category visibility. These are local display changes: no
+requests, persistence or recalculation of the published measurement query. Reset
+restores the exact published view. The table retains all published values,
+including hidden series and values outside the visible axes. Automatic formatting
+preserves very small values; raw measurement timestamps retain UTC time and
+sub-millisecond precision in table/tooltips.
+
+V2 public HTML and anonymous `csunesco_project_page_show` responses contain only
+display configuration. Filters, selected site names and historical mappings stay
+server-side. The browser uses an anonymous GET bound to the publication hash, or
+an authorized expiring preview ticket; the server resolves the stored definition
+and rechecks current source permissions. Stale publication hashes, hidden or
+ambiguous chart IDs and revoked access fail closed. Native CKAN draft previews
+freeze the same chart inputs in a ticket. Authorized editing keeps the complete
+definition; legacy v1 transport and rendering are unchanged.
+
+The app and portal reject incompatible v2 responses instead of falling back to
+legacy series identities. Keep `assets/js/cs-chart-presentation.js` byte-identical
+to the app's `chartPresentationCore.js`. Run the Python chart-feed/privacy tests,
+`node ckanext/csunesco/tests/chart_explorer.cjs` and
+`node ckanext/csunesco/tests/chart_studio_renderer.cjs`, then exercise the complete
+page in a real browser before releasing.

@@ -148,11 +148,13 @@ def render_data(monkeypatch):
     from jinja2 import Environment, FileSystemLoader
     from markupsafe import Markup
     from ckan.lib import jinja_extensions
+    from ckanext.csunesco.logic import helpers
     env = Environment(autoescape=True,
         loader=FileSystemLoader(str(Path(__file__).parents[1] / 'templates')),
         extensions=[jinja_extensions.SnippetExtension])
     env.globals.update(_=lambda text: text, h=SimpleNamespace(
         url_for=lambda endpoint, **params: '/' + endpoint + '/' + str(params.get('id', '')),
+        csunesco_chart_feed=helpers.csunesco_chart_feed,
         csunesco_block_type=lambda name: SimpleNamespace(label=name),
         check_access=lambda *a: False))
     def render(template, **values):

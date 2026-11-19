@@ -107,7 +107,7 @@ def project_display_data(project):
 
 def build_context(context, project, blocks, has_region=False,
                   can_manage=False, preview=False, scope=None,
-                  initiative=None):
+                  initiative=None, chart_revision=None, chart_preview_ticket=None):
     """Resolve everything ``blocks`` needs into a single dict.
 
     ``preview`` marks a manager previewing their unpublished draft, so snippets
@@ -136,6 +136,8 @@ def build_context(context, project, blocks, has_region=False,
         'has_region': has_region,
         'can_manage': can_manage,
         'preview': preview,
+        'chart_revision': chart_revision,
+        'chart_preview_ticket': chart_preview_ticket,
         'data_sources': [],
         'approved_sources': {},
         'news_events': [],
@@ -214,6 +216,8 @@ def build_context(context, project, blocks, has_region=False,
         listing_context, project, blocks, initiative=initiative)
     ctx['dataset_lists'] = _resolve_dataset_lists(listing_context, project, blocks,
                                                   ctx['data_sources'])
+    from ckanext.csunesco.logic import chart_feeds
+    chart_feeds.prepare_context(context, ctx, blocks)
     return ctx
 
 

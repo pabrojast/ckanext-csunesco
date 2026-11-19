@@ -249,8 +249,8 @@
   }
 
   function paintStudio(container, payload, definition) {
-    var core = window.CSChartPresentation;
-    if (!core) throw new Error("Chart presentation unavailable");
+    var core = window.CSChartPresentation, explorer = window.CSChartExplorer;
+    if (!core || !explorer) throw new Error("Chart presentation unavailable");
     var locale = document.documentElement.lang || undefined;
     var frame = document.createElement("div"); frame.className = "cs-chart-studio";
     var legendOptions = definition.presentation.legend;
@@ -260,35 +260,41 @@
     var canvas = document.createElement("canvas");
     canvas.setAttribute("role", "img"); canvas.setAttribute("aria-label", describe(container, payload));
     container.insertBefore(canvas, container.firstChild);
-    var instance = new window.Chart(canvas, core.buildConfig(definition, payload, locale));
-    var entries = core.legendEntries(definition, payload), hidden = {};
+    var instance, legend, controller;
+    var warning = document.createElement("p"); warning.className = "cs-chart-range-warning"; warning.setAttribute("role", "status"); warning.hidden = true;
+    frame.parentNode.insertBefore(warning, frame.nextSibling);
     function label(key, fallback) { return container.getAttribute("data-label-" + key) || fallback; }
-    if (core.showLegend(definition, payload)) {
-      var legend = document.createElement("div"); legend.className = "cs-chart-studio-legend";
-      legend.setAttribute("role", "group"); legend.setAttribute("aria-label", label("legend", "Chart legend"));
-      if (legendOptions.title) { var title = document.createElement("p"); title.className = "cs-chart-studio-legend-title"; title.textContent = legendOptions.title; legend.appendChild(title); }
-      entries.forEach(function (entry) {
-        var button = document.createElement("button"); button.type = "button";
-        button.setAttribute("aria-pressed", "true");
-        var swatch = document.createElement("span"); swatch.className = "cs-chart-studio-swatch";
-        swatch.style.color = entry.color; swatch.style.borderBottomStyle = entry.lineStyle === "solid" ? "solid" : entry.lineStyle;
-        swatch.textContent = entry.pointStyle === "rect" ? "■" : entry.pointStyle === "triangle" ? "▲" : "●";
-        swatch.setAttribute("aria-hidden", "true"); button.appendChild(swatch);
-        var name = document.createElement("span"); name.textContent = entry.label; button.appendChild(name);
-        button.addEventListener("click", function () {
-          hidden[entry.key] = !hidden[entry.key]; button.setAttribute("aria-pressed", String(!hidden[entry.key]));
-          if (entry.category) {
-            if (definition.chart === "pie") instance.toggleDataVisibility(entry.index);
-            else instance.data.datasets[0].data[entry.index] = hidden[entry.key] ? null : payload.series[0].points[entry.index];
-          } else instance.setDatasetVisibility(entry.index, !hidden[entry.key]);
-          instance.update();
+    function updateView(viewDefinition, viewPayload, state) {
+      var focusedKey = document.activeElement && document.activeElement.getAttribute("data-chart-series-key");
+      canvas.setAttribute("aria-label", describe(container, viewPayload, viewDefinition.chart));
+      if (instance) instance.destroy();
+      instance = new window.Chart(canvas, core.buildConfig(viewDefinition, viewPayload, locale));
+      if (legend) { legend.parentNode.removeChild(legend); legend = null; }
+      if (core.showLegend(viewDefinition, payload)) {
+        legend = document.createElement("div"); legend.className = "cs-chart-studio-legend";
+        legend.setAttribute("role", "group"); legend.setAttribute("aria-label", label("legend", "Chart legend"));
+        if (legendOptions.title) { var title = document.createElement("p"); title.className = "cs-chart-studio-legend-title"; title.textContent = legendOptions.title; legend.appendChild(title); }
+        core.legendEntries(viewDefinition, payload).forEach(function (entry) {
+          var button = document.createElement("button"); button.type = "button";
+          button.setAttribute("aria-pressed", String(!state.hidden[entry.key]));
+          button.setAttribute("data-chart-series-key", entry.key);
+          var swatch = document.createElement("span"); swatch.className = "cs-chart-studio-swatch";
+          swatch.style.color = entry.color; swatch.style.borderBottomStyle = entry.lineStyle === "solid" ? "solid" : entry.lineStyle;
+          swatch.textContent = entry.pointStyle === "rect" ? "■" : entry.pointStyle === "triangle" ? "▲" : "●";
+          swatch.setAttribute("aria-hidden", "true"); button.appendChild(swatch);
+          var name = document.createElement("span"); name.textContent = entry.label; button.appendChild(name);
+          button.addEventListener("click", function () { controller.toggle(entry.key); });
+          legend.appendChild(button);
         });
-        legend.appendChild(button);
-      });
-      frame.appendChild(legend);
+        frame.appendChild(legend);
+        if (focusedKey) Array.prototype.forEach.call(legend.children, function (button) { if (button.getAttribute("data-chart-series-key") === focusedKey && button.focus) button.focus(); });
+      }
+      var clipped = core.outOfRangeCount(viewDefinition, viewPayload);
+      warning.hidden = !clipped;
+      warning.textContent = label("clipped", "{count} plotted values are outside the chosen axis limits. They remain in the data table.").replace("{count}", String(clipped));
     }
-    var clipped = core.outOfRangeCount(definition, payload);
-    if (clipped) { var warning = document.createElement("p"); warning.className = "cs-chart-range-warning"; warning.setAttribute("role", "status"); warning.textContent = label("clipped", "{count} plotted values are outside the chosen axis limits. They remain in the data table.").replace("{count}", String(clipped)); frame.parentNode.insertBefore(warning, frame.nextSibling); }
+    updateView(definition, payload, explorer.createState(definition));
+    controller = explorer.mount({container:container, frame:frame, definition:definition, payload:payload, onChange:updateView});
     var bands = definition.presentation.referenceBands || [];
     if (bands.length) {
       var references = document.createElement("ul"); references.className = "cs-chart-references";
@@ -296,8 +302,9 @@
       frame.parentNode.insertBefore(references, frame.nextSibling);
     }
     var details = document.createElement("details"); details.className = "cs-chart-data-table";
-    var summary = document.createElement("summary"); summary.textContent = label("table", "View plotted values"); details.appendChild(summary);
-    var built = false;
+    var summary = document.createElement("summary"); summary.textContent = label("table", "View published values"); details.appendChild(summary);
+    var tableHint = document.createElement("p"); tableHint.className = "cs-chart-table-hint"; tableHint.textContent = label("table-hint", "All published values are included, including hidden series and values outside the displayed range."); details.appendChild(tableHint);
+    var built = false, entries = core.legendEntries(definition, payload);
     details.addEventListener("toggle", function () {
       if (!details.open || built) return; built = true;
       var scroll = document.createElement("div"); scroll.className = "cs-chart-table-scroll"; scroll.tabIndex = 0;
@@ -305,7 +312,7 @@
       [label("series", "Series"), payload.mode === "category" ? label("category", "Category") : label("date", "Date (UTC)"), label("value", "Value")].forEach(function (text) { var th = document.createElement("th"); th.scope = "col"; th.textContent = text; heading.appendChild(th); });
       head.appendChild(heading); table.appendChild(head); var body = document.createElement("tbody"); table.appendChild(body); scroll.appendChild(table); details.appendChild(scroll);
       var rows = [];
-      (payload.series || []).forEach(function (series, si) { (series.xy || series.points || []).forEach(function (point, pi) { var item = entries[payload.mode === "category" ? pi : si]; rows.push([payload.mode === "category" ? definition.title : item.label, series.xy ? new Date(Date.parse(point.x)).toLocaleDateString(locale, {timeZone:"UTC"}) : item.label, core.formatNumber(series.xy ? point.y : point, definition, locale)]); }); });
+      (payload.series || []).forEach(function (series, si) { (series.xy || series.points || []).forEach(function (point, pi) { var item = entries[payload.mode === "category" ? pi : si]; rows.push([payload.mode === "category" ? definition.title : item.label, series.xy ? core.formatDate(point.x, definition, locale) : item.label, core.formatNumber(series.xy ? point.y : point, definition, locale)]); }); });
       var shown = 0, more = document.createElement("button"); more.type = "button"; more.textContent = label("more", "Show more values"); details.appendChild(more);
       function appendRows() { var end = Math.min(shown + 200, rows.length); for (; shown < end; shown++) { var tr = document.createElement("tr"); rows[shown].forEach(function (text) { var td = document.createElement("td"); td.textContent = text; tr.appendChild(td); }); body.appendChild(tr); } more.hidden = shown >= rows.length; }
       more.addEventListener("click", appendRows); appendRows();
@@ -324,10 +331,10 @@
   }
 
   /** A sentence a screen reader can use in place of the picture. */
-  function describe(container, payload) {
+  function describe(container, payload, currentType) {
     var parts = [];
     var title = container.getAttribute("data-label-chart");
-    var type = container.getAttribute("data-type") || "line";
+    var type = currentType || container.getAttribute("data-type") || "line";
     parts.push(type + " chart");
     if (title) { parts.push(title); }
     if (payload.field_label) { parts.push(payload.field_label); }
@@ -348,8 +355,12 @@
    * show its own empty state rather than an axis with nothing on it.
    */
   function paint(container, payload) {
-    if (!hasData(payload)) { return false; }
     var definition = JSON.parse(container.getAttribute("data-definition") || "null");
+    if (definition && definition.version === 2) {
+      if (!window.CSChartExplorer) throw new Error("Chart explorer unavailable");
+      window.CSChartExplorer.assertPayload(definition, payload);
+    }
+    if (!hasData(payload)) { return false; }
     if (definition && definition.version === 2) return paintStudio(container, payload, definition);
     clearMessage(container);
     var canvas = document.createElement("canvas");
@@ -365,13 +376,20 @@
   }
 
   function render(container, done) {
-    var url = seriesUrl(container);
+    var serverResolved = container.getAttribute("data-server-resolved") === "true";
+    var url = serverResolved ? container.getAttribute("data-series-url") : seriesUrl(container);
+    if (serverResolved && !url) {
+      message(container, errorMessage(container));
+      container.setAttribute("aria-busy", "false");
+      done();
+      return;
+    }
     container.setAttribute("aria-busy", "true");
     message(container, container.getAttribute("data-label-loading") || "");
 
     var definition = container.getAttribute("data-definition");
-    var options = { credentials: "same-origin" };
-    if (definition) {
+    var options = serverResolved ? { method: "GET", credentials: "omit" } : { credentials: "same-origin" };
+    if (definition && !serverResolved) {
       url = container.getAttribute("data-series-url");
       options.method = "POST";
       options.headers = { "Content-Type": "application/json" };
