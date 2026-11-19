@@ -217,7 +217,9 @@
               boxWidth: 8, boxHeight: 8
             }
           },
-          tooltip: TOOLTIP
+          tooltip: temporal ? Object.assign({}, TOOLTIP, { callbacks: {
+            title: function(items) { return items.length ? new Date(items[0].parsed.x).toLocaleDateString(undefined, {timeZone: "UTC"}) : ""; }
+          } }) : TOOLTIP
         },
         scales: {
           x: {
@@ -226,7 +228,7 @@
             grid: { display: false },
             border: { color: INK.axis },
             ticks: { color: INK.muted, maxTicksLimit: 8, autoSkip: true,
-                     maxRotation: 0, callback: temporal ? function(v) { return new Date(v).toLocaleDateString(); } : undefined }
+                     maxRotation: 0, callback: temporal ? function(v) { return new Date(v).toLocaleDateString(undefined, {timeZone: "UTC"}); } : undefined }
           },
           y: {
             title: payload.field_label
