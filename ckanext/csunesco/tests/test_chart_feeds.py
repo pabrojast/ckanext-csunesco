@@ -138,7 +138,29 @@ def test_nested_chart_and_frozen_preview_reuse_the_same_source_checks(feed_case)
     response = s['client'].get('/portal/preview/ticket/chart/river-chart/series?definition={}&id=other')
     assert response.status_code == 200 and response.json['used_rows'] == 0
     assert response.headers['Cache-Control'] == 'no-store'
-    assert s['calls'][-1]['definition'] == chart()['definition']
+    assert s['calls'][-1]['definition'] == {key: value for key, value in chart()['definition'].items()
+        if key not in {'presentation', 'template', 'title', 'caption'}}
+    assert s['saved']['candidate']['blocks'] == nested
+
+
+@pytest.mark.parametrize('mode', ['numeric', 'count', 'category'])
+def test_block_feed_matches_the_app_calculation_query_without_mutating_snapshot(feed_case, mode):
+    s = feed_case; item = chart()
+    item['definition'] = chart_definition.normalize(dict(version=2, title='Date (UTC)', caption='Display only',
+        mode=mode, chart='bar', field='weather' if mode == 'category' else 'ph',
+        sites=['Public A'], filters={'sites': ['Public A'], 'facets': {'weather': ['Sunny']}, 'search': 'Public'},
+        presentation={'axisTitles': {'x': 'Date (UTC)'}}, template={'id': 'trend', 'version': 1}))
+    s['page'].published_json = original = json.dumps([item])
+    query = {key: value for key, value in item['definition'].items()
+             if key not in {'presentation', 'template', 'title', 'caption'}}
+    expected = chart_definition.series(query, data.data_access.dashboard(s['source']))
+    expected['data_source_id'] = s['source'].id
+    response = s['client'].get(public_url(s))
+    assert response.status_code == 200 and response.json == expected
+    assert response.json['used_rows'] == 1
+    assert s['calls'][-1]['definition'] == query
+    assert s['calls'][-1]['history_sources'] == item['history_sources']
+    assert s['page'].published_json == original
 
 
 @pytest.mark.parametrize('reason', ['expired', 'revoked_grant', 'source_revoked', 'hidden_nested', 'wrong_scope', 'missing_ticket'])

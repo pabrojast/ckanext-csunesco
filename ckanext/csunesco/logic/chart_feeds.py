@@ -132,9 +132,13 @@ def _anonymous():
 def _calculate(project, chart):
     # The existing action rechecks each source's current policy and each history
     # mapping. The fixed project pin also rejects cross-project source IDs.
+    definition = chart['definition']
+    if definition.get('version') == 2:
+        definition = {key: value for key, value in definition.items()
+                      if key not in {'presentation', 'template', 'title', 'caption'}}
     return tk.get_action('csunesco_data_source_series')(_anonymous(), {
         'id': chart.get('data_source_id'), 'project_id': project.id,
-        'definition': chart['definition'], 'history_sources': chart.get('history_sources') or []})
+        'definition': definition, 'history_sources': chart.get('history_sources') or []})
 
 
 def _json(result, status=200):
