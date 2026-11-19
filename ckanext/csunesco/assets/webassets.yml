@@ -80,6 +80,7 @@ cs-charts-js:
   filters: rjsmin
   output: js/cs-charts.js
   contents:
+    - js/cs-chart-presentation.js
     - js/cs-charts.js
 
 # The "ask the data" block. Loaded after cs-charts-js (it reuses that bundle's

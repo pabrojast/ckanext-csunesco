@@ -4,8 +4,10 @@ Only configuration and chart series cross the boundary, never authorization.
 Callers MUST supply rows already filtered by their own access policy.
 """
 import datetime as dt
+import hashlib
 import json
 import math
+import re
 from collections import Counter, defaultdict
 
 VERSION = 1
@@ -15,7 +17,7 @@ DEFAULTS = dict(version=VERSION, title='', caption='', mode='numeric', field='',
                 include_history=False, source_id='', height=320)
 
 
-def normalize(raw):
+def _normalize_v1(raw):
     if not isinstance(raw, dict) or set(raw) - set(DEFAULTS):
         raise ValueError('Unknown chart settings')
     if len(json.dumps(raw, allow_nan=False).encode()) > 32768:
@@ -74,6 +76,130 @@ def normalize(raw):
     return c
 
 
+def _object(value, keys, label):
+    if not isinstance(value, dict) or set(value) - set(keys):
+        raise ValueError('Invalid ' + label)
+    return value
+
+
+def _plain(value, limit, label):
+    if not isinstance(value, str) or len(value) > limit:
+        raise ValueError('Invalid ' + label)
+    return value
+
+
+def _enum(value, allowed, label):
+    if value not in allowed:
+        raise ValueError('Invalid ' + label)
+    return value
+
+
+def _color(value):
+    if not isinstance(value, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', value):
+        raise ValueError('Invalid chart color')
+    return value.upper()
+
+
+def _presentation(raw):
+    raw = _object(raw, ('palette', 'series', 'legend', 'numberFormat', 'axisTitles', 'referenceBands'), 'presentation')
+    styles = raw.get('series', {})
+    if not isinstance(styles, dict) or len(styles) > 200:
+        raise ValueError('Invalid series styles')
+    clean_styles = {}
+    for key, style in styles.items():
+        if not isinstance(key, str) or not re.fullmatch(r'[sc]:[0-9a-f]{16}', key):
+            raise ValueError('Invalid series key')
+        style = _object(style, ('color', 'label', 'lineStyle', 'pointStyle'), 'series style')
+        clean = {}
+        if 'color' in style: clean['color'] = _color(style['color'])
+        if 'label' in style: clean['label'] = _plain(style['label'], 160, 'series label')
+        if 'lineStyle' in style: clean['lineStyle'] = _enum(style['lineStyle'], ('solid', 'dashed', 'dotted'), 'line style')
+        if 'pointStyle' in style: clean['pointStyle'] = _enum(style['pointStyle'], ('circle', 'rect', 'triangle'), 'point style')
+        clean_styles[key] = clean
+    legend = _object(raw.get('legend', {}), ('display', 'position', 'title'), 'legend')
+    numbers = _object(raw.get('numberFormat', {}), ('decimals', 'useGrouping'), 'number format')
+    decimals = numbers.get('decimals', 'auto')
+    if decimals != 'auto' and (type(decimals) is not int or not 0 <= decimals <= 6):
+        raise ValueError('Invalid decimal places')
+    grouping = numbers.get('useGrouping', True)
+    if type(grouping) is not bool:
+        raise ValueError('Invalid number grouping')
+    titles = _object(raw.get('axisTitles', {}), ('x', 'y'), 'axis titles')
+    bands = raw.get('referenceBands', [])
+    if not isinstance(bands, list) or len(bands) > 10:
+        raise ValueError('Invalid reference bands')
+    clean_bands, ids = [], set()
+    for band in bands:
+        band = _object(band, ('id', 'min', 'max', 'label', 'color'), 'reference band')
+        identifier = band.get('id')
+        if not isinstance(identifier, str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,64}', identifier) or identifier in ids:
+            raise ValueError('Invalid reference band id')
+        ids.add(identifier)
+        for key in ('min', 'max'):
+            if type(band.get(key)) not in (int, float) or not math.isfinite(band[key]):
+                raise ValueError('Invalid reference band interval')
+        if band['min'] > band['max']:
+            raise ValueError('Invalid reference band interval')
+        clean_bands.append(dict(id=identifier, min=band['min'], max=band['max'],
+            label=_plain(band.get('label', ''), 160, 'reference band label'), color=_color(band.get('color'))))
+    return dict(palette=_enum(raw.get('palette', 'accessible'), ('accessible', 'institutional', 'mono'), 'palette'),
+        series=clean_styles,
+        legend=dict(display=_enum(legend.get('display', 'auto'), ('auto', 'show', 'hide'), 'legend display'),
+                    position=_enum(legend.get('position', 'bottom'), ('top', 'bottom', 'right'), 'legend position'),
+                    title=_plain(legend.get('title', ''), 160, 'legend title')),
+        numberFormat=dict(decimals=decimals, useGrouping=grouping),
+        axisTitles={key: _plain(titles.get(key, ''), 160, 'axis title') for key in ('x', 'y')},
+        referenceBands=clean_bands)
+
+
+def normalize(raw):
+    """Keep v1 byte-compatible; new display settings require explicit v2."""
+    if not isinstance(raw, dict) or raw.get('version', VERSION) != 2:
+        return _normalize_v1(raw)
+    if type(raw['version']) is not int:
+        raise ValueError('Unsupported chart version')
+    if set(raw) - set(DEFAULTS) - {'presentation', 'template'}:
+        raise ValueError('Unknown chart settings')
+    if len(json.dumps(raw, allow_nan=False).encode()) > 32768:
+        raise ValueError('Chart settings too large')
+    c = _normalize_v1(dict({k: v for k, v in raw.items() if k in DEFAULTS}, version=1))
+    c['version'] = 2
+    # Temporal axes use UTC epoch milliseconds. Keep their dates representable
+    # by the browser and the editor's four-digit ISO date inputs (years 1–9999).
+    for key in ('xMin', 'xMax'):
+        if key in c['axes'] and not -62135596800000 <= c['axes'][key] <= 253402300799999:
+            raise ValueError('Invalid temporal axis limit')
+    c['presentation'] = _presentation(raw.get('presentation', {}))
+    template = raw.get('template')
+    if template is not None:
+        template = _object(template, ('id', 'version'), 'chart template')
+        if (not isinstance(template.get('id'), str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}', template['id'])
+                or type(template.get('version')) is not int or template['version'] != 1):
+            raise ValueError('Invalid chart template')
+        template = dict(id=template['id'], version=1)
+    c['template'] = template
+    return c
+
+
+def stable_key(prefix, mode, field='', group='', value=''):
+    """Identity follows raw data values, never ordering, translated labels or aliases."""
+    identity = json.dumps([mode, field, group, value], ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    return prefix + ':' + hashlib.sha256(identity).hexdigest()[:16]
+
+
+def public_definition(raw, payload):
+    """Drop private-series display metadata before embedding a public snapshot.
+
+    Payload MUST come from the anonymous public preview. No label or alias from
+    an authenticated-only series is retained in public HTML configuration.
+    """
+    c = normalize(raw)
+    if c['version'] == 2:
+        allowed = {s.get('key') for s in payload.get('series', [])} | set(payload.get('category_keys', []))
+        c['presentation']['series'] = {k: v for k, v in c['presentation']['series'].items() if k in allowed}
+    return c
+
+
 def _category(value):
     if isinstance(value, bool):
         return 'true' if value else 'false'
@@ -90,16 +216,22 @@ def _date(value):
 
 def series(raw, payload, today=None):
     c = normalize(raw)
+    modern = c['version'] == 2
     rows = payload.get('rows') or []
     fields = (payload.get('schema') or {}).get('fields') or []
     field_map = {f['name']: f for f in fields if isinstance(f, dict) and 'name' in f}
     if c['mode'] != 'count' and c['field'] not in field_map:
         raise ValueError('Chart variable no longer exists')
+    if modern and c['mode'] != 'count':
+        kind = field_map[c['field']].get('type')
+        allowed = ('number',) if c['mode'] == 'numeric' else ('short_text', 'long_text', 'single_select', 'radio', 'checkbox', 'site')
+        if kind not in allowed:
+            raise ValueError('Chart variable is incompatible with this chart type')
     candidates = ['site', 'site_name', 'sitio', 'nombre_sitio', 'river', 'rio', 'station']
     site_field = next((name for name in candidates if name in field_map
         and field_map[name].get('type') in ('short_text', 'single_select', 'site')
-        and 1 <= len({_category((r.get('answers') or {}).get(name)) for r in rows}
-                     - {None}) <= 30), None)
+        and (modern or 1 <= len({_category((r.get('answers') or {}).get(name)) for r in rows}
+                               - {None}) <= 30)), None)
     group = site_field if c['group_by'] == 'auto' else c['group_by'] or None
     if group and group not in field_map:
         raise ValueError('Chart grouping no longer exists')
@@ -136,15 +268,20 @@ def series(raw, payload, today=None):
     out = dict(mode=c['mode'], chart=c['chart'], title=c['title'], axes=c['axes'],
                total_rows=payload.get('total', len(rows)), used_rows=len(filtered),
                truncated=bool(payload.get('truncated')), labels=[], series=[])
+    if modern:
+        out.update(definition_version=2, category_keys=[], omitted_series=0, omitted_categories=0)
     if c['mode'] == 'category':
         counts = Counter(_category(a.get(c['field'])) for _, a, _ in filtered)
         counts.pop(None, None)
         ordered = sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
-        if len(ordered) > 12:
+        if not modern and len(ordered) > 12:
             ordered = ordered[:11] + [('Other', sum(n for _, n in ordered[11:]))]
         labels = {o['value']: o.get('label', o['value']) for o in field_map[c['field']].get('options') or [] if isinstance(o, dict) and 'value' in o}
         out['used_rows'] = sum(counts.values())
         out.update(labels=[labels.get(k, k) for k, _ in ordered], series=[dict(name=c['title'], points=[v for _, v in ordered])])
+        if modern:
+            out['category_keys'] = [stable_key('c', 'category', c['field'], '', k) for k, _ in ordered]
+            out['series'][0]['key'] = stable_key('s', 'category', c['field'])
         return out
     groups = defaultdict(list)
     for row, answers, date in filtered:
@@ -158,8 +295,8 @@ def series(raw, payload, today=None):
             continue
         name = 'Observations' if c['mode'] == 'count' else (_category(answers.get(group)) or '')
         groups[name].append((date, value))
-    names = sorted(groups, key=lambda name: -len(groups[name]))
-    if not c['sites']:
+    names = sorted(groups, key=lambda name: (-len(groups[name]), name) if modern else -len(groups[name]))
+    if not modern and not c['sites']:
         names = names[:8]
     out['used_rows'] = sum(len(groups[name]) for name in names)
     bucket = c['bucket']
@@ -185,8 +322,11 @@ def series(raw, payload, today=None):
                 return {'mean': lambda: sum(v) / len(v), 'sum': lambda: sum(v), 'min': lambda: min(v), 'max': lambda: max(v), 'count': lambda: len(v)}[agg]()
             points = [{'x': day, 'y': reduce(v)} for day, v in sorted(bins.items())]
         out['series'].append(dict(name=name, xy=points))
+        if modern:
+            out['series'][-1]['key'] = (stable_key('s', 'count') if c['mode'] == 'count'
+                                      else stable_key('s', 'numeric', c['field'], group or '', name))
     values = sorted(p['y'] for item in out['series'] for p in item['xy'])
-    if len(values) >= 8:
+    if not modern and len(values) >= 8:
         def quantile(fraction):
             index = (len(values) - 1) * fraction
             lo, hi = math.floor(index), math.ceil(index)

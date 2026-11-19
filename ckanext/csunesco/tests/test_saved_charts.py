@@ -76,3 +76,38 @@ def test_numeric_calculations_keep_portal_aggregate_meaning(agg,expected):
         {'date':'2026-11-01','answers':{'value':2}}, {'date':'2026-11-02','answers':{'value':4}}]}
     result=chart_definition.series({'field':'value','agg':agg,'bucket':'month'},payload)
     assert result['series'][0]['xy']==[{'x':'2026-11-01','y':expected}]
+
+
+def test_invalid_v2_read_never_degrades_to_legacy_series():
+    raw = dict(type='chart', field='ph', definition={'version': 2, 'field': 'ph', 'presentation': {'palette': 'unknown'}})
+    result = blocks.normalize_blocks([raw])[0]
+    assert result['definition'] == {'version': 2, 'invalid': True}
+    with pytest.raises(ValueError):
+        blocks.validate_chart_definitions([result])
+
+
+@pytest.mark.parametrize('nested', [False, True])
+def test_publication_rejects_invalid_new_chart_before_normalization(nested):
+    from ckanext.csunesco.logic import portal
+    chart = dict(type='chart', field='ph', definition={'version': 2, 'field': 'ph', 'presentation': {'legend': {'position': 'middle'}}})
+    value = dict(type='builtin_data', charts=[chart]) if nested else chart
+    with pytest.raises(tk.ValidationError):
+        portal.validate_payload({'blocks': [value]})
+
+
+def test_valid_v2_presentation_round_trips_in_nested_data():
+    definition = chart_definition.normalize({'version': 2, 'field': 'ph', 'presentation': {
+        'series': {'s:0123456789abcdef': {'color': '#0072B2', 'label': 'Upstream'}},
+        'legend': {'display': 'show', 'position': 'right'},
+        'referenceBands': [{'id': 'target', 'min': 4, 'max': 6, 'label': 'Reference supplied by project', 'color': '#0072B2'}]}})
+    raw = [dict(type='builtin_data', charts=[dict(type='chart', definition=definition, field='ph')])]
+    result = blocks.normalize_blocks(raw)
+    assert result[0]['charts'][0]['definition'] == definition
+    blocks.validate_chart_definitions(result)
+
+
+def test_native_page_publication_rejects_invalid_stored_v2():
+    from ckanext.csunesco.logic.action.page import _validate_policy
+    raw = [dict(type='chart', definition={'version': 2, 'invalid': True})]
+    with pytest.raises(tk.ValidationError):
+        _validate_policy(blocks.normalize_blocks(raw))

@@ -104,6 +104,11 @@ def _validate_policy(blocks):
     ``ValidationError`` so the editor can show the problem inline instead of
     silently dropping what the manager typed.
     """
+    from ckanext.csunesco.logic.blocks import validate_chart_definitions
+    try:
+        validate_chart_definitions(blocks)
+    except (ValueError, TypeError):
+        raise tk.ValidationError({'blocks': [tk._('Invalid saved chart definition; review the chart before publishing')]})
     errors = []
     bad_ids = []
     for block in blocks or []:

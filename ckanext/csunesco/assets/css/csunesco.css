@@ -4893,3 +4893,26 @@
 .cs-profile-section legend { margin-bottom: 10px; }
 
 .cs-project-logo-frame { max-width: 100%; background: rgba(255,255,255,.95); border-radius: 8px; padding: 6px; box-sizing: border-box; }
+
+/* Version 2 saved-chart controls; legacy chart layout remains unchanged. */
+.cs-chart-studio { display: grid; grid-template-columns: minmax(0, 1fr); gap: .8rem; min-width: 0; }
+.cs-chart-studio > .cs-chart { width: 100%; }
+.cs-chart-studio-legend { display: flex; flex-wrap: wrap; gap: .5rem; align-content: start; min-width: 0; }
+.cs-chart-studio-legend-title { flex-basis: 100%; margin: 0; font-weight: 600; }
+.cs-chart-studio-legend button { display: inline-flex; align-items: center; gap: .45rem; border: 1px solid #cbd5e1; border-radius: .4rem; background: #fff; color: #334155; padding: .4rem .6rem; text-align: left; max-width: 100%; overflow-wrap: anywhere; font: inherit; cursor: pointer; }
+.cs-chart-studio-legend button[aria-pressed="false"] { text-decoration: line-through; background: #f1f5f9; }
+.cs-chart-studio-legend button:focus-visible, .cs-chart-data-table summary:focus-visible { outline: 3px solid #0072b2; outline-offset: 2px; }
+.cs-chart-studio-swatch { flex-shrink: 0; width: 1.6rem; border-bottom-width: 2px; text-align: center; font-size: .8rem; line-height: 1; }
+.cs-chart-studio-top > .cs-chart-studio-legend { order: -1; }
+.cs-chart-studio-right { grid-template-columns: minmax(0, 1fr) minmax(140px, 28%); }
+.cs-chart-studio-right > .cs-chart:only-child { grid-column: 1 / -1; }
+.cs-chart-studio-right > .cs-chart-studio-legend { flex-direction: column; }
+.cs-chart-range-warning, .cs-chart-references, .cs-chart-data-table { margin: .75rem 0; font-size: .9rem; }
+.cs-chart-data-table summary { cursor: pointer; color: #005f8f; }
+.cs-chart-table-scroll { overflow-x: auto; max-height: 30rem; margin-top: .5rem; }
+.cs-chart-data-table table { border-collapse: collapse; width: 100%; }
+.cs-chart-data-table th, .cs-chart-data-table td { text-align: left; padding: .4rem; border-bottom: 1px solid #e2e8f0; }
+@media (max-width: 600px) {
+  .cs-chart-studio-right { grid-template-columns: minmax(0, 1fr); }
+  .cs-chart-studio-right > .cs-chart-studio-legend { flex-direction: row; }
+}

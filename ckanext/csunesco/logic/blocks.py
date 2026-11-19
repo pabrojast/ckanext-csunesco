@@ -356,6 +356,10 @@ def _n_chart(raw, report=None):
             result['definition'] = normalize(raw['definition'])
         except (ValueError, TypeError):
             if report is not None: report.note('definition', 'invalid_chart')
+            # Invalid future definitions must never fall back to a legacy
+            # request that drops saved filters or presentation semantics.
+            if isinstance(raw['definition'], dict) and raw['definition'].get('version') not in (None, 1):
+                result['definition'] = {'version': 2, 'invalid': True}
         result['history_sources'] = [dict(id=_ref(item.get('id')),
             source_fingerprints={_field_name(k): _plain(v, 64) for k, v in (item.get('source_fingerprints') or {}).items()} if isinstance(item.get('source_fingerprints'), dict) else {},
             target_fingerprints={_field_name(k): _plain(v, 64) for k, v in (item.get('target_fingerprints') or {}).items()} if isinstance(item.get('target_fingerprints'), dict) else {}, mappings={
@@ -1010,6 +1014,24 @@ def normalize_block(raw, report=None):
         payload = {}
     block.update(payload or {})
     return block
+
+
+def validate_chart_definitions(raw_blocks):
+    """Strict publication boundary, including charts nested in Data blocks.
+
+    Read normalization remains total. Writes reject an invalid definition rather
+    than publishing its remaining legacy fields with different semantics.
+    """
+    from ckanext.csunesco.logic.chart_definition import normalize
+    for block in raw_blocks or []:
+        if not isinstance(block, dict):
+            continue
+        if block.get('type') == 'chart' and 'definition' in block:
+            normalize(block['definition'])
+        if block.get('type') == 'builtin_data':
+            for chart in block.get('charts') or []:
+                if isinstance(chart, dict) and 'definition' in chart:
+                    normalize(chart['definition'])
 
 
 def normalize_blocks(raw_blocks, max_blocks=MAX_BLOCKS, report=None):

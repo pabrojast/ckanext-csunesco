@@ -248,6 +248,73 @@
     };
   }
 
+  function paintStudio(container, payload, definition) {
+    var core = window.CSChartPresentation;
+    if (!core) throw new Error("Chart presentation unavailable");
+    var locale = document.documentElement.lang || undefined;
+    var frame = document.createElement("div"); frame.className = "cs-chart-studio";
+    var legendOptions = definition.presentation.legend;
+    frame.classList.add("cs-chart-studio-" + legendOptions.position);
+    container.parentNode.insertBefore(frame, container); frame.appendChild(container);
+    clearMessage(container);
+    var canvas = document.createElement("canvas");
+    canvas.setAttribute("role", "img"); canvas.setAttribute("aria-label", describe(container, payload));
+    container.insertBefore(canvas, container.firstChild);
+    var instance = new window.Chart(canvas, core.buildConfig(definition, payload, locale));
+    var entries = core.legendEntries(definition, payload), hidden = {};
+    function label(key, fallback) { return container.getAttribute("data-label-" + key) || fallback; }
+    if (core.showLegend(definition, payload)) {
+      var legend = document.createElement("div"); legend.className = "cs-chart-studio-legend";
+      legend.setAttribute("role", "group"); legend.setAttribute("aria-label", label("legend", "Chart legend"));
+      if (legendOptions.title) { var title = document.createElement("p"); title.className = "cs-chart-studio-legend-title"; title.textContent = legendOptions.title; legend.appendChild(title); }
+      entries.forEach(function (entry) {
+        var button = document.createElement("button"); button.type = "button";
+        button.setAttribute("aria-pressed", "true");
+        var swatch = document.createElement("span"); swatch.className = "cs-chart-studio-swatch";
+        swatch.style.color = entry.color; swatch.style.borderBottomStyle = entry.lineStyle === "solid" ? "solid" : entry.lineStyle;
+        swatch.textContent = entry.pointStyle === "rect" ? "■" : entry.pointStyle === "triangle" ? "▲" : "●";
+        swatch.setAttribute("aria-hidden", "true"); button.appendChild(swatch);
+        var name = document.createElement("span"); name.textContent = entry.label; button.appendChild(name);
+        button.addEventListener("click", function () {
+          hidden[entry.key] = !hidden[entry.key]; button.setAttribute("aria-pressed", String(!hidden[entry.key]));
+          if (entry.category) {
+            if (definition.chart === "pie") instance.toggleDataVisibility(entry.index);
+            else instance.data.datasets[0].data[entry.index] = hidden[entry.key] ? null : payload.series[0].points[entry.index];
+          } else instance.setDatasetVisibility(entry.index, !hidden[entry.key]);
+          instance.update();
+        });
+        legend.appendChild(button);
+      });
+      frame.appendChild(legend);
+    }
+    var clipped = core.outOfRangeCount(definition, payload);
+    if (clipped) { var warning = document.createElement("p"); warning.className = "cs-chart-range-warning"; warning.setAttribute("role", "status"); warning.textContent = label("clipped", "{count} plotted values are outside the chosen axis limits. They remain in the data table.").replace("{count}", String(clipped)); frame.parentNode.insertBefore(warning, frame.nextSibling); }
+    var bands = definition.presentation.referenceBands || [];
+    if (bands.length) {
+      var references = document.createElement("ul"); references.className = "cs-chart-references";
+      bands.forEach(function (band) { var li = document.createElement("li"); li.textContent = band.label + ": " + core.formatNumber(band.min, definition, locale) + (band.min === band.max ? "" : " – " + core.formatNumber(band.max, definition, locale)); references.appendChild(li); });
+      frame.parentNode.insertBefore(references, frame.nextSibling);
+    }
+    var details = document.createElement("details"); details.className = "cs-chart-data-table";
+    var summary = document.createElement("summary"); summary.textContent = label("table", "View plotted values"); details.appendChild(summary);
+    var built = false;
+    details.addEventListener("toggle", function () {
+      if (!details.open || built) return; built = true;
+      var scroll = document.createElement("div"); scroll.className = "cs-chart-table-scroll"; scroll.tabIndex = 0;
+      var table = document.createElement("table"), head = document.createElement("thead"), heading = document.createElement("tr");
+      [label("series", "Series"), payload.mode === "category" ? label("category", "Category") : label("date", "Date (UTC)"), label("value", "Value")].forEach(function (text) { var th = document.createElement("th"); th.scope = "col"; th.textContent = text; heading.appendChild(th); });
+      head.appendChild(heading); table.appendChild(head); var body = document.createElement("tbody"); table.appendChild(body); scroll.appendChild(table); details.appendChild(scroll);
+      var rows = [];
+      (payload.series || []).forEach(function (series, si) { (series.xy || series.points || []).forEach(function (point, pi) { var item = entries[payload.mode === "category" ? pi : si]; rows.push([payload.mode === "category" ? definition.title : item.label, series.xy ? new Date(Date.parse(point.x)).toLocaleDateString(locale, {timeZone:"UTC"}) : item.label, core.formatNumber(series.xy ? point.y : point, definition, locale)]); }); });
+      var shown = 0, more = document.createElement("button"); more.type = "button"; more.textContent = label("more", "Show more values"); details.appendChild(more);
+      function appendRows() { var end = Math.min(shown + 200, rows.length); for (; shown < end; shown++) { var tr = document.createElement("tr"); rows[shown].forEach(function (text) { var td = document.createElement("td"); td.textContent = text; tr.appendChild(td); }); body.appendChild(tr); } more.hidden = shown >= rows.length; }
+      more.addEventListener("click", appendRows); appendRows();
+    });
+    frame.parentNode.insertBefore(details, frame.nextSibling);
+    container.classList.add("is-rendered");
+    return true;
+  }
+
   function hasData(payload) {
     return (payload.series || []).some(function (entry) {
       return (entry.xy || entry.points || []).some(function (point) {
@@ -282,6 +349,8 @@
    */
   function paint(container, payload) {
     if (!hasData(payload)) { return false; }
+    var definition = JSON.parse(container.getAttribute("data-definition") || "null");
+    if (definition && definition.version === 2) return paintStudio(container, payload, definition);
     clearMessage(container);
     var canvas = document.createElement("canvas");
     canvas.setAttribute("role", "img");

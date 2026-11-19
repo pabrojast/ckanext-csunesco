@@ -224,6 +224,10 @@ def validate_payload(raw):
     raw_blocks = candidate.get('blocks')
     if not isinstance(raw_blocks, list):
         raise tk.ValidationError({'blocks': ['A block list is required']})
+    try:
+        blocks.validate_chart_definitions(raw_blocks)
+    except (ValueError, TypeError):
+        raise tk.ValidationError({'blocks': ['Invalid saved chart definition; review the chart before publishing']})
     for block in raw_blocks:
         if not isinstance(block, dict) or block.get('type') not in blocks.BLOCK_TYPES:
             raise tk.ValidationError({'blocks': ['Unsupported block type; refresh capabilities']})
@@ -548,7 +552,7 @@ def capabilities(context, data):
             'can_edit_standard_sections': bool(not effective or can_edit_standard_sections(effective) or project and auth.can_manage_project(effective, project.id)),
             'standard_sections': standards,
             'blocks': registry, 'data_sources': sources, 'datasets': datasets,
-            'saved_charts_version': 1, 'data_editor_version': 2, 'data_catalog': data_catalog,
+            'saved_charts_version': 1, 'chart_definition_versions': [1, 2], 'data_editor_version': 2, 'data_catalog': data_catalog,
             'project_fields': [{'key': k, 'label': k.replace('_', ' ').capitalize()} for k in FACT_FIELDS],
             'structure_fields': [{'key': k, 'label': k.replace('_', ' ').capitalize()} for k in STRUCTURE_FIELDS],
             'fixed_hero': True, 'snapshot_interval_seconds': 300}
