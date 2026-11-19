@@ -4922,6 +4922,8 @@
 .cs-chart-explorer-intro, .cs-chart-explorer-status, .cs-chart-explorer-no-matches, .cs-chart-table-hint { margin: .6rem 0; color: #486376; font-size: .9rem; line-height: 1.5; overflow-wrap: anywhere; }
 .cs-chart-explorer-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: .8rem 1rem; }
 .cs-chart-explorer-field { display: flex; flex-direction: column; min-width: 0; margin: 0; gap: .3rem; color: #24465c; font-size: .9rem; line-height: 1.5; }
+/* CKAN appends a colon to labels; these labels wrap their controls. */
+.cs-chart-explorer label::after { content: none !important; }
 .cs-chart-explorer-field > span { overflow-wrap: anywhere; }
 .cs-chart-explorer-field input, .cs-chart-explorer-field select { display: block; min-width: 0; width: 100%; max-width: 100%; min-height: 44px; height: auto; box-sizing: border-box; margin: 0; padding: .55rem .65rem; border: 1px solid #9fb5c4; border-radius: .35rem; background: #fff; color: #173b51; font: inherit; font-size: 16px; line-height: 1.4; }
 .cs-chart-explorer-field select { text-overflow: ellipsis; }
