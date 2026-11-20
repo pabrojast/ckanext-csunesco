@@ -37,20 +37,29 @@ def _read(path):
         return handle.read()
 
 
-def test_site_cta_defaults_to_the_role_chooser_and_keeps_overrides():
+def test_site_cta_offers_both_roles_and_keeps_overrides():
     from types import SimpleNamespace
     from jinja2 import Environment, FileSystemLoader
     env = Environment(autoescape=True, loader=FileSystemLoader(os.path.dirname(TPL_DIR)))
-    # No permission helper: rendering must not depend on a CKAN session/role.
-    env.globals.update(_=lambda value: value, h=SimpleNamespace(
-        url_for=lambda endpoint, **kw: {
-            'csunesco.get_on_board': '/citizen-science/get-on-board'}[endpoint]))
+    chooser = '/es/citizen-science/get-on-board'
+
+    def url_for(endpoint, role=None):
+        if endpoint == 'csunesco.onboarding_role':
+            return chooser + '/' + role
+        assert endpoint == 'csunesco.get_on_board'
+        return chooser
+
+    env.globals.update(_=lambda value: value, h=SimpleNamespace(url_for=url_for))
     template = env.get_template('csunesco/blocks/site_cta.html')
-    for user in (None, 'citizen', 'manager'):
-        html = template.render(block={'id': 'get-on-board'}, g=SimpleNamespace(user=user))
-        assert 'Start by registering as a Citizen Scientist and verifying your email.' in html
-        assert 'href="/citizen-science/get-on-board"' in html
-        assert 'Propose a project' not in html
+    for saved in ({}, {'cta_label': 'Get on board', 'cta_url': '/citizen-science/get-on-board'},
+                  {'cta_url': chooser + '/'}):
+        html = template.render(block=saved)
+        assert html.count('<a ') == 2
+        assert 'href="' + chooser + '/citizen">Citizen Scientist</a>' in html
+        assert 'href="' + chooser + '/manager">Project Manager</a>' in html
+    html = template.render(block={'cta_label': 'Contact our team'})
+    assert html.count('<a ') == 1
+    assert 'href="' + chooser + '">Contact our team</a>' in html
     # A saved override still wins over every default.
     html = template.render(block={'id': 'custom', 'cta_label': 'Start <now>',
         'text': 'Saved text', 'cta_url': '/citizen-science/project/new'})

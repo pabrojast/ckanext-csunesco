@@ -428,16 +428,24 @@ def _render(extra_vars):
     return tk.render('csunesco/register_citizen.html', extra_vars=extra_vars)
 
 
-def get_on_board():
-    """One registration, followed by participation or a PM application."""
+def get_on_board(role=None):
+    """Open the chosen role, or the common entry when no role is specified."""
+    entry_params = {k: request.args[k] for k in ('project', 'lng') if k in request.args}
     if toolbox_registration_enabled():
         from urllib.parse import urlencode
-        params = {k: request.args[k] for k in ('role', 'project', 'lng') if k in request.args}
         if request.environ.get('CKAN_LANG'):
-            params.setdefault('lng', request.environ['CKAN_LANG'])
-        if _registration_next():
-            params['role'] = 'manager'
-        return tk.redirect_to(toolbox_url('/get-on-board') + ('?' + urlencode(params) if params else ''))
+            entry_params.setdefault('lng', request.environ['CKAN_LANG'])
+        if not role:
+            if _registration_next():
+                entry_params['role'] = 'manager'
+            elif 'role' in request.args:
+                entry_params['role'] = request.args['role']
+        path = '/get-on-board/' + role if role else '/get-on-board'
+        query = '?' + urlencode(entry_params) if entry_params else ''
+        return tk.redirect_to(toolbox_url(path) + query)
+    if role:
+        endpoint = 'csunesco.register_manager' if role == 'manager' else 'csunesco.register_citizen'
+        return tk.redirect_to(endpoint, **entry_params)
     from ckanext.csunesco.logic.registration_profile import completeness
     from ckanext.csunesco import db
     user = model.User.get(tk.g.user) if getattr(tk.g, 'user', None) else None

@@ -38,6 +38,23 @@ def test_citizen_post_never_creates_portal_account(app,monkeypatch):
         assert 'private' not in url
 
 
+@pytest.mark.parametrize('role', ['citizen', 'manager'])
+def test_role_entry_opens_its_steps_in_toolbox(app, role):
+    with app.test_request_context('/?project=river', environ_overrides={'CKAN_LANG': 'es'}):
+        url, _ = registration.get_on_board(role)
+        assert urlsplit(url).path == '/cstoolbox/get-on-board/' + role
+        assert parse_qs(urlsplit(url).query) == {'project': ['river'], 'lng': ['es']}
+
+
+@pytest.mark.parametrize('role', ['citizen', 'manager'])
+def test_role_entry_uses_native_form_when_toolbox_is_disabled(app, monkeypatch, role):
+    monkeypatch.setitem(tk.config, 'ckanext.csunesco.toolbox_registration', False)
+    with app.test_request_context('/?project=river&lng=es'):
+        endpoint, params = registration.get_on_board(role)
+        assert endpoint == 'csunesco.register_' + role
+        assert params == {'project': 'river', 'lng': 'es'}
+
+
 def test_old_pm_route_goes_to_toolbox(app):
     with app.test_request_context('/citizen-science/register/project-manager'):
         assert registration.register_manager()[0]=='https://toolbox.example/cstoolbox/register-project-manager'

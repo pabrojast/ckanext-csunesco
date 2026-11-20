@@ -1863,6 +1863,13 @@
   font-weight: 600;
 }
 
+.cs-cta-roles {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
 .cs-cta-band .cs-btn-primary {
   background: #fff;
   color: var(--unesco-blue-dark);

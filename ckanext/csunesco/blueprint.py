@@ -109,10 +109,10 @@ def join_project(slug):
     return views.join_project(slug)
 
 
-def get_on_board():
+def get_on_board(role=None):
     """Role chooser: register as a Citizen Scientist or a Project Manager."""
     from ckanext.csunesco.logic import registration
-    return registration.get_on_board()
+    return registration.get_on_board(role)
 
 
 def complete_profile():
@@ -497,6 +497,8 @@ csunesco_bp.add_url_rule('/register/ihp-wins', 'register_ihpwins', register_ihpw
 
 csunesco_bp.add_url_rule('/get-on-board', 'get_on_board', get_on_board,
                          methods=['GET'])
+csunesco_bp.add_url_rule('/get-on-board/<any(citizen,manager):role>',
+                         'onboarding_role', get_on_board, methods=['GET'])
 # Resolves to /citizen-science/register-citizen (blueprint prefix). Parallel to
 # CKAN's /user/register but with no organization step. Keep the endpoint name
 # ``register_citizen`` stable -- templates and tests reference it.

@@ -1,19 +1,17 @@
-{#
-  Site builtin: the "Get on board" call-to-action band.
-
-  Empty overrides render the original `_()`-translated copy.
-
-  Public entry point, independent of the CKAN session: it speaks to both
-  audiences and opens the common Citizen Scientist registration entry.
-
-  Vars: block, ctx.
-#}
-  {% set cta_label = _('Get on board') if not block.cta_label or block.cta_label == 'Get on board' else block.cta_label %}
-  <section class="cs-section cs-cta-band" id="block-{{ block.id }}"
-           aria-label="{{ _('Get on board') if not block.title or block.title == 'Get on board' else block.title }}">
-    <p>{{ block.text or _("Start by registering as a Citizen Scientist and verifying your email. Then you can join projects or request Project Manager access to propose your own.") }}</p>
-    <a class="cs-btn cs-btn-primary"
-       href="{{ block.cta_url or h.url_for('csunesco.get_on_board') }}">
-      {{ cta_label }}
-    </a>
-  </section>
+{# Saved custom buttons keep their destination. The standard onboarding band
+   offers the two roles even when an editor saved the original default URL. #}
+{% set chooser_url = h.url_for('csunesco.get_on_board') %}
+{% set standard_link = not block.cta_url or block.cta_url.rstrip('/') in (chooser_url, '/citizen-science/get-on-board') %}
+{% set standard_label = not block.cta_label or block.cta_label == 'Get on board' %}
+<section class="cs-section cs-cta-band" id="block-{{ block.id }}"
+         aria-label="{{ _('Get on board') if not block.title or block.title == 'Get on board' else block.title }}">
+  <p>{{ block.text or _("Want to take part in a citizen science project near you, or lead your own?") }}</p>
+  {% if standard_link and standard_label %}
+    <div class="cs-cta-roles">
+      <a class="cs-btn cs-btn-primary" href="{{ h.url_for('csunesco.onboarding_role', role='citizen') }}">{{ _("Citizen Scientist") }}</a>
+      <a class="cs-btn cs-btn-primary" href="{{ h.url_for('csunesco.onboarding_role', role='manager') }}">{{ _("Project Manager") }}</a>
+    </div>
+  {% else %}
+    <a class="cs-btn cs-btn-primary" href="{{ block.cta_url or chooser_url }}">{{ _('Get on board') if standard_label else block.cta_label }}</a>
+  {% endif %}
+</section>
