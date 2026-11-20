@@ -91,6 +91,45 @@ def test_indexer_can_read_deleted_state_after_partition_closes(monkeypatch):
         managed_data.package_show(show, indexer, dict(id='dataset', state='active'))
 
 
+@pytest.mark.parametrize('action_fails', [False, True])
+def test_activity_records_only_the_scoped_withdrawal_and_resets_on_exit(monkeypatch, action_fails):
+    source = dict(partition_id=9, policy_revision=2, access_level='public', status='withdrawn')
+    monkeypatch.setattr(managed_data, 'source_for', lambda _: source)
+    monkeypatch.setattr(managed_data.db, 'data_source_dictize', lambda row: row)
+    def closed(path):
+        raise ValueError('Partition closed')
+    monkeypatch.setattr(snapshots, 'app_request', closed)
+    # CKAN activity uses this private context and never sets use_cache.
+    activity = dict(ignore_auth=True, for_view=False)
+    state = 'deleted'
+    def show(ctx, data):
+        return dict(id=data['id'], state=state if ctx.get('use_cache') is False else 'active',
+                    title='Original title', resources=[{'id': 'csv'}], extras=[{'key':'policy'}])
+    def read(ctx, key):
+        return managed_data.package_show(show, ctx, {'id':key, 'include_tracking':False})
+    def revise(context, data):
+        nonlocal state
+        assert read(activity, 'dataset') == {'id':'dataset', 'state':'deleted'}
+        for ctx, key in [(activity, 'other'), ({}, 'dataset'),
+                         (dict(activity, csunesco_public_view=True), 'dataset')]:
+            with pytest.raises(tk.ObjectNotFound):
+                read(ctx, key)
+        state = 'active'
+        with pytest.raises(tk.ObjectNotFound):
+            read(activity, 'dataset')
+        state = 'deleted'
+        if action_fails:
+            raise RuntimeError('write failed')
+    monkeypatch.setattr(tk, 'get_action', {'package_revise':revise}.__getitem__)
+    if action_fails:
+        with pytest.raises(RuntimeError):
+            managed_data.withdraw_package({}, 'dataset')
+    else:
+        managed_data.withdraw_package({}, 'dataset')
+    with pytest.raises(tk.ObjectNotFound):
+        read(activity, 'dataset')
+
+
 def test_policy_check_is_shared_only_within_one_http_request(monkeypatch):
     from flask import Flask
     app = Flask(__name__)

@@ -119,7 +119,7 @@ def callback(source):
 
 def upsert_partition(context, data, project):
     """Only the app service may set a partition; verify it against the app."""
-    from ckanext.csunesco.logic import auth, package_sync
+    from ckanext.csunesco.logic import auth, managed_data, package_sync
     if not auth._is_sysadmin(context):
         raise tk.NotAuthorized('Partition updates require the app service')
     # Serialize with project archive/restore before deciding which transition
@@ -203,10 +203,7 @@ def upsert_partition(context, data, project):
                 # CKAN 2.10 package_patch drops the internal sync marker in
                 # its nested package_show. package_revise carries it through,
                 # so withdrawing a dataset never depends on a public read.
-                tk.get_action('package_revise')(
-                    dict(context, ignore_auth=True, _cs_partition_sync=True,
-                         use_cache=False, defer_commit=True),
-                    {'match': {'id': package.id}, 'update': {'state': 'deleted'}})
+                managed_data.withdraw_package(context, package.id)
     db.Session.commit()
     callback(source)
     return db.data_source_dictize(source)

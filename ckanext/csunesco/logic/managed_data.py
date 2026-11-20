@@ -1,7 +1,25 @@
 """Prevent alternate CKAN APIs from bypassing managed data policy."""
+from contextvars import ContextVar
+
 import ckan.plugins.toolkit as tk
 from flask import g, has_request_context
 from ckanext.csunesco import db
+
+
+_withdrawing_package = ContextVar('csunesco_withdrawing_package', default=None)
+
+
+def withdraw_package(context, package_id):
+    # CKAN 2.10 activity reads package_show with a fresh context while the
+    # revise action is firing its package_update signal.
+    token = _withdrawing_package.set(package_id)
+    try:
+        tk.get_action('package_revise')(
+            dict(context, ignore_auth=True, _cs_partition_sync=True,
+                 use_cache=False, defer_commit=True),
+            {'match': {'id': package_id}, 'update': {'state': 'deleted'}})
+    finally:
+        _withdrawing_package.reset(token)
 
 
 def _request_checks():
@@ -46,7 +64,16 @@ def check_current(source):
 @tk.chained_action
 @tk.side_effect_free
 def package_show(original, context, data_dict):
-    package = original(context, data_dict)
+    package_id = _withdrawing_package.get()
+    activity_read = (package_id is not None and data_dict.get('id') == package_id
+                     and data_dict.get('include_tracking') is False
+                     and context.get('ignore_auth') and context.get('for_view') is False
+                     and not context.get('csunesco_public_view'))
+    # The active Solr document can outlive the transaction's state change.
+    read_context = dict(context, use_cache=False) if activity_read else context
+    package = original(read_context, data_dict)
+    if activity_read and package.get('id') == package_id and package.get('state') == 'deleted':
+        return {'id': package_id, 'state': 'deleted'}
     source = source_for(package.get('id'))
     if source and not context.get('_cs_partition_sync'):
         # CKAN's search indexer reads the unvalidated database record on
