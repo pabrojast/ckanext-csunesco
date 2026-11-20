@@ -98,7 +98,7 @@ def csunesco_data_source_create(context, data_dict):
     project = _resolve_project(data_dict)
     if project is None:
         raise tk.ValidationError({'project_id': [tk._('Project not found')]})
-    if project.status != 'approved':
+    if not data_dict.get('partition_id') and project.status != 'approved':
         raise tk.ValidationError({'project_id': [tk._(
             'Data can only be connected to an approved project')]})
     if not _can_manage_project(context, project.id):

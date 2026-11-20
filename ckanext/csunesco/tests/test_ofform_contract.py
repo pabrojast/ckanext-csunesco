@@ -979,3 +979,84 @@ def test_initiative_page_publish_accepts_the_apps_payload(service, session):
         _service_ctx(), {'initiative': 'riverwatch'})
     assert out['status'] == 'approved'
     assert out['published_blocks'] == out['draft_blocks']
+
+
+@pytest.mark.parametrize('project_status', ['approved', 'archived'])
+@pytest.mark.parametrize('initial_state', ['active', 'deleted', None])
+def test_withdraw_partition_and_retry_after_public_gate_closed(
+        initial_state, project_status, service, session, project, monkeypatch):
+    """Run CKAN's actual revise action through the managed package_show chain."""
+    import json
+    from types import SimpleNamespace
+    from ckan.logic.action import update
+    from ckanext.csunesco.logic import managed_data, snapshots
+    from ckanext.csunesco.logic.action.data import csunesco_data_source_create
+
+    project.status = project_status
+    row = db.CsDataSource()
+    row.project_id, row.form_id, row.access_level = project.id, 12, 'public'
+    row.title = 'Existing source'
+    row.status, row.ckan_package_id = 'approved', 'dataset'
+    row.extras = json.dumps(dict(partition_id=9, programme_id=42, policy_revision=1, resource_ids=['csv', 'geojson']))
+    session.add(row)
+    session.commit()
+    package = SimpleNamespace(id='dataset', state=initial_state) if initial_state else None
+    model = SimpleNamespace(Package=SimpleNamespace(get=lambda key, for_update: package))
+    context = dict(_service_ctx(), model=model)
+    request = dict(project_id=project.id, form_id=12, programme_id=42,
+                   partition_id=9, access_level='public', policy_revision=2, withdrawn=True)
+    writes, callbacks = [], []
+
+    def app_request(path, payload=None):
+        if payload is None:
+            raise RuntimeError('Partition is already withdrawn in Toolbox')
+        callbacks.append(payload)
+
+    def show(context, data):
+        assert data['id'] == package.id
+        context['package'] = package
+        return dict(id=package.id, state=package.state, resources=[{'id': 'csv'}, {'id': 'geojson'}])
+
+    def update_package(context, data):
+        assert context['defer_commit']
+        assert data['resources'] == [{'id': 'csv'}, {'id': 'geojson'}]
+        package.state = data['state']
+        writes.append(package.state)
+        return data
+
+    actions = {'package_show': lambda ctx, data: managed_data.package_show(show, ctx, data),
+               'package_revise': update.package_revise, 'package_update': update_package}
+    monkeypatch.setattr(tk, 'get_action', actions.__getitem__)
+    monkeypatch.setattr(update, '_get_action', actions.__getitem__)
+    monkeypatch.setattr(update, '_check_access', lambda *args: None)
+    monkeypatch.setattr(snapshots, 'app_request', app_request)
+
+    if project_status == 'archived':
+        monkeypatch.setitem(tk.config, 'ckanext.csunesco.portal_service_user', context['user'])
+        with pytest.raises(tk.NotAuthorized):
+            csunesco_data_source_create(dict(context, user='different-admin'), request)
+        for changes in (dict(withdrawn=False), dict(withdrawn='true'), dict(partition_id=10),
+                        dict(programme_id=43), dict(programme_id=None), dict(form_id=13),
+                        dict(access_level='private'), dict(partition_id=9.5), dict(form_id=True)):
+            with pytest.raises((tk.ValidationError, tk.ObjectNotFound)):
+                csunesco_data_source_create(context, dict(request, **changes))
+        assert session.query(db.CsDataSource).count() == 1
+        assert row.status == 'approved' and row.title == 'Existing source'
+        assert not writes and not callbacks
+    for _ in range(2):
+        out = csunesco_data_source_create(context, request)
+        if project_status == 'archived':
+            assert out['title'] == 'Existing source' and project.status == 'archived'
+        assert out['status'] == 'withdrawn'
+        assert out['id'] == row.id and out['ckan_package_id'] == 'dataset'
+        assert out['resource_ids'] == ['csv', 'geojson']
+        assert out['policy_revision'] == 2
+    assert writes == (['deleted'] if initial_state == 'active' else [])
+    assert [cb['status'] for cb in callbacks] == ['withdrawn', 'withdrawn']
+    if package is not None:
+        with pytest.raises(tk.ObjectNotFound):
+            actions['package_show']({}, {'id': 'dataset'})
+
+    stale = csunesco_data_source_create(context, dict(request, policy_revision=1))
+    assert stale['policy_revision'] == 2
+    assert len(callbacks) == 2

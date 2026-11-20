@@ -71,6 +71,26 @@ def test_manual_privacy_drift_and_datastore_copies_are_rejected(monkeypatch):
     assert result['title'] == 'Updated title'
 
 
+def test_indexer_can_read_deleted_state_after_partition_closes(monkeypatch):
+    source = SimpleNamespace()
+    monkeypatch.setattr(managed_data, 'source_for', lambda _: source)
+    monkeypatch.setattr(managed_data.db, 'data_source_dictize', lambda _: dict(
+        partition_id=9, policy_revision=2, access_level='public', status='withdrawn'))
+    def unavailable(path):
+        raise ValueError('Partition closed')
+    monkeypatch.setattr(snapshots, 'app_request', unavailable)
+    indexer = dict(ignore_auth=True, validate=False, use_cache=False)
+    def show(context, data):
+        return data
+    deleted = dict(id='dataset', state='deleted')
+    assert managed_data.package_show(show, indexer, deleted) == deleted
+    for ctx in ({}, dict(ignore_auth=True), dict(indexer, csunesco_public_view=True)):
+        with pytest.raises(tk.ObjectNotFound):
+            managed_data.package_show(show, ctx, deleted)
+    with pytest.raises(tk.ObjectNotFound):
+        managed_data.package_show(show, indexer, dict(id='dataset', state='active'))
+
+
 def test_policy_check_is_shared_only_within_one_http_request(monkeypatch):
     from flask import Flask
     app = Flask(__name__)

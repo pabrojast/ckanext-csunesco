@@ -56,6 +56,25 @@ const details=walk(numeric.figure).find(n=>n.className==='cs-chart-data-table');
 category.chart='bar';category.axes={};const bars=paint(category,categorical);legendButtons(bars.figure)[1].events.click();assert.equal(JSON.stringify(charts.at(-1).data.datasets[0].data),'[4]');legendButtons(bars.figure)[1].events.click();assert.equal(JSON.stringify(charts.at(-1).data.datasets[0].data),'[4,8]');assert.equal(categorical.series[0].points[1],8,'legend toggles are transient');
 const legacy=structuredClone(def);legacy.version=1;const old=paint(legacy,payload);assert.equal(old.chart.config.options.scales.y.max,10,'v1 rendering is unchanged');
 
+// Bucketed series use Chart.js category indices for tick positions; render
+// the corresponding API period for both built-in and configured chart blocks.
+const months = ['2026-09', '2026-10', '2026-11'];
+for (const type of ['bar', 'line']) {
+  const figure = new Node('figure'), container = new Node('div');
+  figure.appendChild(container);
+  container.setAttribute('data-type', type);
+  const monthly = {mode: 'numeric', labels: months, series: [{name: 'Clarity', points: [2, 4, 3]}]};
+  assert.equal(sandbox.csunescoCharts.paint(container, monthly), true);
+  const axis = charts.at(-1).config.options.scales.x;
+  assert.equal(axis.type, 'category');
+  const scale = {getLabelForValue: value => months[value]};
+  assert.deepEqual(months.map((_, i) => axis.ticks.callback.call(scale, i)), months);
+}
+const linear = old.chart.config.options.scales.x;
+assert.equal(linear.type, 'linear');
+const epoch = Date.parse('2026-09-01');
+assert.equal(linear.ticks.callback(epoch), new Date(epoch).toLocaleDateString(undefined, {timeZone: 'UTC'}));
+
 async function testCalculationRequestRetainsLocalPresentation(version, resolved=false) {
   const saved=structuredClone(def);saved.version=version;saved.title='Date(UTC)';saved.caption='Presentation-only description';saved.axes={yMax:20};saved.start='2026-01-01';saved.filters={sites:['A'],facets:{weather:['dry']},search:'river'};
   if(version===2){saved.presentation.series[keyA]={color:'#123456',label:'Upstream',lineStyle:'dashed',pointStyle:'triangle'};saved.template={id:'site-comparison',version:1};}

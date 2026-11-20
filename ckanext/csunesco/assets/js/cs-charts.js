@@ -228,7 +228,10 @@
             grid: { display: false },
             border: { color: INK.axis },
             ticks: { color: INK.muted, maxTicksLimit: 8, autoSkip: true,
-                     maxRotation: 0, callback: temporal ? function(v) { return new Date(v).toLocaleDateString(undefined, {timeZone: "UTC"}); } : undefined }
+                     maxRotation: 0, callback: function (value) {
+                       return temporal ? new Date(value).toLocaleDateString(undefined, { timeZone: "UTC" })
+                         : this.getLabelForValue(value);
+                     } }
           },
           y: {
             title: payload.field_label

@@ -49,6 +49,13 @@ def package_show(original, context, data_dict):
     package = original(context, data_dict)
     source = source_for(package.get('id'))
     if source and not context.get('_cs_partition_sync'):
+        # CKAN's search indexer reads the unvalidated database record on
+        # commit, outside the action context. It needs the deleted state to
+        # remove the active Solr document even after Toolbox closes the feed.
+        if (package.get('state') == 'deleted' and context.get('ignore_auth')
+                and context.get('validate') is False and context.get('use_cache') is False
+                and not context.get('csunesco_public_view')):
+            return package
         if context.get('csunesco_public_view'):
             from ckanext.csunesco.logic.data_access import published
             if not published(source):

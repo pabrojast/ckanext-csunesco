@@ -122,6 +122,20 @@ def upsert_partition(context, data, project):
     from ckanext.csunesco.logic import auth, package_sync
     if not auth._is_sysadmin(context):
         raise tk.NotAuthorized('Partition updates require the app service')
+    # Serialize with project archive/restore before deciding which transition
+    # this service delivery may perform.
+    db.Session.refresh(project, with_for_update={'read': True})
+    archived = project.status == 'archived'
+    if archived:
+        from ckanext.csunesco.logic import portal
+        portal.require_service(context)
+        if (data.get('withdrawn') is not True
+                or any(type(data.get(key)) is not int or data[key] < 1 for key in
+                       ('programme_id', 'form_id', 'partition_id', 'policy_revision'))):
+            raise tk.ValidationError({'partition_id': ['Expected an existing partition withdrawal']})
+    elif project.status != 'approved':
+        raise tk.ValidationError({'project_id': [tk._(
+            'Data can only be connected to an approved project')]})
     level = data.get('access_level')
     if level not in LEVELS:
         raise tk.ValidationError({'access_level': ['Unknown access level']})
@@ -139,6 +153,8 @@ def upsert_partition(context, data, project):
             raise tk.ValidationError({'partition_id': ['Project mismatch']})
     source = db.get_data_source_by_form(project.id, form_id, access_level=level)
     if source is None:
+        if archived:
+            raise tk.ObjectNotFound('Partition not found in archived project')
         # Keep the original dataset and resource IDs when adopting a legacy
         # source whose actual CKAN access matches this level.
         legacy = db.get_data_source_by_form(project.id, form_id, access_level='legacy')
@@ -154,15 +170,23 @@ def upsert_partition(context, data, project):
         source.project_id, source.form_id = project.id, form_id
         source.status = 'pending'
         source.source = 'app'
+    else:
+        # Serialize concurrent deliveries before comparing their policy revisions.
+        db.Session.refresh(source, with_for_update=True)
     extras = db._load_json(source.extras, {}) if not new else {}
+    if archived and (extras.get('partition_id') != partition_id
+                     or extras.get('programme_id') != data['programme_id']):
+        raise tk.ObjectNotFound('Partition not found in archived project')
     if int(extras.get('policy_revision', 0)) > revision:
         return db.data_source_dictize(source)
-    source.access_level = level
-    source.title = data.get('title') or project.title
-    source.description = data.get('description') or ''
-    extras.update(partition_id=partition_id, policy_revision=revision, programme_id=data.get('programme_id'))
-    if data.get('owner_org'):
-        extras['owner_org'] = data['owner_org']
+    if not archived:
+        source.access_level = level
+        source.title = data.get('title') or project.title
+        source.description = data.get('description') or ''
+        extras.update(partition_id=partition_id, programme_id=data.get('programme_id'))
+        if data.get('owner_org'):
+            extras['owner_org'] = data['owner_org']
+    extras['policy_revision'] = revision
     source.extras = json.dumps(extras)
     if data.get('withdrawn'):
         source.status = 'withdrawn'
@@ -174,8 +198,15 @@ def upsert_partition(context, data, project):
         if source.status == 'approved':
             package_sync.ensure_dataset(dict(context, ignore_auth=True), project, source)
         elif source.status == 'withdrawn':
-            tk.get_action('package_patch')(dict(context, ignore_auth=True, _cs_partition_sync=True),
-                {'id': source.ckan_package_id, 'state': 'deleted'})
+            package = context['model'].Package.get(source.ckan_package_id, for_update=True)
+            if package is not None and package.state != 'deleted':
+                # CKAN 2.10 package_patch drops the internal sync marker in
+                # its nested package_show. package_revise carries it through,
+                # so withdrawing a dataset never depends on a public read.
+                tk.get_action('package_revise')(
+                    dict(context, ignore_auth=True, _cs_partition_sync=True,
+                         use_cache=False, defer_commit=True),
+                    {'match': {'id': package.id}, 'update': {'state': 'deleted'}})
     db.Session.commit()
     callback(source)
     return db.data_source_dictize(source)
