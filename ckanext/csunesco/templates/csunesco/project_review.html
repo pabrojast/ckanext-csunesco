@@ -67,9 +67,11 @@
                 {{ value(project.initiative_title or project.initiative_group) }}
               {% elif field in image_fields %}
                 {% if field_value %}
+                  {% set x = project.get('heading_focal_x' if field == 'heading_image_url' else 'image_focal_x') %}
+                  {% set y = project.get('heading_focal_y' if field == 'heading_image_url' else 'image_focal_y') %}
                   <a href="{{ field_value }}" target="_blank" rel="noopener">
                     <img class="cs-review-cover cs-review-cover--field" src="{{ field_value }}" alt="" loading="lazy"
-                         {% if field == 'image_url' %}style="object-position: {{ project.image_focal_x or 50 }}% {{ project.image_focal_y or 50 }}%"{% elif field == 'heading_image_url' %}style="object-position: {{ project.heading_focal_x or 50 }}% {{ project.heading_focal_y or 50 }}%"{% endif %}>
+                         {% if field in ('image_url', 'heading_image_url') %}style="object-position: {{ 50 if x is none else x }}% {{ 50 if y is none else y }}%"{% endif %}>
                   </a>
                 {% else %}<span class="cs-muted">{{ _("Not provided") }}</span>{% endif %}
               {% elif field == 'countries' %}

@@ -11,11 +11,14 @@
 #}
 <article class="cs-project-card">
   <a class="cs-project-card-link" href="{{ h.csunesco_project_url(project.slug) }}">
-    {% if project.image_url %}
+    {% set cover = project.image_url or project.heading_image_url %}
+    {% if cover %}
+      {% set x = project.get('image_focal_x' if project.image_url else 'heading_focal_x') %}
+      {% set y = project.get('image_focal_y' if project.image_url else 'heading_focal_y') %}
       <span class="cs-project-card-media" aria-hidden="true">
-        <img class="cs-project-card-img" src="{{ project.image_url }}"
+        <img class="cs-project-card-img" src="{{ cover }}"
              alt="" loading="lazy"
-             style="object-position:{{ project.image_focal_x or 50 }}% {{ project.image_focal_y or 50 }}%">
+             style="object-position:{{ 50 if x is none else x }}% {{ 50 if y is none else y }}%">
       </span>
     {% endif %}
     {% if project.initiative_title %}

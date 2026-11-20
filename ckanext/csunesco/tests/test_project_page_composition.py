@@ -118,3 +118,34 @@ def test_pending_first_app_publication_still_renders_old_approved_page(render_pr
                           [blocks.normalize_block({'type': 'builtin_about'})])
     assert html.count('Approved legacy description') == 1
     assert 'https://example.test/approved-document' in html
+
+
+@pytest.mark.parametrize('project,x,y', [
+    ({'heading_image_url': '/banner.png', 'heading_focal_x': 0, 'heading_focal_y': 100}, 0, 100),
+    ({'image_url': '/cover.png', 'image_focal_x': 75, 'image_focal_y': 0}, 75, 0),
+    ({'heading_image_url': '/banner.png'}, 50, 50),
+])
+def test_banner_keeps_its_selected_focal_point(render_project, project, x, y):
+    page = render_project(project, [])
+    assert f'--cs-hero-x: {x}%; --cs-hero-y: {y}%;' in page
+
+
+@pytest.mark.parametrize('project,src,position', [
+    ({'image_url': '/cover.png', 'image_focal_x': 0, 'image_focal_y': 70,
+      'heading_image_url': '/banner.png', 'heading_focal_x': 35}, '/cover.png', '0% 70%'),
+    ({'heading_image_url': '/banner.png', 'heading_focal_x': 35, 'heading_focal_y': 0},
+     '/banner.png', '35% 0%'),
+    ({'heading_image_url': '/banner.png'}, '/banner.png', '50% 50%'),
+    ({}, None, None),
+])
+def test_card_prefers_its_own_cover_and_falls_back_to_banner(project, src, position):
+    root = Path(__file__).parents[1] / 'templates'
+    env = Environment(autoescape=True, loader=FileSystemLoader(str(root)))
+    html = env.get_template('csunesco/snippets/project_card.html').render(
+        project=dict(slug='river', title='River', **project),
+        h=SimpleNamespace(csunesco_project_url=lambda slug: '/' + slug), _=str)
+    if src is None:
+        assert '<img ' not in html
+    else:
+        assert f'src="{src}"' in html
+        assert f'object-position:{position}' in html

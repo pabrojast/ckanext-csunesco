@@ -41,11 +41,11 @@
   {# Image URLs are charset-restricted by csunesco_valid_image_url (no quotes/
      parens/whitespace), so it is safe inside the CSS url('...') below. #}
   {% set hero_image = project.heading_image_url or project.image_url %}
-  {% set hero_x = project.heading_focal_x if project.heading_image_url else project.image_focal_x %}
-  {% set hero_y = project.heading_focal_y if project.heading_image_url else project.image_focal_y %}
+  {% set hero_x = project.get('heading_focal_x' if project.heading_image_url else 'image_focal_x') %}
+  {% set hero_y = project.get('heading_focal_y' if project.heading_image_url else 'image_focal_y') %}
   <section class="cs-hero cs-project-hero" aria-labelledby="cs-project-title"
            {%- if hero_image %}
-           style="--cs-project-hero-img: url('{{ hero_image }}'); --cs-hero-x: {{ hero_x or 50 }}%; --cs-hero-y: {{ hero_y or 50 }}%;{% if project.heading_zoom and project.heading_zoom > 100 %} --cs-hero-size: {{ project.heading_zoom }}% auto{% endif %}"
+           style="--cs-project-hero-img: url('{{ hero_image }}'); --cs-hero-x: {{ 50 if hero_x is none else hero_x }}%; --cs-hero-y: {{ 50 if hero_y is none else hero_y }}%;{% if project.heading_zoom and project.heading_zoom > 100 %} --cs-hero-size: {{ project.heading_zoom }}% auto{% endif %}"
            {%- endif %}>
     {% if project.initiative_title %}
       <p class="cs-project-hero-initiative">{{ project.initiative_title }}</p>
