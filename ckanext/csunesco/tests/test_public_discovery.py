@@ -227,20 +227,37 @@ def test_public_content_can_still_be_owned_by_an_organization(catalogue):
         assert {r['slug'] for r in result['items']} == {'org-news', 'approved-cs-news-approved'}
 
 
+def _excluded_ids(exclusion):
+    # One top-level, purely negative filter: -id:("a" OR "b").
+    assert exclusion.startswith('-id:(') and exclusion.endswith(')')
+    assert ' AND ' not in exclusion and '-id' not in exclusion[1:]
+    return {json.loads(value) for value in exclusion[len('-id:('):-1].split(' OR ')}
+
+
+def _all_sources_legacy():
+    for source in db.Session.query(db.CsDataSource).all():
+        source.access_level = 'legacy'
+    db.Session.commit()
+    return {source.ckan_package_id for source in db.Session.query(db.CsDataSource).all()}
+
+
 def test_dataset_search_excludes_unpublished_parents_before_solr(catalogue):
     from ckanext.csunesco.logic import managed_data
     from ckanext.csunesco.logic.public_view import public_context
     rows, _ = catalogue
-    for source in db.Session.query(db.CsDataSource).all():
-        source.access_level = 'legacy'
-    db.Session.commit()
+    packages = _all_sources_legacy()
+    caller_fq = 'owner_org:"org" OR organization:"org"'
     filters = managed_data.package_search(lambda ctx, data: data,
-        public_context({'user': 'admin'}), {'fq': 'owner_org:"org" OR organization:"org"', 'rows': 1})
-    assert filters['fq'].startswith('(owner_org:"org" OR organization:"org") AND (')
-    assert '-id:"approved-approved"' not in filters['fq']
+        public_context({'user': 'admin'}), {'fq': caller_fq, 'rows': 1})
+    # The caller's fq is never rewritten: "(fq) AND (-id:.. AND -id:..)" made
+    # Solr match nothing. The exclusion travels as its own top-level filter.
+    assert filters['fq'] == caller_fq
+    assert len(filters['fq_list']) == 1
+    hidden = _excluded_ids(filters['fq_list'][0])
+    assert hidden == packages - {'approved-approved'}
     for state in ('pending', 'draft', 'rejected', 'archived', 'withdrawn'):
-        assert '-id:"%s-approved"' % state in filters['fq']
-    assert '-id:"approved-pending"' in filters['fq']
+        assert '%s-approved' % state in hidden
+    assert 'approved-pending' in hidden
     # Direct references in a dataset block follow the same publication rule.
     original = lambda ctx, data: {'id': data['id']}
     with pytest.raises(tk.ObjectNotFound):
@@ -250,4 +267,54 @@ def test_dataset_search_excludes_unpublished_parents_before_solr(catalogue):
     db.Session.commit()
     unknown = managed_data.package_search(lambda ctx, data: data,
         public_context({'user': 'admin'}), {'rows': 1})
-    assert '-id:"approved-approved"' in unknown['fq']
+    assert 'fq' not in unknown
+    assert _excluded_ids(unknown['fq_list'][0]) == packages
+
+
+@pytest.mark.parametrize('search, caller_filters', [
+    ({'fq': 'type:dataset'}, []),
+    ({'fq': '  +type:dataset -tags:"a b" '}, []),
+    ({'fq': ''}, []),
+    ({}, []),
+    ({'fq_list': []}, []),
+    ({'fq': 'type:dataset', 'fq_list': ['res_format:CSV', '-tags:draft']}, ['res_format:CSV', '-tags:draft']),
+    # Over the GET API a single fq_list is a string, not a one-item list.
+    ({'fq': 'type:dataset', 'fq_list': 'res_format:CSV'}, ['res_format:CSV']),
+    ({'fq_list': '-tags:draft'}, ['-tags:draft']),
+])
+def test_dataset_search_exclusion_never_touches_the_callers_filters(catalogue, search, caller_filters):
+    import copy
+    from ckanext.csunesco.logic import managed_data
+    from ckanext.csunesco.logic.public_view import public_context
+    packages = _all_sources_legacy()
+    sent = dict(search, rows=0)
+    before = copy.deepcopy(sent)
+    filters = managed_data.package_search(lambda ctx, data: data, public_context({'user': None}), sent)
+    assert sent == before
+    # Everything the caller sent reaches Solr byte-identical ...
+    assert {k: v for k, v in filters.items() if k != 'fq_list'} == {k: v for k, v in before.items() if k != 'fq_list'}
+    assert ('fq' in filters) == ('fq' in search)
+    # ... and the exclusion is appended as one more top-level filter.
+    assert isinstance(filters['fq_list'], list)
+    assert filters['fq_list'][:-1] == caller_filters
+    assert _excluded_ids(filters['fq_list'][-1]) == packages - {'approved-approved'}
+    assert filters['fq_list'][-1] == '-id:(%s)' % ' OR '.join(
+        json.dumps(value) for value in sorted(packages - {'approved-approved'}))
+
+
+@pytest.mark.parametrize('search', [
+    {'rows': 0},
+    {'fq': 'type:dataset', 'rows': 0},
+    {'fq': 'type:dataset', 'fq_list': ['res_format:CSV'], 'rows': 0},
+    {'fq_list': 'res_format:CSV', 'rows': 0},
+])
+def test_dataset_search_is_untouched_when_nothing_is_hidden(catalogue, search):
+    import copy
+    from ckanext.csunesco.logic import managed_data
+    _all_sources_legacy()
+    before = copy.deepcopy(search)
+    # Outside the public view no legacy source is hidden: nothing to exclude.
+    filters = managed_data.package_search(lambda ctx, data: data, {'user': 'admin'}, search)
+    assert filters == before
+    assert search == before
+    assert ('fq_list' in filters) == ('fq_list' in before)

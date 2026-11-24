@@ -174,7 +174,10 @@ def test_nested_searches_share_check_and_recheck_on_next_request(monkeypatch):
     monkeypatch.setattr(snapshots, 'app_request', lambda *a: {'available': []})
     with app.test_request_context('/'):
         result = managed_data.package_search(original, {}, {'rows': 0})
-        assert '-id:"dataset"' in result['fq']
+        assert result == {'rows': 0, 'fq_list': ['-id:("dataset")']}
+        # A caller's fq stays as sent; the exclusion is a separate filter.
+        result = managed_data.package_search(original, {}, {'rows': 0, 'fq': 'type:dataset'})
+        assert result == {'rows': 0, 'fq': 'type:dataset', 'fq_list': ['-id:("dataset")']}
 
 
 def test_completed_partition_migration_never_requests_an_exclusive_lock(monkeypatch):
