@@ -446,19 +446,34 @@ def refresh_project_stats(project, defer_commit=False):
 
 _worker_started = False
 
+
+def take_refresh_lock(lock):
+    """Take the refresh lock without waiting. False if another worker holds it.
+
+    A lock held elsewhere is EAGAIN on a local disk and EACCES on the Azure
+    Files (SMB) share that production uses for this directory.
+    """
+    import errno
+    import fcntl
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        if exc.errno in (errno.EAGAIN, errno.EACCES):
+            return False
+        raise
+    return True
+
+
 def start_worker():
     global _worker_started
     if _worker_started or not tk.asbool(tk.config.get('ckanext.csunesco.portal_sync_enabled', False)):
         return
     import threading
     def run():
-        import fcntl
         while True:
             try:
                 with (root() / 'refresh.lock').open('a') as lock:
-                    try:
-                        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    except BlockingIOError:
+                    if not take_refresh_lock(lock):
                         continue
                     refresh_all()
                     # Repair callbacks and initial requests while retaining
