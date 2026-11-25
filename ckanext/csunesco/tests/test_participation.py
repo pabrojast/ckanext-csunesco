@@ -53,6 +53,68 @@ def test_cache_union_outage_expiry_and_scope_changes(monkeypatch, tmp_path):
     assert set(record) == {'created_at', 'citizen_scientists'}
 
 
+def _counting_writes(monkeypatch, tmp_path, total):
+    """One scope whose upstream total is total[0]; returns (payload, clock, writes)."""
+    monkeypatch.setattr(snapshots, 'root', lambda: tmp_path)
+    payload = dict(project_slugs=['p'], ckan_user_ids=['one'], excluded_ckan_user_ids=[])
+    monkeypatch.setattr(db, 'participation_inputs', lambda *args, **kwargs: payload)
+    monkeypatch.setattr(snapshots, 'app_request', lambda *args: {'citizen_scientists': total[0]})
+    writes, real = [], snapshots.write_private
+    def write(kind, key, data):
+        writes.append(data['citizen_scientists'])
+        real(kind, key, data)
+    monkeypatch.setattr(snapshots, 'write_private', write)
+    clock = [1_000_000.0]
+    monkeypatch.setattr(participation.time, 'time', lambda: clock[0])
+    return payload, clock, writes
+
+
+def test_unchanged_total_is_renewed_once_per_repair_period(monkeypatch, tmp_path):
+    # Every uWSGI worker of every pod runs the repair pass. They used to rewrite
+    # each total on every pass, which failed the Toolbox backup that reads the
+    # same share ("upload changed during backup", 2026-11-23 to 2026-11-25).
+    total = [7]
+    payload, clock, writes = _counting_writes(monkeypatch, tmp_path, total)
+    start = clock[0]
+    for _ in range(20):  # twenty workers, ten seconds apart
+        assert participation.refresh() == 7
+        clock[0] += 10
+    assert writes == [7]
+    clock[0] = start + participation.RENEW_AFTER + 1
+    assert participation.refresh() == 7
+    assert writes == [7, 7]
+    # A total that changed is written at once, however new the file is.
+    total[0] = 8
+    clock[0] += 1
+    assert participation.refresh() == 8
+    assert writes == [7, 7, 8]
+    assert participation.cached_count(payload) == 8
+
+
+def test_single_worker_renews_on_every_pass_and_the_total_never_expires(monkeypatch, tmp_path):
+    total = [7]
+    payload, clock, writes = _counting_writes(monkeypatch, tmp_path, total)
+    for _ in range(12):  # an hour of passes: 300 s of sleep plus the pass itself
+        participation.refresh()
+        clock[0] += 300 + 2
+        assert participation.cached_count(payload) == 7
+    assert writes == [7] * 12
+    # A pass that fails leaves the last total readable until MAX_AGE, as before.
+    clock[0] += 300 + 2
+    assert participation.cached_count(payload) == 7
+
+
+@pytest.mark.parametrize('content', ['{"created_at": 1000000', '{"created_at": "today", "citizen_scientists": 7}', '[]'])
+def test_stored_total_that_cannot_be_read_is_written_again(monkeypatch, tmp_path, content):
+    total = [7]
+    payload, clock, writes = _counting_writes(monkeypatch, tmp_path, total)
+    participation.refresh()
+    snapshots.path_for('participation', participation._key(payload)).write_text(content)
+    assert participation.refresh() == 7
+    assert writes == [7, 7]
+    assert participation.cached_count(payload) == 7
+
+
 @pytest.mark.parametrize('value', [None, True, -1, '7'])
 def test_invalid_upstream_is_never_cached(monkeypatch, tmp_path, value):
     monkeypatch.setattr(snapshots, 'root', lambda: tmp_path)

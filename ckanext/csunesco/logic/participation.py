@@ -7,6 +7,10 @@ from ckanext.csunesco import constants, db
 from ckanext.csunesco.logic import snapshots
 
 MAX_AGE = 900
+# The period of the portal repair pass (snapshots.start_worker). Every uWSGI
+# worker of every pod runs that pass, so a total is confirmed many times per
+# period; only one of those confirmations has to renew the file.
+RENEW_AFTER = 300
 
 
 def _key(payload):
@@ -18,11 +22,16 @@ def cached_count(payload):
     if not payload['project_slugs']:
         return len(set(payload['ckan_user_ids']) - set(payload['excluded_ckan_user_ids']))
     try:
-        record = snapshots.read_private('participation', _key(payload))
+        return _stored(_key(payload), MAX_AGE)
     except (OSError, ValueError, snapshots.tk.ValidationError):
         snapshots.log.warning('Participation cache unavailable')
         return None
-    if not isinstance(record, dict) or not 0 <= time.time() - record.get('created_at', 0) <= MAX_AGE:
+
+
+def _stored(key, max_age):
+    """The stored total, if it is valid and at most max_age seconds old."""
+    record = snapshots.read_private('participation', key)
+    if not isinstance(record, dict) or not 0 <= time.time() - record.get('created_at', 0) <= max_age:
         return None
     value = record.get('citizen_scientists')
     return value if type(value) is int and value >= 0 else None
@@ -39,8 +48,17 @@ def refresh(initiative_group=None, project_id=None):
     if project_id:
         db.stats_set(project_id, citizen_scientists=value)
         db.Session.commit()
-    snapshots.write_private('participation', _key(payload),
-                            {'created_at': time.time(), 'citizen_scientists': value})
+    key = _key(payload)
+    # A total that has not changed is renewed once per repair period, not once
+    # per worker: the file lives on a share that is backed up while it is
+    # written. A total that changed, expired or cannot be read is written now.
+    try:
+        unchanged = _stored(key, RENEW_AFTER) == value
+    except (OSError, ValueError, TypeError):
+        unchanged = False
+    if not unchanged:
+        snapshots.write_private('participation', key,
+                                {'created_at': time.time(), 'citizen_scientists': value})
     return value
 
 
