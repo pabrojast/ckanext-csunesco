@@ -171,10 +171,14 @@ def package_search(original, context, data_dict):
     data_dict = dict(data_dict)
     if hidden:
         # Package IDs are CKAN-generated UUIDs; quote through JSON nonetheless.
+        # Send the exclusion as its own top-level filter and leave the caller's
+        # fq alone: nested as "(fq) AND (-id:.. AND -id:..)" the purely
+        # negative group matches nothing in Solr, so every search returned 0.
         import json
-        exclude = ' AND '.join('-id:' + json.dumps(value) for value in sorted(set(hidden)))
-        existing = (data_dict.get('fq') or '').strip()
-        data_dict['fq'] = ('(%s) AND (%s)' % (existing, exclude)) if existing else exclude
+        exclude = '-id:(%s)' % ' OR '.join(json.dumps(value) for value in sorted(set(hidden)))
+        # Over the GET API a single fq_list arrives as a plain string.
+        filters = data_dict.get('fq_list') or []
+        data_dict['fq_list'] = ([filters] if isinstance(filters, str) else list(filters)) + [exclude]
     return original(context, data_dict)
 
 
