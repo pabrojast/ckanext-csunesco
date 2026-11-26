@@ -422,20 +422,14 @@ def csunesco_valid_terria_url(value):
 
 
 def _parse_iso_datetime(value):
-    """Parse an ISO ``YYYY-MM-DD`` date or ``YYYY-MM-DDTHH:MM[:SS]`` datetime.
-
-    Returns a naive ``datetime``. Raises ``ValueError`` on anything else -- the
-    ``Z`` / timezone-offset forms are intentionally NOT accepted (kept simple and
-    consistent with the DateTime columns, which store naive UTC).
-    """
+    """Parse ISO dates and instants into the naive UTC used by CKAN."""
     text = str(value).strip()
-    try:
-        return datetime.datetime.fromisoformat(text)
-    except ValueError:
-        pass
-    parsed_date = datetime.date.fromisoformat(text)  # raises ValueError if bad
-    return datetime.datetime(parsed_date.year, parsed_date.month,
-                             parsed_date.day)
+    if text.endswith('Z'):
+        text = text[:-1] + '+00:00'
+    parsed = datetime.datetime.fromisoformat(text)
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return parsed
 
 
 def csunesco_valid_iso_date(value):
@@ -447,7 +441,7 @@ def csunesco_valid_iso_date(value):
     if value in (None, ''):
         return None
     if isinstance(value, datetime.datetime):
-        return value
+        return value if value.tzinfo is None else value.astimezone(datetime.timezone.utc).replace(tzinfo=None)
     try:
         return _parse_iso_datetime(value)
     except (ValueError, TypeError):

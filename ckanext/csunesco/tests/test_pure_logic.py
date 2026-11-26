@@ -1335,3 +1335,23 @@ def isolate_http_cache_from_publication_database(monkeypatch):
     from ckanext.csunesco.logic import snapshots
     monkeypatch.setattr(snapshots, 'saved_form', lambda form_id: None)
     monkeypatch.setattr(snapshots, '_source', lambda form_id: None)
+
+
+@pytest.mark.parametrize('value, expected', [
+    ('2026-12-04T19:00:00.000Z', datetime.datetime(2026, 12, 4, 19)),
+    ('2026-12-04T16:00:00-03:00', datetime.datetime(2026, 12, 4, 19)),
+    ('2026-12-04T01:00:00+03:00', datetime.datetime(2026, 12, 3, 22)),
+])
+def test_iso_instants_normalize_to_naive_utc(value, expected):
+    assert v.csunesco_valid_iso_date(value) == expected
+
+
+def test_event_compares_instants_across_offsets():
+    _, errors = _navl({'title': 'E', 'content_type': 'cs-event',
+        'publish_date': '2026-12-04T19:00:00Z',
+        'end_date': '2026-12-04T17:00:00-03:00'}, schema.content_schema('cs-event'))
+    assert not errors, errors
+    _, errors = _navl({'title': 'E', 'content_type': 'cs-event',
+        'publish_date': '2026-12-04T19:00:00Z',
+        'end_date': '2026-12-04T20:00:00+03:00'}, schema.content_schema('cs-event'))
+    assert 'end_date' in errors
