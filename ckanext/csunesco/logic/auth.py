@@ -1039,4 +1039,6 @@ def get_auth_functions():
     registered.update({name: portal.service_auth for name in portal.get_actions()})
     from ckanext.csunesco.logic import pathways
     registered.update({name: pathways.entry_auth for name in pathways.get_actions()})
+    from ckanext.csunesco.logic import managed_data
+    registered.update(managed_data.get_auth_functions())
     return registered

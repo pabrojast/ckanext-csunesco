@@ -134,11 +134,12 @@ def datastore_create(original, context, data_dict):
 
 
 
-@tk.chained_action
-@tk.side_effect_free
-def package_search(original, context, data_dict):
-    # Exclude stale/revoked managed packages BEFORE Solr computes pagination,
-    # totals and facets, so those metadata paths cannot leak hidden partitions.
+def hidden_package_ids():
+    """Packages of managed partitions that the Toolbox does not confirm now.
+
+    One query and one batched request, shared inside the HTTP request. It
+    fails closed: when the Toolbox cannot be asked, every one is hidden.
+    """
     from ckanext.csunesco.logic import snapshots
     rows = db.Session.query(db.CsDataSource).filter(db.CsDataSource.access_level != 'legacy').all()
     records = [db.data_source_dictize(row) for row in rows if row.ckan_package_id]
@@ -156,7 +157,15 @@ def package_search(original, context, data_dict):
             allowed.clear()
         cache[key] = allowed
     allowed = cache[key]
-    hidden = [row['ckan_package_id'] for row in records if row.get('partition_id') not in allowed]
+    return [row['ckan_package_id'] for row in records if row.get('partition_id') not in allowed]
+
+
+@tk.chained_action
+@tk.side_effect_free
+def package_search(original, context, data_dict):
+    # Exclude stale/revoked managed packages BEFORE Solr computes pagination,
+    # totals and facets, so those metadata paths cannot leak hidden partitions.
+    hidden = hidden_package_ids()
     if context.get('csunesco_public_view'):
         # Apply publication before Solr counts, facets and pagination. Include
         # legacy sources too: an archived parent must disappear from blocks.
@@ -182,6 +191,82 @@ def package_search(original, context, data_dict):
     return original(context, data_dict)
 
 
+@tk.chained_auth_function
+@tk.auth_allow_anonymous_access
+def package_show_auth(next_auth, context, data_dict):
+    """Refuse a hidden managed package wherever CKAN asks if it may be shown.
+
+    The chained action above hides it from package_show. CKAN's activity
+    plugin never calls that action: its auth functions ask this one and then
+    read the activity table, so the history of a hidden package, with its
+    whole metadata, stayed readable by anyone (package_activity_list,
+    activity_show, activity_data_show, activity_diff). The resource and
+    datastore auth functions ask it too.
+
+    It raises NotFound, as the action does, so the answer stays a 404.
+    Sysadmins and ignore_auth never reach an auth function.
+    """
+    if not context.get('_cs_partition_sync'):
+        model = context.get('model')
+        if model is None:
+            import ckan.model as model
+        key = (data_dict or {}).get('id')
+        package = model.Package.get(key) if key else context.get('package')
+        if package is not None:
+            sources = _request_checks()
+            memo = ('source', package.id)
+            if memo not in sources:
+                sources[memo] = source_for(package.id)
+            if sources[memo]:
+                check_current(sources[memo])
+    return next_auth(context, data_dict)
+
+
+# Lists of the activity plugin that mix the activities of many packages.
+ACTIVITY_LISTS = ('group_activity_list', 'organization_activity_list', 'user_activity_list',
+                  'dashboard_activity_list', 'recently_changed_packages_activity_list')
+
+
+def _managed_among(package_ids):
+    rows = db.Session.query(db.CsDataSource.ckan_package_id).filter(
+        db.CsDataSource.ckan_package_id.in_(sorted(package_ids)))
+    return {package_id for (package_id,) in rows}
+
+
+def without_hidden_packages(activities):
+    """Drop the activities of hidden managed packages from a list CKAN built.
+
+    The Toolbox is asked only when the page holds a managed package. The
+    list can come back shorter than the limit that was asked for.
+    """
+    package_ids = {item.get('object_id') for item in activities
+                   if isinstance(item, dict) and 'package' in str(item.get('activity_type') or '')}
+    package_ids.discard(None)
+    if not package_ids or not _managed_among(package_ids):
+        return activities
+    hidden = set(hidden_package_ids())
+    return [item for item in activities
+            if not (isinstance(item, dict) and item.get('object_id') in hidden)]
+
+
+@tk.chained_action
+@tk.side_effect_free
+def activity_list(original, context, data_dict):
+    result = original(context, data_dict)
+    if context.get('ignore_auth') or not isinstance(result, list):
+        return result
+    return without_hidden_packages(result)
+
+
 def get_actions():
-    return {'package_show': package_show, 'package_update': package_update,
-            'package_patch': package_patch, 'package_search': package_search, 'datastore_create': datastore_create}
+    actions = {'package_show': package_show, 'package_update': package_update,
+               'package_patch': package_patch, 'package_search': package_search,
+               'datastore_create': datastore_create}
+    # A chained action needs its original: only where the activity plugin runs.
+    if 'activity' in tk.aslist(tk.config.get('ckan.plugins', '')):
+        actions.update({name: activity_list for name in ACTIVITY_LISTS})
+    return actions
+
+
+def get_auth_functions():
+    return {'package_show': package_show_auth}
